@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionRpcHandler, ConnectionRpcResult } from '@deepseek-ai/dsh-client-connection'
 import type { SettingsPathOp, SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { CODINGNS_SETTINGS_NAMESPACE, type CodingNsSettings } from '../shared/contracts/config.js'
+import { CODINGNS_SETTINGS_NAMESPACE, isCodingNsSettingsEntryId, type CodingNsSettings } from '../shared/contracts/config.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
 import { CodingNsRpcError, type CodingNsRpcHandler, type CodingNsRpcTable } from './rpc-table.js'
 
@@ -216,7 +216,7 @@ function readCodingNsSettings(provider: SettingsProvider): { value: CodingNsSett
 }
 
 function findCodingNsSettingsDescriptor(provider: Pick<SettingsProvider, 'describe'>) {
-  return provider.describe({ redactSecrets: true }).find((item) => item.ns === CODINGNS_SETTINGS_NAMESPACE || item.ns === 'codingns4dsh')
+  return provider.describe({ redactSecrets: true }).find((item) => isCodingNsSettingsEntryId(item.ns))
 }
 
 function resolveCodingNsSettingsNamespace(provider: Pick<SettingsProvider, 'describe'>): string {

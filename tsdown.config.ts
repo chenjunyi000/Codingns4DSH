@@ -39,7 +39,8 @@ export default defineConfig({
     codeSplitting: false,
     // 与 tsc 的 data/build/dist/client/index.js 分离，避免两个监听进程互相覆盖产物。
     entryFileNames: 'bundle.js',
-    banner: 'window.__ModuleLoader__.load({ id: "codingns4dsh", factory: (require) => {',
+    // DSH Client 以 npm 包名作为模块表 ID；必须与 scoped 包名完全一致。
+    banner: 'window.__ModuleLoader__.load({ id: "@jingyi0605/codingns4dsh", factory: (require) => {',
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

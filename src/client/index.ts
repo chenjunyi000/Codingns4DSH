@@ -20,6 +20,7 @@ import { FeatureRegistry } from '../features/registry.js'
 import { registerCodingNsLocale } from './locale.js'
 import {
   CODINGNS_SETTINGS_NAMESPACE,
+  CODINGNS_SETTINGS_ENTRY_IDS,
   captureRestartFeatureStates,
   enabledFeatureNames,
   type CodingNsSettings,
@@ -241,7 +242,7 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
 
 function findConfigForm(forms: DshClientConfigForms | undefined): DshConfigForm<CodingNsSettings> | undefined {
   if (forms === undefined) return undefined
-  for (const id of ['codingns4dsh', CODINGNS_SETTINGS_NAMESPACE]) {
+  for (const id of CODINGNS_SETTINGS_ENTRY_IDS) {
     try {
       const form = forms.get<CodingNsSettings>(id)
       if (form !== undefined) return form

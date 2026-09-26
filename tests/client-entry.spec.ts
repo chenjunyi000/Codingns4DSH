@@ -13,7 +13,7 @@ const runtimeVersionSource = join(dirname(fileURLToPath(import.meta.url)), '../s
 test('Client 入口以 DSH Loader factory 格式构建', async () => {
   const source = await readFile(clientBundle, 'utf8')
   assert.match(source, /window\.__ModuleLoader__\.load/u)
-  assert.match(source, /id:\s*["']codingns4dsh["']/u)
+  assert.match(source, /id:\s*["']@jingyi0605\/codingns4dsh["']/u)
   assert.match(source, /factory:\s*\(require\)/u)
   assert.doesNotMatch(source, /require\(["']\.\/[^"']+\.(?:cjs|js)["']\)/u, 'DSH Client 不得依赖 Loader 无法解析的相对分块')
 })

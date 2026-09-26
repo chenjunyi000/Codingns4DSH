@@ -4,7 +4,12 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { SUPPORTED_DSH_COMPATIBILITY, SUPPORTED_DSH_VERSION } from '../data/build/dist/shared/index.js'
+import {
+  CODINGNS_SETTINGS_ENTRY_IDS,
+  SUPPORTED_DSH_COMPATIBILITY,
+  SUPPORTED_DSH_VERSION,
+  isCodingNsSettingsEntryId,
+} from '../data/build/dist/shared/index.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
@@ -52,7 +57,7 @@ test('package manifest declares the DSH bundle and client entry', () => {
 
 test('bundle patch and example profile use DSH native shapes', async () => {
   const patch = await readFile(join(root, 'dsh.bundle.patch'), 'utf8')
-  assert.match(patch, /id: codingns4dsh/u)
+  assert.match(patch, /id: '@jingyi0605\/codingns4dsh'/u)
   assert.match(patch, /name: '@jingyi0605\/codingns4dsh'/u)
   assert.match(patch, /id:\s*terminal-controller[\s\S]*?name:\s*'@deepseek-ai\/dsh-api-terminal-controller'[\s\S]*?disabled:\s*true/u)
   assert.match(patch, /id:\s*ui-sidebar-terminal[\s\S]*?name:\s*'@deepseek-ai\/dsh-client-ui-sidebar-terminal'[\s\S]*?disabled:\s*true/u)
@@ -69,4 +74,10 @@ test('bundle patch and example profile use DSH native shapes', async () => {
 
 test('npm 包声明包含工作区会话 Logo 资产', () => {
   assert.equal(manifest.files.includes('assets/provider-icons/**'), true)
+})
+
+test('设置入口兼容 scoped Bundle ID', () => {
+  assert.equal(CODINGNS_SETTINGS_ENTRY_IDS.includes('@jingyi0605/codingns4dsh'), true)
+  assert.equal(isCodingNsSettingsEntryId('@jingyi0605/codingns4dsh'), true)
+  assert.equal(isCodingNsSettingsEntryId('unrelated-plugin'), false)
 })

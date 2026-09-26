@@ -129,6 +129,17 @@ export interface LanAccessDshLoginSettings {
 }
 
 export const CODINGNS_SETTINGS_NAMESPACE = 'codingns'
+/** DSH 配置表单可能使用的插件 entry id；scoped 包名是当前 Bundle 的正式 ID。 */
+export const CODINGNS_SETTINGS_ENTRY_IDS = [
+  CODINGNS_SETTINGS_NAMESPACE,
+  'codingns4dsh',
+  '@jingyi0605/codingns4dsh',
+] as const
+
+export function isCodingNsSettingsEntryId(value: unknown): value is typeof CODINGNS_SETTINGS_ENTRY_IDS[number] {
+  return typeof value === 'string' && (CODINGNS_SETTINGS_ENTRY_IDS as readonly string[]).includes(value)
+}
+
 export const CODINGNS_CONTROL_BASE_URL_FIELD = 'controlBaseUrl'
 export const CODINGNS_CONTROL_BASE_URLS_FIELD = 'controlBaseUrls'
 export const CODINGNS_MODULES_FIELD = 'modules'

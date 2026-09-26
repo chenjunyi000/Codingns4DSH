@@ -3,6 +3,7 @@ import z from '@deepseek-ai/schemastery'
 import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import {
   CODINGNS_SETTINGS_NAMESPACE,
+  isCodingNsSettingsEntryId,
   DEFAULT_CODINGNS_SETTINGS,
   type CodingNsConfig,
   type CodingNsSettings,
@@ -190,5 +191,5 @@ function resolveConfigSettingsNamespace(settings: Pick<SettingsProvider, 'descri
 }
 
 function isCodingNsSettingsNamespace(namespace: unknown): namespace is string {
-  return namespace === CODINGNS_SETTINGS_NAMESPACE || namespace === 'codingns4dsh'
+  return isCodingNsSettingsEntryId(namespace)
 }
