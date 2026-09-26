@@ -6,9 +6,8 @@
 
 | 文件 | 原始文件名 | 内容 | 尺寸 | README 位置 |
 | --- | --- | --- | --- | --- |
-| `agent-picker.jpg` | 选择适配器.png | 输入框 Agent 选择器展开，同时可见带 Agent Logo 的会话列表与归档会话入口 | 1200×672 | `功能详解 → 外部 Agent 集成` |
+| `agent-picker.jpg` | 会话增强01.png | 工作区会话列表中的 Agent Logo、归档会话与工作区入口 | 1200×1161 | `功能详解 → 外部 Agent 集成` |
 | `model-picker.jpg` | 模型选择.png（归一化） | Codex 模型列表（GPT-6 / GPT-5.6 / GPT-5.5 等）与当前模型、思考强度 | 1200×696 | `功能详解 → 外部 Agent 集成` |
-| `session-enhancement.jpg` | 会话增强01.png | 工作区会话列表中的 Agent Logo、归档会话与工作区入口 | 1200×1161 | `功能详解 → 会话增强与订阅用量` |
 | `subscription-usage.jpg` | 订阅详情01.png | 上游用量弹层：今日请求与 Token、费用、缓存命中率、按模型统计 | 1200×929 | `功能详解 → 会话增强与订阅用量` |
 | `subscription-plan.jpg` | 订阅详情02.png | 订阅额度、当前使用比例与重置时间 | 1200×858 | `功能详解 → 会话增强与订阅用量` |
 | `workspace-debug.jpg` | 调试服务01.png | 工作区调试面板：Backend、Frontend 配置、端口状态与进程操作 | 1200×1302 | `功能详解 → 工作区调试` |

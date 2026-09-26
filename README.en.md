@@ -94,7 +94,7 @@ After you pick an Agent and a model, Codingns4DSH starts (or resumes) that CLI a
 <div align="center">
   <table>
     <tr>
-      <td><img width="100%" src="assets/screenshots/agent-picker.jpg" alt="The composer Agent picker and the session sidebar with per-Agent logos"></td>
+      <td><img width="100%" src="assets/screenshots/agent-picker.jpg" alt="Workspace session enhancement with Agent logos and archived sessions"></td>
       <td><img width="100%" src="assets/screenshots/model-picker.jpg" alt="The Codex model list"></td>
     </tr>
   </table>
@@ -107,12 +107,7 @@ The model list is read from each CLI and can be switched at any time; the compos
 Session rows show the Agent logo and archive entry, and the composer dock shows subscription or upstream usage for Agents whose limits can be read (cache hit rate, per-model stats and cost included).
 
 <div align="center">
-  <table>
-    <tr>
-      <td><img width="100%" src="assets/screenshots/session-enhancement.jpg" alt="Workspace session enhancement with Agent logos and archived sessions"></td>
-      <td><img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex subscription allowance and reset time"></td>
-    </tr>
-  </table>
+  <img width="70%" src="assets/screenshots/subscription-plan.jpg" alt="Codex subscription allowance and reset time">
 </div>
 
 <div align="center">

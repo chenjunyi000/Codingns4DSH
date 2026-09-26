@@ -95,7 +95,7 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 <div align="center">
   <table>
     <tr>
-      <td><img width="100%" src="assets/screenshots/agent-picker.jpg" alt="输入框中的 Agent 选择器与带 Logo 的会话列表"></td>
+      <td><img width="100%" src="assets/screenshots/agent-picker.jpg" alt="工作区会话增强：Agent Logo、归档会话与工作区列表"></td>
       <td><img width="100%" src="assets/screenshots/model-picker.jpg" alt="Codex 的模型列表"></td>
     </tr>
   </table>
@@ -108,12 +108,7 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 会话行显示 Agent Logo 与归档入口，输入框下方显示可读取额度的 Agent 的订阅或上游用量（含缓存命中率、按模型统计与费用）。
 
 <div align="center">
-  <table>
-    <tr>
-      <td><img width="100%" src="assets/screenshots/session-enhancement.jpg" alt="工作区会话增强：Agent Logo、归档会话与工作区列表"></td>
-      <td><img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex 订阅额度与重置时间"></td>
-    </tr>
-  </table>
+  <img width="70%" src="assets/screenshots/subscription-plan.jpg" alt="Codex 订阅额度与重置时间">
 </div>
 
 <div align="center">
