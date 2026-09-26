@@ -6,18 +6,22 @@
 
 | 文件 | 原始文件名 | 内容 | 尺寸 | README 位置 |
 | --- | --- | --- | --- | --- |
-| `agent-picker.jpg` | 新建会话.png | 输入框 Agent 选择器展开，同时可见带 Agent Logo 的会话列表与归档会话入口 | 1650×958 | `界面预览` 首图 |
-| `model-picker.jpg` | 模型选择.png | Codex 模型列表（GPT-6 / GPT-5.6 / GPT-5.5 等）与当前模型、思考强度 | 924×536 | `功能详解 → 外部 Agent 集成` |
-| `subscription-usage.jpg` | 订阅信息.png | 上游用量弹层：今日请求与 Token、费用、缓存命中率、按模型统计 | 1028×627 | `功能详解 → 会话增强与订阅用量` |
-| `workspace-debug.jpg` | 调试界面.png | 工作区调试面板：Backend 未运行、Frontend 运行中（端口 4174、PID），启动／检查端口／结束进程／停止 | 1305×966 | `功能详解 → 工作区调试` |
-| `settings-overview.jpg` | 设置菜单01.png | 设置 → Codingns4DSH：局域网访问 DSH、登录保护、中转访问服务、外部Agent集成 | 995×646 | `功能详解 → 模块与设置` |
-| `settings-modules.jpg` | 设置菜单02.png | 七个模块开关全貌与底部版本信息 `Codingns4DSH v0.1.1` | 993×839 | `功能详解 → 模块与设置` |
-| `login-protection.jpg` | 本地保护.png | 本地账号登录页（LOCAL ACCESS）：用户名、密码、登录 DSH Web | 1593×948 | `功能详解 → 登录保护` |
-| `relay-service.jpg` | 中转服务.png | 中转访问服务卡片：服务地址、账号、H5 登录页面地址、设备在线状态 | 626×660 | `功能详解 → 远程访问` |
-| `relay-h5-login.jpg` | 中转服务登录.png | H5 登录页选择 DSH Host 并连接（`https://dsh.codingns.com`） | 1559×943 | `功能详解 → 远程访问` |
-| `relay-status.jpg` | 中转服务状态.png | 账户状态弹层：访问路径（中转 · 21 ms）、CPU、内存与注销登录 | 794×419 | `功能详解 → 远程访问` |
+| `agent-picker.jpg` | 选择适配器.png | 输入框 Agent 选择器展开，同时可见带 Agent Logo 的会话列表与归档会话入口 | 1200×672 | `界面预览` 首图 |
+| `model-picker.jpg` | 模型选择.png（归一化） | Codex 模型列表（GPT-6 / GPT-5.6 / GPT-5.5 等）与当前模型、思考强度 | 1200×696 | `功能详解 → 外部 Agent 集成` |
+| `session-enhancement.jpg` | 会话增强01.png | 工作区会话列表中的 Agent Logo、归档会话与工作区入口 | 1200×1161 | `功能详解 → 会话增强与订阅用量` |
+| `subscription-usage.jpg` | 订阅详情01.png | 上游用量弹层：今日请求与 Token、费用、缓存命中率、按模型统计 | 1200×929 | `功能详解 → 会话增强与订阅用量` |
+| `subscription-plan.jpg` | 订阅详情02.png | 订阅额度、当前使用比例与重置时间 | 1200×858 | `功能详解 → 会话增强与订阅用量` |
+| `workspace-debug.jpg` | 调试服务01.png | 工作区调试面板：Backend、Frontend 配置、端口状态与进程操作 | 1200×1302 | `功能详解 → 工作区调试` |
+| `workspace-debug-edit.jpg` | 调试服务02.png | 工作区调试面板的启动配置编辑表单 | 1200×892 | `功能详解 → 工作区调试` |
+| `workspace-overview.jpg` | 工作台01.png | CodingNS 工作台与右侧 Git 面板 | 1200×664 | `功能详解 → Git 仓库管理` |
+| `settings-overview.jpg` | 功能模块01.png | Codingns4DSH 功能模块设置卡片上半部分 | 1200×1164 | `功能详解 → 模块与设置` |
+| `settings-modules.jpg` | 功能模块02.png | Codingns4DSH 功能模块设置卡片下半部分与版本信息 | 1200×1211 | `功能详解 → 模块与设置` |
+| `login-protection.jpg` | 本地保护.png（归一化） | 本地账号登录页（LOCAL ACCESS）：用户名、密码、登录 DSH Web | 1200×714 | `功能详解 → 登录保护` |
+| `relay-service.jpg` | 中转服务01.png | 中转访问服务卡片：服务地址、账号、H5 登录页面地址、设备在线状态 | 1200×1369 | `功能详解 → 远程访问` |
+| `relay-h5-login.jpg` | 中转服务02.png | H5 登录页选择 DSH Host 并连接（`https://dsh.codingns.com`） | 1200×1456 | `功能详解 → 远程访问` |
+| `relay-status.jpg` | 用户管理.png | 账户状态弹层：访问路径、CPU、内存与注销登录 | 1200×666 | `功能详解 → 远程访问` |
 
-以上均为 JPEG 截图，单张 23–168 KB，无需再压缩。
+以上均为 JPEG 截图，统一输出宽度为 1200px，README 以 100% 内容区宽度展示；单张均小于 150 KB，无需再压缩。
 
 ## 可选补充
 
@@ -32,7 +36,7 @@
 
 - **命名**：英文 kebab-case，按「功能-对象」命名（如 `relay-h5-login.jpg`），不使用中文文件名。
 - **目录**：只放在本目录，不要放进 `docs/配图/`（该目录已被 `.gitignore` 排除，图片无法入库）。
-- **尺寸**：宽度 600–1700 px；横图保持原窗口比例，竖图仅用于手机端截图。
+- **尺寸**：交付到 README 的截图统一为 1200 px 宽并保持原始纵横比；GitHub 页面使用 `width="100%"` 横向铺满内容区。
 - **格式**：JPEG / PNG / WebP 均可，单张 ≤ 500 KB；过程型能力优先用 GIF 或短视频。
 - **隐私**：使用演示工作区；避免真实项目名、客户名、内网 IP、token、Cookie、邮箱与真实流量数字，必要时用纯色块遮挡；不要暴露 `~/.config/codingns4dsh/` 下的凭据文件。
 - **一致性**：同一批截图使用同一台机器、同一主题与相近窗口宽度。

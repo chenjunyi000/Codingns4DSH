@@ -31,7 +31,7 @@
 ## 界面预览
 
 <div align="center">
-  <img width="90%" src="assets/screenshots/agent-picker.jpg" alt="输入框中的 Agent 选择器与带 Logo 的会话列表">
+  <img width="100%" src="assets/screenshots/agent-picker.jpg" alt="输入框中的 Agent 选择器与带 Logo 的会话列表">
 </div>
 
 输入框的 Agent 选择器：内置 DeepSeek Harness 与全部已安装的外部 Agent；左侧会话列表带 Agent Logo，并提供归档会话入口。
@@ -93,7 +93,7 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 在选择器里挑选 Agent 与模型后，Codingns4DSH 以 DSH 子进程方式启动（或恢复）该 CLI，并把事件流投影成原生会话；模型与思考强度按 Agent 记忆。
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/model-picker.jpg" alt="Codex 的模型列表">
+  <img width="100%" src="assets/screenshots/model-picker.jpg" alt="Codex 的模型列表">
 </div>
 
 模型列表直接读取自各 CLI，可随时切换；按钮上还会显示当前模型与思考强度。
@@ -103,7 +103,15 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 会话行显示 Agent Logo 与归档入口，输入框下方显示可读取额度的 Agent 的订阅或上游用量（含缓存命中率、按模型统计与费用）。
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/subscription-usage.jpg" alt="Codex 上游用量与费用统计">
+  <img width="100%" src="assets/screenshots/session-enhancement.jpg" alt="工作区会话增强：Agent Logo、归档会话与工作区列表">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/subscription-usage.jpg" alt="Codex 上游用量与费用统计">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex 订阅额度与重置时间">
 </div>
 
 用量来自 Agent 自身的额度接口或已配置的上游用量来源；数据只在 Host 上读取，不写入浏览器存储。
@@ -113,7 +121,11 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 每个工作区一份启动配置（`<工作区>/.codingns/debug.json`）：命令、工作目录、环境变量、Shell 与可选端口，可一键启动、检查端口、结束进程或停止。可选反向代理会把端口通过 DSH 暴露出来，目前仅支持 HTTP。
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/workspace-debug.jpg" alt="工作区调试面板：启动配置、端口状态与代理">
+  <img width="100%" src="assets/screenshots/workspace-debug.jpg" alt="工作区调试面板：启动配置、端口状态与代理">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/workspace-debug-edit.jpg" alt="工作区调试面板：编辑启动配置">
 </div>
 
 面板实时显示端口监听状态与 PID，并按实例生成不可猜测的代理地址。
@@ -122,20 +134,28 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 
 Git 面板通过 DSH 原生右侧 Sidebar 的标签页入口打开，按 Workspace 保存状态并跨会话复用。未初始化的目录可直接初始化仓库；已初始化的仓库支持查看暂存文件和未提交文件、暂存/取消暂存、丢弃更改、填写提交说明、切换分支和浏览提交历史。模块关闭后会移除右侧标签及对应 Host Git RPC，不影响其他模块。
 
+<div align="center">
+  <img width="100%" src="assets/screenshots/workspace-overview.jpg" alt="工作台与右侧 Git 面板">
+</div>
+
 ### 模块与设置
 
 设置页按模块渲染卡片，开关、说明和「是否需要重启」都来自模块自身的描述；终端外观、局域网映射、登录保护、中转账号等都在对应卡片内配置。
 
-| <img src="assets/screenshots/settings-overview.jpg" alt="设置 → Codingns4DSH 模块卡片"> | <img src="assets/screenshots/settings-modules.jpg" alt="全部模块开关"> |
-| --- | --- |
-| 每个模块一张卡片，右侧是启停开关 | 八个模块与底部版本信息 |
+<div align="center">
+  <img width="100%" src="assets/screenshots/settings-overview.jpg" alt="设置 → Codingns4DSH 模块卡片">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/settings-modules.jpg" alt="全部模块开关">
+</div>
 
 ### 登录保护
 
 默认关闭，在卡片中开启后用统一的本地账号保护局域网**和**中继访问（默认会话超时 30 分钟）。认证发生在 Host 的转发边界，未登录请求不会到达 DSH Web；`127.0.0.1` 与 `::1` 永远放行，避免把自己锁在外面。
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/login-protection.jpg" alt="本地账号登录页">
+  <img width="100%" src="assets/screenshots/login-protection.jpg" alt="本地账号登录页">
 </div>
 
 密码以 `scrypt` 哈希保存在 `0600` 文件中，浏览器只持有 `HttpOnly`、`SameSite=Strict` 会话 Cookie。
@@ -153,14 +173,18 @@ Git 面板通过 DSH 原生右侧 Sidebar 的标签页入口打开，按 Workspa
 
 **中转**：配置 Control API（默认 `https://channel.codingns.com:1443`，可在此注册账号），登录、刷新设备、绑定当前 Host（显示标签、公钥、指纹），之后在任意设备通过 **`https://dsh.codingns.com`** 打开已绑定的 Host——不需要公网 IP、端口映射或 VPN。
 
-| <img src="assets/screenshots/relay-service.jpg" alt="中转访问服务卡片"> | <img src="assets/screenshots/relay-h5-login.jpg" alt="H5 登录页选择 DSH Host"> |
-| --- | --- |
-| 中转卡片：服务地址、账号、设备列表与 H5 登录地址 | 在任意设备的 H5 页面选择已绑定的 Host 并连接 |
+<div align="center">
+  <img width="100%" src="assets/screenshots/relay-service.jpg" alt="中转访问服务卡片">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/relay-h5-login.jpg" alt="H5 登录页选择 DSH Host">
+</div>
 
 DSH 设置按钮旁的账户入口会显示登录状态、访问路径与延迟、Host CPU/内存，并可一键注销登录。
 
 <div align="center">
-  <img width="45%" src="assets/screenshots/relay-status.jpg" alt="账户状态弹层：访问路径、延迟、CPU 与内存">
+  <img width="100%" src="assets/screenshots/relay-status.jpg" alt="账户状态弹层：访问路径、延迟、CPU 与内存">
 </div>
 
 其中「访问」会标明当前是通过本机、局域网还是中转进入 DSH Web。

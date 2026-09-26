@@ -31,7 +31,7 @@
 ## Interface Preview
 
 <div align="center">
-  <img width="90%" src="assets/screenshots/agent-picker.jpg" alt="The composer Agent picker and the session sidebar with per-Agent logos">
+  <img width="100%" src="assets/screenshots/agent-picker.jpg" alt="The composer Agent picker and the session sidebar with per-Agent logos">
 </div>
 
 The composer Agent picker — the built-in DeepSeek Harness plus every installed external Agent; the sidebar keeps per-Agent logos and an archived-session entry.
@@ -92,7 +92,7 @@ Unlisted capabilities are unsupported by that CLI or version. Install and log in
 After you pick an Agent and a model, Codingns4DSH starts (or resumes) that CLI as a DSH child process and projects its event stream into a native session; the model and thinking effort are remembered per Agent.
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/model-picker.jpg" alt="The Codex model list">
+  <img width="100%" src="assets/screenshots/model-picker.jpg" alt="The Codex model list">
 </div>
 
 The model list is read from each CLI and can be switched at any time; the composer button also shows the current model and thinking effort.
@@ -102,7 +102,15 @@ The model list is read from each CLI and can be switched at any time; the compos
 Session rows show the Agent logo and archive entry, and the composer dock shows subscription or upstream usage for Agents whose limits can be read (cache hit rate, per-model stats and cost included).
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/subscription-usage.jpg" alt="Codex upstream usage and cost statistics">
+  <img width="100%" src="assets/screenshots/session-enhancement.jpg" alt="Workspace session enhancement with Agent logos and archived sessions">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/subscription-usage.jpg" alt="Codex upstream usage and cost statistics">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex subscription allowance and reset time">
 </div>
 
 Usage comes from the Agent's own quota API or a configured upstream source; it is read on the Host and never stored in the browser.
@@ -112,7 +120,11 @@ Usage comes from the Agent's own quota API or a configured upstream source; it i
 Each workspace keeps its own launch profiles (`<workspace>/.codingns/debug.json`): command, working directory, environment, shell and an optional port — start, check the port, kill the process or stop it. An optional reverse proxy exposes the port through DSH (HTTP only for now).
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/workspace-debug.jpg" alt="Workspace debug panel: launch profiles, port state and proxy">
+  <img width="100%" src="assets/screenshots/workspace-debug.jpg" alt="Workspace debug panel: launch profiles, port state and proxy">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/workspace-debug-edit.jpg" alt="Workspace debug panel: edit a launch profile">
 </div>
 
 The panel shows live port state and PID, and issues an unguessable proxy URL per running instance.
@@ -121,16 +133,20 @@ The panel shows live port state and PID, and issues an unguessable proxy URL per
 
 The settings page renders one card per module — switch, description and restart notice all come from the module itself; terminal appearance, LAN mapping, login protection and relay account are configured inside their own cards.
 
-| <img src="assets/screenshots/settings-overview.jpg" alt="Settings → Codingns4DSH module cards"> | <img src="assets/screenshots/settings-modules.jpg" alt="All module switches"> |
-| --- | --- |
-| One card per module with its own switch | All seven modules plus the version footer |
+<div align="center">
+  <img width="100%" src="assets/screenshots/settings-overview.jpg" alt="Settings → Codingns4DSH module cards">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/settings-modules.jpg" alt="All module switches">
+</div>
 
 ### Login Protection
 
 Off by default; once enabled on its card, one local account guards LAN **and** relay access (default session timeout 30 minutes). Authentication happens at the Host's forwarding boundary, so unauthenticated traffic never reaches DSH Web; `127.0.0.1` and `::1` are always allowed to prevent lockout.
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/login-protection.jpg" alt="Local account login page">
+  <img width="100%" src="assets/screenshots/login-protection.jpg" alt="Local account login page">
 </div>
 
 The password is `scrypt`-hashed in a `0600` file, and the browser only holds an `HttpOnly`, `SameSite=Strict` session cookie.
@@ -148,14 +164,18 @@ The password is `scrypt`-hashed in a `0600` file, and the browser only holds an 
 
 **Relay**: set the Control API (default `https://channel.codingns.com:1443`, where you can register), log in, refresh devices, bind the current Host (label, public key, fingerprint), then open the bound Host from any device through **`https://dsh.codingns.com`** — no public IP, port forwarding or VPN.
 
-| <img src="assets/screenshots/relay-service.jpg" alt="Relay access card"> | <img src="assets/screenshots/relay-h5-login.jpg" alt="H5 login page: choose a DSH Host"> |
-| --- | --- |
-| Relay card: address, account, device list and the H5 login address | Pick the bound Host from any device and connect |
+<div align="center">
+  <img width="100%" src="assets/screenshots/relay-service.jpg" alt="Relay access card">
+</div>
+
+<div align="center">
+  <img width="100%" src="assets/screenshots/relay-h5-login.jpg" alt="H5 login page: choose a DSH Host">
+</div>
 
 The account entry next to DSH's Settings button shows login state, access path and latency, host CPU/memory, and offers one-click logout.
 
 <div align="center">
-  <img width="45%" src="assets/screenshots/relay-status.jpg" alt="Account status popover: access path, latency, CPU and memory">
+  <img width="100%" src="assets/screenshots/relay-status.jpg" alt="Account status popover: access path, latency, CPU and memory">
 </div>
 
 The “access” line tells you whether you entered DSH Web locally, over the LAN or through the relay.
