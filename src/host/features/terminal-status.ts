@@ -1,5 +1,5 @@
 import type { FeatureModule } from '../../shared/contracts/feature.js'
-import type { CodingNsTerminalStatus } from '../../shared/contracts/terminal.js'
+import type { CodingNsTerminalRuntimeType, CodingNsTerminalStatus } from '../../shared/contracts/terminal.js'
 import {
   detectTerminalShells,
   resolveTerminalShell,
@@ -12,6 +12,8 @@ export interface TerminalStatusFeatureOptions {
   readonly platform?: string
   readonly controllerMode?: CodingNsTerminalStatus['controllerMode']
   readonly effectiveEnabled?: boolean
+  readonly runtimeTypes?: readonly CodingNsTerminalRuntimeType[]
+  readonly runtimeWarning?: string
   readonly detectShells?: () => readonly DetectedTerminalShell[]
 }
 
@@ -55,6 +57,8 @@ export function createTerminalStatusFeature(options: TerminalStatusFeatureOption
           platform: normalizePlatform(platform),
           controllerMode,
           effectiveEnabled,
+          ...(options.runtimeTypes === undefined ? {} : { runtimeTypes: options.runtimeTypes }),
+          ...(options.runtimeWarning === undefined ? {} : { runtimeWarning: options.runtimeWarning }),
           profiles: available.map((shell) => ({
             profileId: shell.profileId,
             name: shell.displayName,

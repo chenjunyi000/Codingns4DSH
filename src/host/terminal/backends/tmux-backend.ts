@@ -208,10 +208,12 @@ function runCommand(command: string, args: readonly string[]): TmuxCommandResult
   return spawnSync(command, args, { encoding: 'utf8', windowsHide: true, shell: false })
 }
 
-function detectTmuxPath(platform: string): string | null {
-  const candidates = platform === 'darwin'
+export function detectTmuxPath(platform: string, pathValue = process.env.PATH): string | null {
+  const fixedCandidates = platform === 'darwin'
     ? ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux']
     : ['/usr/bin/tmux', '/usr/local/bin/tmux', '/bin/tmux']
+  const pathCandidates = (pathValue ?? '').split(':').filter(Boolean).map((directory) => `${directory}/tmux`)
+  const candidates = [...new Set([...fixedCandidates, ...pathCandidates])]
   return candidates.find(isExecutable) ?? null
 }
 

@@ -34,6 +34,10 @@ export class TerminalRuntimeManager {
     }
   }
 
+  supports(runtimeType: TerminalRuntimeType): boolean {
+    return this.adapters.has(runtimeType)
+  }
+
   create(record: PersistentTerminalRecord): Promise<TerminalRuntimeIdentity> {
     return this.adapter(record.runtimeType).create({ session: runtimeSession(record), cols: record.cols, rows: record.rows })
   }

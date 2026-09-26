@@ -121,6 +121,8 @@ export function apply(ctx?: Context): void {
       terminalStatus: {
         controllerMode: terminal.mode,
         effectiveEnabled: terminal.mode === 'enhanced',
+        runtimeTypes: terminal.runtimeTypes,
+        ...(terminal.runtimeWarning === undefined ? {} : { runtimeWarning: terminal.runtimeWarning }),
       },
     }))
     registry.validate()

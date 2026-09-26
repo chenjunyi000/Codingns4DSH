@@ -2,8 +2,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { TerminalEnhancementSettings } from '../../shared/contracts/config.js'
 import { ConptyTerminalBackend } from './backends/conpty-backend.js'
 import { LocalPtyTerminalBackend } from './backends/local-pty-backend.js'
-import { TmuxTerminalBackend } from './backends/tmux-backend.js'
+import { detectTmuxPath, TmuxTerminalBackend } from './backends/tmux-backend.js'
+import type { CodingNsTerminalRuntimeType } from '../../shared/contracts/terminal.js'
 import { CodingNsTerminalController, type DshTerminalAgent } from './terminal-controller.js'
+import type { TerminalShellProfileId } from './shell-detection.js'
 import type { TerminalRuntimeAdapter } from './runtime-adapter.js'
 import { TerminalRuntimeManager } from './runtime-manager.js'
 import { CodingNsTerminalService } from './terminal-service.js'
@@ -43,6 +45,8 @@ export type TerminalControllerFactoryOptions = TerminalControllerFactoryCommonOp
 
 export interface TerminalControllerFactoryResult {
   readonly mode: 'baseline' | 'enhanced'
+  readonly runtimeTypes: readonly CodingNsTerminalRuntimeType[]
+  readonly runtimeWarning?: string
   readonly controller: CodingNsTerminalController
   readonly service: CodingNsTerminalService
   readonly processService: TerminalProcessService
@@ -60,12 +64,21 @@ export async function createTerminalController(
 ): Promise<TerminalControllerFactoryResult> {
   const platform = options.platform ?? process.platform
   if (!options.enhancedEnabled) {
-    const backend = options.baselineBackend ?? new LocalPtyTerminalBackend({ platform })
+    const localBackend = options.baselineBackend ?? new LocalPtyTerminalBackend({ platform })
+    const tmuxPath = platform === 'darwin' || platform === 'linux' ? detectTmuxPath(platform) : null
+    const tmuxBackend = tmuxPath === null || localBackend.runtimeTypes.includes('tmux')
+      ? undefined
+      : new TmuxTerminalBackend({ platform, tmuxPath })
+    const backends = tmuxBackend === undefined ? [localBackend] : [localBackend, tmuxBackend]
     return assembleController(ctx, {
       mode: 'baseline',
       hostId: 'local-baseline',
       store: new CodingNsTerminalStore(new InMemoryTerminalStorePersistence()),
-      backend,
+      backends,
+      runtimeTypes: backends.flatMap((backend) => backend.runtimeTypes),
+      ...(tmuxBackend === undefined && !localBackend.runtimeTypes.includes('tmux') && (platform === 'darwin' || platform === 'linux')
+        ? { runtimeWarning: '未检测到可执行的 tmux，调试终端将回退到 local-pty。' }
+        : {}),
       processStore: new TerminalProcessStore(new InMemoryTerminalProcessStorePersistence()),
       settings: options.settings,
       platform,
@@ -76,15 +89,21 @@ export async function createTerminalController(
     })
   }
 
-  const backend = platform === 'win32'
+  const localBackend = new LocalPtyTerminalBackend({ platform })
+  const tmuxPath = platform === 'darwin' || platform === 'linux' ? detectTmuxPath(platform) : null
+  const enhancedBackend = platform === 'win32'
     ? new ConptyTerminalBackend({ platform })
-    : new TmuxTerminalBackend({ platform })
+    : tmuxPath === null ? localBackend : new TmuxTerminalBackend({ platform, tmuxPath })
+  const runtimeTypes = [...enhancedBackend.runtimeTypes]
   return assembleController(ctx, {
     mode: 'enhanced',
     hostId: options.hostId,
     store: new CodingNsTerminalStore(new JsonFileTerminalStorePersistence(options.storeFilename)),
     processStore: new TerminalProcessStore(new JsonFileTerminalProcessStorePersistence(options.processStoreFilename ?? `${options.storeFilename}.processes`)),
-    backend,
+    backends: [enhancedBackend],
+    runtimeTypes,
+    ...(enhancedBackend === localBackend ? { runtimeWarning: '未检测到可执行的 tmux，终端已回退到 local-pty。' } : {}),
+    ...(enhancedBackend === localBackend ? { runtimeType: () => 'local-pty' as const } : {}),
     settings: options.settings,
     platform,
     ...(options.generation === undefined ? {} : { generation: options.generation }),
@@ -98,8 +117,10 @@ interface AssembleControllerOptions extends TerminalControllerFactoryCommonOptio
   readonly mode: 'baseline' | 'enhanced'
   readonly hostId: string
   readonly store: CodingNsTerminalStore
-  readonly backend: TerminalRuntimeAdapter
-  readonly runtimeType?: () => 'local-pty'
+  readonly backends: readonly TerminalRuntimeAdapter[]
+  readonly runtimeTypes: readonly CodingNsTerminalRuntimeType[]
+  readonly runtimeWarning?: string
+  readonly runtimeType?: (profileId: Exclude<TerminalShellProfileId, 'system'>, platform: string) => CodingNsTerminalRuntimeType
   readonly processStore: TerminalProcessStore
   readonly resolveWorkspaceRoot?: (workspaceId: string) => string | null
 }
@@ -108,7 +129,7 @@ async function assembleController(
   ctx: Context,
   options: AssembleControllerOptions,
 ): Promise<TerminalControllerFactoryResult> {
-  const service = new CodingNsTerminalService(options.store, new TerminalRuntimeManager([options.backend]))
+  const service = new CodingNsTerminalService(options.store, new TerminalRuntimeManager(options.backends))
   await service.initialize()
   if (options.mode === 'enhanced') await service.recover()
   const controller = new CodingNsTerminalController(ctx, {
@@ -136,6 +157,8 @@ async function assembleController(
   )
   return {
     mode: options.mode,
+    runtimeTypes: options.runtimeTypes,
+    ...(options.runtimeWarning === undefined ? {} : { runtimeWarning: options.runtimeWarning }),
     controller,
     service,
     processService,

@@ -45,7 +45,9 @@ export class TerminalProcessService {
       args: [...(input.args ?? [])],
       env: { ...(input.env ?? {}) },
       shell: { ...input.shell, args: [...input.shell.args] },
-      runtimeType: input.runtimeType,
+      // 配置可能来自 tmux 不可用时的旧版本；Host 以当前实际注册的 backend 为准，
+      // 保证已有调试配置不会因为运行模式切换而彻底无法启动。
+      runtimeType: this.options.terminalService.resolveRuntimeType(input.runtimeType),
       runtimeMode: 'pty',
       revision: (current?.revision ?? 0) + 1,
       createdAt: current?.createdAt ?? timestamp,

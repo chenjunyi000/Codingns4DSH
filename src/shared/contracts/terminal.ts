@@ -124,6 +124,9 @@ export interface CodingNsTerminalStatus {
   readonly platform: 'darwin' | 'linux' | 'win32' | 'unsupported'
   readonly controllerMode: 'baseline' | 'enhanced'
   readonly effectiveEnabled: boolean
+  /** 当前 Host 实际注册的 backend；调试启动必须以此为准。 */
+  readonly runtimeTypes?: readonly CodingNsTerminalRuntimeType[]
+  readonly runtimeWarning?: string
   readonly profiles: readonly {
     readonly profileId: CodingNsTerminalShell['profileId']
     readonly name: string

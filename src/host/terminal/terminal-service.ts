@@ -73,6 +73,16 @@ export class CodingNsTerminalService {
     this.initialized = true
   }
 
+  supportsRuntimeType(runtimeType: CodingNsTerminalRuntimeType): boolean {
+    return this.runtimes.supports(runtimeType)
+  }
+
+  resolveRuntimeType(runtimeType: CodingNsTerminalRuntimeType): CodingNsTerminalRuntimeType {
+    if (this.runtimes.supports(runtimeType)) return runtimeType
+    if (this.runtimes.supports('local-pty')) return 'local-pty'
+    return runtimeType
+  }
+
   list(scope: TerminalOwnerScope): readonly CodingNsWebTerminalInfo[] {
     this.requireInitialized()
     return this.store.list(scope)
