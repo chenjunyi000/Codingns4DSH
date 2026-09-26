@@ -238,6 +238,10 @@ export class CodingNsCliSessionStore {
         if (this.persistence !== undefined) await this.persistence.write(snapshot)
         if (this.settings !== undefined) await this.settings.update({ cliSessions: snapshot })
       })
+      .catch((error: unknown) => {
+        // 会话索引是辅助缓存；设置服务短暂不可用不能杀死 Host 或模型探测任务。
+        console.warn('codingns4dsh: 外部会话索引持久化失败', error)
+      })
   }
 }
 

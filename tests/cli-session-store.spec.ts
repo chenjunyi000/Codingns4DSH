@@ -64,6 +64,18 @@ test('Host 会话索引串行持久化并支持归档筛选', async () => {
   assert.equal(store.get('dsh-1')?.providerState, undefined)
 })
 
+test('设置服务写入失败时不会让 Host 会话索引队列崩溃', async () => {
+  const store = new CodingNsCliSessionStore({
+    settings: {
+      get() { return { cliSessions: [] } },
+      async update() { throw new Error('settings unavailable') },
+    } as never,
+  })
+
+  store.upsert('dsh-settings-failure', { adapterId: 'codex' })
+  await assert.doesNotReject(store.flush())
+})
+
 test('旧原生外部会话只在日志明确给出适配器时自动迁移，且归档映射仍可展示', async () => {
   const store = new CodingNsCliSessionStore()
   const migrated = store.migrateLegacySessions([
