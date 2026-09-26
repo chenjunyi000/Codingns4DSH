@@ -39,6 +39,9 @@ interface HostTerminalStatus {
   readonly platform: 'darwin' | 'linux' | 'win32' | 'unsupported'
   readonly profiles: readonly { readonly profileId: 'zsh' | 'bash' | 'powershell' | 'cmd' | 'git-bash'; readonly name: string; readonly path: string }[]
   readonly resolvedProfileId: 'zsh' | 'bash' | 'powershell' | 'cmd' | 'git-bash' | null
+  readonly effectiveEnabled: boolean
+  readonly runtimeTypes?: readonly ('local-pty' | 'tmux' | 'conpty-powershell' | 'conpty-cmd' | 'conpty-git-bash')[]
+  readonly runtimeWarning?: string
 }
 interface DebugProfileDraft {
   readonly id: string | null
@@ -179,6 +182,7 @@ function DebugBody({ sessionId, rpc, remote, terminalRemote, sidebarRight }: Deb
       ),
     ),
     message && createElement('div', { role: 'status', 'aria-live': 'polite', style: statusStyle(statusTone(message)) }, createElement('span', { style: statusIconStyle }, statusTone(message) === 'success' ? '✓' : statusTone(message) === 'error' ? '!' : 'i'), message),
+    terminalStatus?.runtimeWarning === undefined ? null : createElement('div', { role: 'alert', style: warningStatusStyle }, createElement('span', { style: statusIconStyle }, '!'), terminalStatus.runtimeWarning),
     draft === null ? null : createProfileForm(draft),
     profiles.length === 0 && draft === null ? createElement('div', { style: emptyStyle },
       createElement('div', { style: emptyIconStyle }, createElement(DebugIcon, { size: 22 })),
@@ -271,7 +275,8 @@ function DebugBody({ sessionId, rpc, remote, terminalRemote, sidebarRight }: Deb
           createElement('div', { style: formGridStyle },
             selectField('终端 Shell', 'shellProfileId', shellOptions(terminalStatus)),
           ),
-          createElement('p', { style: runtimeHintStyle }, `运行方式由 Host 平台自动选择：${terminalRuntimeLabel(terminalStatus?.platform)}。`),
+          createElement('p', { style: runtimeHintStyle }, `运行方式由 Host 平台自动选择（实际能力：${terminalRuntimeLabel(terminalStatus)}）。`),
+          terminalStatus?.runtimeWarning === undefined ? null : createElement('p', { style: warningHintStyle }, terminalStatus.runtimeWarning),
         ),
         createElement('section', { style: formSectionStyle },
           createElement('div', { style: formSectionHeaderStyle }, createElement('strong', { style: formSectionTitleStyle }, '服务检查'), createElement('span', { style: formSectionHintStyle }, '端口每 5 秒自动检查，也可手动刷新。')),
@@ -305,7 +310,7 @@ function DebugBody({ sessionId, rpc, remote, terminalRemote, sidebarRight }: Deb
         args: commandParts.slice(1),
         env: {},
         shell,
-        runtimeType: runtimeTypeFor(terminalStatus?.platform, shell.profileId),
+        runtimeType: runtimeTypeFor(terminalStatus, shell.profileId),
         port,
         proxy: { enabled: value.proxyEnabled },
       }
@@ -462,6 +467,8 @@ const selectFieldStyle: CSSProperties = { ...fieldStyle }
 const fieldLabelStyle: CSSProperties = { color: dshThemeColor.labelSecondary, fontSize: 12, fontWeight: 500 }
 const inputStyle: CSSProperties = { ...dshFieldStyle, width: '100%', boxSizing: 'border-box', minHeight: 32, padding: '6px 8px', borderRadius: 6, fontSize: 12 }
 const runtimeHintStyle: CSSProperties = { margin: '-5px 0 0', color: dshThemeColor.labelTertiary, fontSize: 11 }
+const warningHintStyle: CSSProperties = { margin: '-5px 0 0', color: dshThemeColor.error, fontSize: 11 }
+const warningStatusStyle: CSSProperties = { ...statusStyle('error'), marginBottom: 0 }
 const formGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }
 const proxyFieldStyle: CSSProperties = { ...fieldStyle }
 const proxyToggleStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 32, boxSizing: 'border-box', padding: '0 2px', border: 0, borderRadius: 0, color: dshThemeColor.labelSecondary, background: 'transparent', fontSize: 12, lineHeight: '18px' }
@@ -521,18 +528,24 @@ function defaultShellForPlatform(platform: HostTerminalStatus['platform'] | unde
   return platform === 'win32' ? 'powershell' : 'zsh'
 }
 
-function runtimeTypeFor(platform: HostTerminalStatus['platform'] | undefined, shellProfileId: DebugProfile['shell']['profileId']): DebugProfile['runtimeType'] {
-  if (platform !== 'win32' && platform !== 'darwin' && platform !== 'linux') throw new Error('Host 平台不支持自动选择终端运行方式')
-  if (platform !== 'win32') return 'tmux'
-  if (shellProfileId === 'cmd') return 'conpty-cmd'
-  if (shellProfileId === 'git-bash') return 'conpty-git-bash'
-  return 'conpty-powershell'
+function runtimeTypeFor(status: HostTerminalStatus | null, shellProfileId: DebugProfile['shell']['profileId']): DebugProfile['runtimeType'] {
+  if (status === null || status === undefined) throw new Error('尚未获取 Host 终端能力')
+  const runtimeTypes = status.runtimeTypes ?? (status.effectiveEnabled ? ['tmux'] : ['local-pty'])
+  if (runtimeTypes.includes('tmux')) return 'tmux'
+  if (status.platform !== 'win32') return 'local-pty'
+  if (shellProfileId === 'cmd' && runtimeTypes.includes('conpty-cmd')) return 'conpty-cmd'
+  if (shellProfileId === 'git-bash' && runtimeTypes.includes('conpty-git-bash')) return 'conpty-git-bash'
+  if (runtimeTypes.includes('conpty-powershell')) return 'conpty-powershell'
+  if (runtimeTypes.includes('local-pty')) return 'local-pty'
+  throw new Error('Host 没有可用的终端 backend')
 }
 
-function terminalRuntimeLabel(platform: HostTerminalStatus['platform'] | undefined): string {
-  if (platform === 'win32') return 'Windows 使用 ConPTY'
-  if (platform === 'darwin' || platform === 'linux') return `${platform === 'darwin' ? 'macOS' : 'Linux'} 使用 tmux`
-  return '等待 Host 平台状态'
+function terminalRuntimeLabel(status: HostTerminalStatus | null): string {
+  const runtimeTypes = status?.runtimeTypes ?? (status?.effectiveEnabled ? ['tmux'] : ['local-pty'])
+  if (runtimeTypes.includes('tmux')) return status?.platform === 'darwin' ? 'macOS 使用 tmux' : 'Linux 使用 tmux'
+  if (runtimeTypes.includes('conpty-powershell') || runtimeTypes.includes('conpty-cmd') || runtimeTypes.includes('conpty-git-bash')) return 'Windows 使用 ConPTY'
+  if (runtimeTypes.includes('local-pty')) return '使用 local-pty（进程内 PTY）'
+  return '等待 Host 终端能力状态'
 }
 
 function splitCommandLine(value: string): readonly string[] {
