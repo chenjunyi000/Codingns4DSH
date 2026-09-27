@@ -8,7 +8,7 @@ const expectedMethods = [
 ]
 
 test('终端 Typert manifest 使用 codingns4dsh 自有 package 和 invocation identity', () => {
-  assert.equal(TYPERT.package, 'codingns4dsh')
+  assert.equal(TYPERT.package, '@jingyi0605/codingns4dsh')
   assert.equal(TYPERT.face, 'host')
   assert.deepEqual(TYPERT.invocations.map((item) => item.method), expectedMethods)
   assert.deepEqual(

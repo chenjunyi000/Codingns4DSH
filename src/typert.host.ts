@@ -130,7 +130,8 @@ const attachmentParameter = (): InvocationParameter => json(
 )
 
 export const TYPERT = {
-  package: 'codingns4dsh',
+  // Typert Loader 要求 manifest.package 与导出该 manifest 的 npm 包名完全一致。
+  package: '@jingyi0605/codingns4dsh',
   face: 'host',
   schemas: [],
   invocations: [
