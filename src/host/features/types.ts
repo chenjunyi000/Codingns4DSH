@@ -39,4 +39,6 @@ export interface CodingNsHostServices {
   readonly registerDebugProxyRoute?: (handler: (request: Request) => Promise<Response>) => () => Promise<void>
   /** 由 Host 权威解析 Workspace ID，Client 不可覆盖。 */
   readonly resolveWorkspaceRoot?: (workspaceId: string) => string | null
+  /** 返回 Host 当前已知的工作区根目录，用于文件管理路径校验。 */
+  readonly listWorkspaceRoots?: () => readonly string[]
 }
