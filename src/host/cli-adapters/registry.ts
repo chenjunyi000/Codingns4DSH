@@ -61,6 +61,11 @@ export class CodingNsCliAdapterRegistry {
   private readonly modelTimers = new Map<CodingNsCliAdapterId, ReturnType<typeof setTimeout>>()
   private readonly modelGenerations = new Map<CodingNsCliAdapterId, number>()
   private readonly requestedModelCatalogs = new Set<CodingNsCliAdapterId>()
+  /** 已切到下一个 DSH step、但仍在继续产出 Provider 流的驱动迭代器。 */
+  private readonly segmentedTurns = new Map<string, {
+    readonly adapterId: CodingNsCliAdapterId
+    readonly iterator: AsyncIterator<CodingNsAgentEvent>
+  }>()
   private cacheGeneration = 0
   private disposed = false
 
@@ -305,13 +310,15 @@ export class CodingNsCliAdapterRegistry {
           throw new CodingNsRpcError('CODINGNS_CLI_SESSION_MISSING', '外部 Agent 原始会话已删除，无法继续恢复')
         }
       }
+      const suspended = this.segmentedTurns.get(input.sessionId)
+      const resumingSegmentedTurn = suspended?.adapterId === input.adapterId
       this.sessions.set(input.sessionId, current)
       this.sessionStore?.upsert(input.sessionId, {
         ...current,
         adapterId: input.adapterId,
         ...(input.cwd ? { cwd: input.cwd } : {}),
         status: 'active',
-        title: input.prompt,
+        ...(resumingSegmentedTurn ? {} : { title: input.prompt }),
       })
       // Agent Loop 通常已经创建了同名 DSH 原生会话；直接调用 Registry 时才按需补建。
       // 原生服务失败不能阻断外部 Agent，消息仍由现有 llm/stream 链路处理。
@@ -324,11 +331,21 @@ export class CodingNsCliAdapterRegistry {
           model: input.modelId ?? input.adapterId,
         })
       } catch { /* 原生历史写入失败不应阻断外部 Agent */ }
-      for await (const event of driver.executeTurn(input)) {
+      if (suspended !== undefined && suspended.adapterId !== input.adapterId) {
+        this.segmentedTurns.delete(input.sessionId)
+        await closeAgentIterator(suspended.iterator)
+      }
+      const iterator = suspended?.adapterId === input.adapterId
+        ? (this.segmentedTurns.delete(input.sessionId), suspended.iterator)
+        : driver.executeTurn(input)[Symbol.asyncIterator]()
+      while (true) {
+        const next = await iterator.next()
+        if (next.done) break
+        const event = next.value
         if (event.type === 'session-binding') {
           const providerIdentityChanged = event.providerSessionId !== current.providerSessionId
           const { rawStoreRef: previousRawStoreRef, ...currentWithoutRawStoreRef } = current
-          const next = {
+          const nextConfig = {
             ...currentWithoutRawStoreRef,
             providerSessionId: event.providerSessionId,
             ...(event.rawStoreRef
@@ -337,18 +354,40 @@ export class CodingNsCliAdapterRegistry {
                 ? { rawStoreRef: previousRawStoreRef }
                 : {}),
           }
-          this.sessions.set(input.sessionId, next)
-          current = next
+          this.sessions.set(input.sessionId, nextConfig)
+          current = nextConfig
           this.sessionStore?.upsert(input.sessionId, {
-            ...next,
+            ...nextConfig,
             status: 'active',
             providerState: 'available',
             providerCheckedAt: new Date().toISOString(),
           })
         }
-        if (event.type === 'finish') this.sessionStore?.upsert(input.sessionId, { ...this.sessions.get(input.sessionId) ?? current, status: event.reason === 'error' ? 'error' : 'idle' })
+        if (event.type === 'finish') {
+          this.segmentedTurns.delete(input.sessionId)
+          this.sessionStore?.upsert(input.sessionId, { ...this.sessions.get(input.sessionId) ?? current, status: event.reason === 'error' ? 'error' : 'idle' })
+        }
+        // Codex 等驱动已经把同一个 Provider turn 切成了多个段。边界本身
+        // 直接交给 Feature，不能再次按工具完成事件切一遍。
+        if (event.type === 'step-boundary') {
+          await closeAgentIterator(iterator)
+          yield event
+          return
+        }
+        if (input.splitToolSteps
+          && driver.supportsSegmentedTurns !== true
+          && event.type === 'tool-event'
+          && (event.status === 'completed' || event.status === 'failed')) {
+          // 先保存迭代器再 yield。即使调用方在工具事件后提前关闭流，
+          // 下一次 DSH step 仍能从同一个 Provider 进程继续读取正文。
+          this.segmentedTurns.set(input.sessionId, { adapterId: input.adapterId, iterator })
+          yield event
+          yield { type: 'step-boundary' }
+          return
+        }
         yield event
       }
+      this.segmentedTurns.delete(input.sessionId)
     } catch (error) {
       this.sessionStore?.upsert(input.sessionId, {
         ...this.sessions.get(input.sessionId) ?? current,
@@ -426,6 +465,14 @@ export class CodingNsCliAdapterRegistry {
     await driver.interrupt(sessionId)
   }
 
+  /** 丢弃等待下一步的 Provider 流，避免取消后的旧正文进入新回合。 */
+  discardSegmentedTurn(sessionId: string): void {
+    const suspended = this.segmentedTurns.get(sessionId)
+    if (suspended === undefined) return
+    this.segmentedTurns.delete(sessionId)
+    void closeAgentIterator(suspended.iterator)
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
@@ -437,6 +484,8 @@ export class CodingNsCliAdapterRegistry {
     this.modelFailures.clear()
     this.modelGenerations.clear()
     this.requestedModelCatalogs.clear()
+    await Promise.all([...this.segmentedTurns.values()].map(({ iterator }) => closeAgentIterator(iterator)))
+    this.segmentedTurns.clear()
     await Promise.all([...this.drivers.values()].map((driver) => driver.dispose?.()))
   }
 
@@ -690,6 +739,10 @@ function providerProbeKey(record: CodingNsCliSessionRecord): string {
 
 function delay(milliseconds: number): Promise<void> {
   return milliseconds <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
+async function closeAgentIterator(iterator: AsyncIterator<CodingNsAgentEvent>): Promise<void> {
+  try { await iterator.return?.() } catch { /* 驱动清理失败不能阻断 Registry 释放 */ }
 }
 
 async function forEachConcurrent<T>(

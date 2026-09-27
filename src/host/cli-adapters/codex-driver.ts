@@ -46,6 +46,7 @@ interface CodexSession {
 /** Codex app-server 的 JSON-RPC 驱动，Host 只暴露统一文本流，不暴露线程和 token。 */
 export class CodexAppServerDriver implements CodingNsCliDriver {
   readonly descriptor = { id: 'codex', name: 'Codex', protocol: 'json-rpc', capabilities: ['models', 'stream', 'resume', 'interrupt', 'tool-events', 'reasoning', 'usage', 'permission', 'questions', 'steer'] as const } as const
+  readonly supportsSegmentedTurns = true
   private readonly binaries: readonly string[]
   private readonly runSpawnSync: typeof spawnSync
   private readonly runSpawn: typeof spawn

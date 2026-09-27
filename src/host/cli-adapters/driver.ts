@@ -44,6 +44,8 @@ export interface CodingNsCliSessionProbeResult {
  */
 export interface CodingNsCliDriver {
   readonly descriptor: Omit<CodingNsCliAdapterDescriptor, 'installed' | 'enabled' | 'version' | 'command'>
+  /** 驱动是否已经自行维护 Provider turn 的 step 边界。 */
+  readonly supportsSegmentedTurns?: boolean
   detect(): Promise<Pick<CodingNsCliAdapterDescriptor, 'installed' | 'version' | 'command'>>
   listModels(): Promise<CodingNsCliModelCatalog>
   probeSession?(input: CodingNsCliSessionProbeInput): Promise<CodingNsCliSessionProbeResult>

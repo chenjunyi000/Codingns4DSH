@@ -532,6 +532,91 @@ test('外部 Agent 可以单独停用并阻止模型目录和会话绑定', asyn
   assert.deepEqual(registry.getSession('disabled-agent'), { adapterId: 'dsh' })
 })
 
+test('Registry 为普通适配器在工具完成处切分 step 并继续消费同一条 Provider 流', async () => {
+  let starts = 0
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'fake', name: 'Fake' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'fake' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn() {
+      starts += 1
+      yield { type: 'text-delta', text: '工具前' } as const
+      yield { type: 'tool-event', toolName: 'shell', callId: 'call-1', status: 'running' } as const
+      yield { type: 'tool-event', toolName: 'shell', callId: 'call-1', output: '完成', outputMode: 'snapshot', status: 'completed' } as const
+      yield { type: 'text-delta', text: '最终正文' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const input = { adapterId: 'fake' as const, sessionId: 'segmented-fake', messages: [], prompt: '执行', splitToolSteps: true }
+  const first = []
+  for await (const event of registry.execute(input)) first.push(event)
+  const second = []
+  for await (const event of registry.execute(input)) second.push(event)
+
+  assert.equal(starts, 1)
+  assert.deepEqual(first.map(({ type }) => type), ['text-delta', 'tool-event', 'tool-event', 'step-boundary'])
+  assert.deepEqual(second, [
+    { type: 'text-delta', text: '最终正文' },
+    { type: 'finish', reason: 'stop' },
+  ])
+  await registry.dispose()
+})
+
+test('Pi 适配器即使 DSH 原生 step 注入可用也不启用分段模式', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  let splitToolSteps: boolean | undefined
+  const injected: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'pi', name: 'Pi Agent' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'fake' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input) {
+      splitToolSteps = input.splitToolSteps
+      yield { type: 'tool-event', toolName: 'shell', callId: 'call-1', status: 'completed' } as const
+      yield { type: 'text-delta', text: '后续正文' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      supportsEvents: false,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async listRemote() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      injectNextStep(sessionId) {
+        injected.push(sessionId)
+        return true
+      },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  await table.resolve('cli/session/set')?.handler('session/set', { sessionId: 'pi-segmented', adapterId: 'pi' })
+
+  const chunks = []
+  for await (const chunk of listener!({ sessionId: 'pi-segmented', messages: [{ role: 'user', content: '执行工具' }] }, async function* () {})) chunks.push(chunk)
+
+  assert.equal(splitToolSteps, undefined)
+  assert.deepEqual(injected, [])
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  await features.disable('cliAdapters')
+})
+
 test('CLI 功能模块登记 cli RPC，停用后注销命名空间', async () => {
   const table = new CodingNsRpcTable()
   const registry = new CodingNsCliAdapterRegistry([])
@@ -619,7 +704,8 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
     descriptor: { id: 'codex', name: 'Codex' },
     async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
     async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
-    async *executeTurn() {
+    async *executeTurn(input) {
+      assert.equal(input.splitToolSteps, true)
       yield { type: 'step-boundary' } as const
     },
   }])

@@ -135,7 +135,11 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             ...(config.rawStoreRef ? { rawStoreRef: config.rawStoreRef } : {}),
             ...(cwd === undefined ? {} : { cwd }),
             ...(isAbortSignal(value?.signal) ? { signal: value.signal } : {}),
-            ...(config.adapterId === 'codex' && nativeSessions?.available === true && nativeSessions.injectNextStep !== undefined ? { splitToolSteps: true } : {}),
+            ...(config.adapterId !== 'pi'
+              && nativeSessions?.available === true
+              && nativeSessions.injectNextStep !== undefined
+              ? { splitToolSteps: true }
+              : {}),
           }
           const projector = new CodingNsDshMessageProjector({
             adapterId: config.adapterId,
@@ -146,13 +150,19 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             respondPermission: (response) => registry.respondPermission(sessionId, response),
             respondQuestion: (response) => registry.respondQuestion(sessionId, response),
           })
+          const discardSuspendedTurn = (): void => registry.discardSegmentedTurn(sessionId)
+          input.signal?.addEventListener('abort', discardSuspendedTurn, { once: true })
+          if (input.signal?.aborted) discardSuspendedTurn()
           try {
             for await (const chunk of registry.execute({ ...input, adapterId: config.adapterId })) {
               if (chunk.type === 'step-boundary') {
                 // Agent Loop 会在本次 llm/stream 返回后关闭当前 step，并在返回前
                 // 检查 next-step inbox。必须先注入，再发送 finish，不能等 complete()
                 // 之后再写入，否则 DSH 已经把整个 turn 结算完了。
-                if (nativeSessions?.available === true) nativeSessions.injectNextStep?.(sessionId)
+                const injected = nativeSessions?.available === true
+                  ? nativeSessions.injectNextStep?.(sessionId) ?? false
+                  : false
+                if (!injected) discardSuspendedTurn()
                 for (const dshChunk of await projector.push(chunk)) yield dshChunk
                 continue
               }
@@ -165,6 +175,8 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           } catch (error) {
             const message = safeError(error)
             for (const dshChunk of await projector.fail(message, input.signal?.aborted ?? false)) yield dshChunk
+          } finally {
+            input.signal?.removeEventListener('abort', discardSuspendedTurn)
           }
         })
         if (typeof dispose === 'function') context.resources.add(() => { (dispose as () => void)() })
@@ -281,9 +293,18 @@ async function setAdapterEnabled(
 function extractPrompt(messages: readonly CodingNsCliMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
+    if (message !== undefined && isInjectedStepNotice(message)) return extractText(message.content)
     if (message !== undefined && isHumanUserMessage(message)) return extractText(message.content)
   }
   return ''
+}
+
+/** DSH 为工具分段注入的继续提示必须成为下一次 Provider 请求的 prompt。 */
+function isInjectedStepNotice(message: CodingNsCliMessage): boolean {
+  if (message.role !== 'user' || !isRecord(message.source)) return false
+  if (message.source.form !== 'notice') return false
+  return message.source.kind === 'model-selection'
+    || message.source.kind === 'plugin' && message.source.plugin === 'codingns4dsh'
 }
 
 function isHumanUserMessage(message: CodingNsCliMessage): boolean {
