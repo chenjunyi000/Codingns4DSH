@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CodingNsCliAdapterRegistry } from '../data/build/dist/host/cli-adapters/registry.js'
 import { CodingNsCliSessionStore } from '../data/build/dist/host/cli-adapters/session-store.js'
-import { parseLegacyImportedSessionRecords } from '../data/build/dist/host/cli-adapters/legacy-session-settings.js'
+import {
+  parseLegacyImportedAdapterPreferences,
+  parseLegacyImportedSessionRecords,
+} from '../data/build/dist/host/cli-adapters/legacy-session-settings.js'
 
 test('旧版导入设置中的外部会话索引可恢复', () => {
   const records = parseLegacyImportedSessionRecords(`
@@ -31,6 +34,22 @@ codingns:
     createdAt: '2026-09-24T15:32:34.161Z',
     updatedAt: '2026-09-25T00:29:15.302Z',
   }])
+})
+
+test('旧版导入设置中的适配器模型和思考强度偏好可恢复', () => {
+  const preferences = parseLegacyImportedAdapterPreferences(`
+codingns:
+  agentAdapterPreferences:
+    codex:
+      modelId: gpt-5.6-sol
+      effortId: high
+    kimi:
+      modelId: kimi-k2
+`)
+  assert.deepEqual(preferences, {
+    codex: { modelId: 'gpt-5.6-sol', effortId: 'high' },
+    kimi: { modelId: 'kimi-k2' },
+  })
 })
 
 test('Host 会话索引串行持久化并支持归档筛选', async () => {
@@ -202,6 +221,8 @@ test('Registry 为新会话回填适配器最近模型和思考强度，并允�
   }), {
     adapterId: 'fake', modelId: 'explicit-model', effortId: 'low',
   })
+  // 0.1.7 ConfigForms 切换 entry 时可能短暂发布默认空字典，不能抹掉当前缓存。
+  registry.syncPreferences({})
   assert.deepEqual(registry.setSession('latest-session', { adapterId: 'fake' }), {
     adapterId: 'fake', modelId: 'explicit-model', effortId: 'low',
   })
