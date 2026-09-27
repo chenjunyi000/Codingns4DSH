@@ -119,6 +119,12 @@ test('输入工具栏保持单行并动态滚动显示超长模型名称', async
   assert.match(source, /const agentTriggerLabelStyle = \{ flex: '0 0 auto', whiteSpace: 'nowrap'/u)
 })
 
+test('上下文计量 dock 保留稳定行高，避免数值投影短暂缺失时工具栏抖动', async () => {
+  const source = await readFile(join(projectRoot, 'src/client/cli-slots.ts'), 'utf8')
+  assert.match(source, /\[data-composer-card\] \+ div\{box-sizing:border-box;min-height:26px;align-items:center\}/u)
+  assert.match(source, /svg\[viewBox="0 0 14 14"\] circle:last-child\{transition:stroke-dasharray \.18s ease,stroke \.18s ease\}/u)
+})
+
 test('订阅悬浮框按内容自适应且不产生横向滚动', async () => {
   const source = await readFile(join(projectRoot, 'src/client/subscription-slot.ts'), 'utf8')
   assert.match(source, /width: 'max-content'/u)

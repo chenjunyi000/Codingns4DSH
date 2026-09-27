@@ -51,6 +51,9 @@ function installComposerStyles(): void {
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.right"] > .codingns4dsh-model-root{min-width:0;max-width:min(360px,45cqw);flex:1 1 min(360px,45cqw)}',
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > select{width:100%;min-width:0;max-width:min(150px,45cqw);flex:1 1 min(150px,45cqw);overflow:hidden;white-space:nowrap}',
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > button{width:100%;min-width:0;max-width:min(360px,45cqw);overflow:hidden;white-space:nowrap}',
+    // ContextMeter 在 pressure 尚未合并时会暂时返回 null；dock 保留同样的行高，数值回来时只更新内容。
+    '[data-composer-card] + div{box-sizing:border-box;min-height:26px;align-items:center}',
+    '[data-composer-card] + div svg[viewBox="0 0 14 14"] circle:last-child{transition:stroke-dasharray .18s ease,stroke .18s ease}',
     '@keyframes codingns4dsh-cli-spin{to{transform:rotate(360deg)}}',
     '@keyframes codingns4dsh-cli-model-scroll{0%,18%{transform:translateX(0)}82%,100%{transform:translateX(var(--codingns4dsh-model-scroll-offset))}}',
     '.codingns4dsh-cli-spinner{animation:codingns4dsh-cli-spin .8s linear infinite}',
