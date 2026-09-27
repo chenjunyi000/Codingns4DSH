@@ -16,6 +16,7 @@ import type {
   CodingNsCliSessionProbeResult,
 } from './driver.js'
 import { CodingNsCliSessionStore } from './session-store.js'
+import { readLegacyImportedAdapterPreferences } from './legacy-session-settings.js'
 import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
 import type { CodingNsSettings, CodingNsCliAdapterPreference } from '../../shared/contracts/config.js'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
@@ -98,7 +99,15 @@ export class CodingNsCliAdapterRegistry {
     this.uninstalledCacheTtlMs = positiveTtl(options.uninstalledCacheTtlMs, DEFAULT_UNINSTALLED_CACHE_TTL_MS)
     this.modelCacheTtlMs = positiveTtl(options.modelCacheTtlMs, DEFAULT_MODEL_CACHE_TTL_MS)
     this.modelRetryTtlMs = positiveTtl(options.modelRetryTtlMs, DEFAULT_MODEL_RETRY_TTL_MS)
-    this.syncPreferences(options.settings?.get().agentAdapterPreferences)
+    const configuredPreferences = options.settings?.get().agentAdapterPreferences
+    const legacyPreferences = options.settings === undefined ? {} : readLegacyImportedAdapterPreferences()
+    const mergedPreferences = mergePreferenceRecords(legacyPreferences, configuredPreferences)
+    this.syncPreferences(mergedPreferences)
+    // DSH 0.1.7 不会把旧 `codingns` 设置段自动映射到 scoped Config entry。
+    // 先用旧值恢复当前进程，再把缺失值写入新配置，后续重启即可走正常路径。
+    if (options.settings !== undefined && hasMissingPreferences(configuredPreferences, legacyPreferences)) {
+      void options.settings.update({ agentAdapterPreferences: preferenceSnapshot(this.preferences) }).catch(() => undefined)
+    }
     for (const driver of drivers) {
       if (this.drivers.has(driver.descriptor.id)) throw new Error(`重复 Agent: ${driver.descriptor.id}`)
       this.drivers.set(driver.descriptor.id, driver)
@@ -225,6 +234,9 @@ export class CodingNsCliAdapterRegistry {
   /** 设置服务变更后重新载入适配器级默认选择。 */
   syncPreferences(value: Readonly<Record<string, CodingNsCliAdapterPreference>> | undefined): void {
     if (value === undefined) return
+    // 0.1.7 ConfigForms 在 entry 重新描述的瞬间可能只返回默认空字典；
+    // 不能让这次短暂快照抹掉当前进程已经恢复的选择。
+    if (Object.keys(value).length === 0 && this.preferences.size > 0) return
     this.preferences.clear()
     for (const [adapterId, preference] of Object.entries(value)) {
       const modelId = preference?.modelId?.trim()
@@ -264,7 +276,7 @@ export class CodingNsCliAdapterRegistry {
     }
     this.preferences.set(adapterId, preference)
     if (this.settings === undefined) return
-    const snapshot = Object.fromEntries([...this.preferences.entries()].map(([id, value]) => [id, { ...value }]))
+    const snapshot = preferenceSnapshot(this.preferences)
     void this.settings.update({ agentAdapterPreferences: snapshot }).catch(() => undefined)
   }
 
@@ -777,6 +789,56 @@ function detectionFingerprint(detection: CodingNsCliDetection): string {
 
 function catalogHasModels(catalog: CodingNsCliModelCatalog): boolean {
   return catalog.groups.some((group) => group.models.length > 0)
+}
+
+function mergePreferenceRecords(
+  legacy: Readonly<Record<string, CodingNsCliAdapterPreference>>,
+  configured: Readonly<Record<string, CodingNsCliAdapterPreference>> | undefined,
+): Readonly<Record<string, CodingNsCliAdapterPreference>> {
+  const merged: Record<string, CodingNsCliAdapterPreference> = {}
+  for (const [adapterId, preference] of Object.entries(legacy)) {
+    const normalized = normalizePreference(preference)
+    if (normalized !== undefined) merged[adapterId] = normalized
+  }
+  for (const [adapterId, preference] of Object.entries(configured ?? {})) {
+    const normalized = normalizePreference(preference)
+    if (normalized === undefined) continue
+    merged[adapterId] = { ...merged[adapterId], ...normalized }
+  }
+  return merged
+}
+
+function normalizePreference(value: CodingNsCliAdapterPreference | undefined): CodingNsCliAdapterPreference | undefined {
+  if (value === undefined) return undefined
+  const modelId = value.modelId?.trim()
+  const effortId = value.effortId?.trim()
+  if (modelId === undefined && effortId === undefined) return undefined
+  return {
+    ...(modelId ? { modelId } : {}),
+    ...(effortId ? { effortId } : {}),
+  }
+}
+
+function hasMissingPreferences(
+  configured: Readonly<Record<string, CodingNsCliAdapterPreference>> | undefined,
+  legacy: Readonly<Record<string, CodingNsCliAdapterPreference>>,
+): boolean {
+  for (const [adapterId, legacyPreference] of Object.entries(legacy)) {
+    const current = configured?.[adapterId]
+    if (legacyPreference.modelId !== undefined && !hasText(current?.modelId)) return true
+    if (legacyPreference.effortId !== undefined && !hasText(current?.effortId)) return true
+  }
+  return false
+}
+
+function hasText(value: string | undefined): boolean {
+  return value?.trim() !== '' && value !== undefined
+}
+
+function preferenceSnapshot(
+  preferences: ReadonlyMap<string, CodingNsCliAdapterPreference>,
+): Record<string, CodingNsCliAdapterPreference> {
+  return Object.fromEntries([...preferences.entries()].map(([adapterId, preference]) => [adapterId, { ...preference }]))
 }
 
 /** 从 DSH 原生会话快照补齐当前模型提供商，供订阅分流使用。 */
