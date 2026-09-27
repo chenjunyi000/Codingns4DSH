@@ -206,8 +206,67 @@ test('归档入口位于工作区会话末尾并跟随工作区折叠', async ()
   controller.dispose()
 })
 
+test('多个工作区没有展开按钮时，归档入口不追加到侧栏底部', async () => {
+  const headerA = workspaceHeader('workspace-a')
+  const headerB = workspaceHeader('workspace-b')
+  const groupA = new FakeArchiveElement('section')
+  const groupB = new FakeArchiveElement('section')
+  groupA.append(headerA)
+  groupB.append(headerB)
+  const root = new FakeArchiveElement('main')
+  root.append(groupA, groupB)
+  const document = new FakeArchiveDocument(root)
+  const controller = startWorkspaceSessionArchiveDom({
+    document,
+    remote: {
+      workspace: {
+        async *follow() {
+          yield {
+            type: 'baseline',
+            value: {
+              items: [
+                { workspaceId: 'workspace-a', path: '/work/a', sessionIds: [] },
+                { workspaceId: 'workspace-b', path: '/work/b', sessionIds: [] },
+              ],
+              archivedSessionIds: ['archived-a', 'archived-b'],
+            },
+          }
+        },
+      },
+      session: {
+        async list() {
+          return {
+            items: [
+              { sessionId: 'archived-a', cwd: '/work/a', updatedAt: 2, projections: { values: { title: 'A' } } },
+              { sessionId: 'archived-b', cwd: '/work/b', updatedAt: 1, projections: { values: { title: 'B' } } },
+            ],
+          }
+        },
+      },
+    },
+  })
+
+  await nextArchiveTurn()
+  const archiveAttribute = `[${WORKSPACE_SESSION_ARCHIVE_ATTRIBUTE}]`
+  assert.equal(groupA.querySelectorAll(archiveAttribute).length, 1)
+  assert.equal(groupB.querySelectorAll(archiveAttribute).length, 1)
+  assert.equal(root.querySelectorAll(archiveAttribute).length, 2)
+  assert.equal(document.body.children.some((child) => child.getAttribute(WORKSPACE_SESSION_ARCHIVE_ATTRIBUTE) !== null), false)
+  controller.dispose()
+})
+
 function nextArchiveTurn() {
   return new Promise((resolve) => setImmediate(resolve))
+}
+
+function workspaceHeader(workspaceId) {
+  const header = new FakeArchiveElement('div')
+  header.setAttribute('role', 'treeitem')
+  header.setAttribute('aria-expanded', 'true')
+  Object.defineProperty(header, '__reactFiber$archive', {
+    value: { memoizedProps: { group: { workspaceId } } },
+  })
+  return header
 }
 
 class FakeArchiveElement {
@@ -227,6 +286,7 @@ class FakeArchiveElement {
     const nodes = collectArchiveNodes(this)
     if (selector === 'button') return nodes.filter((node) => node.tagName === 'BUTTON')
     if (selector === '[role="treeitem"]') return nodes.filter((node) => node.getAttribute('role') === 'treeitem')
+    if (selector === `[${WORKSPACE_SESSION_ARCHIVE_ATTRIBUTE}]`) return nodes.filter((node) => node.getAttribute(WORKSPACE_SESSION_ARCHIVE_ATTRIBUTE) !== null)
     return []
   }
   append(...children) { for (const child of children) this.appendChild(child) }

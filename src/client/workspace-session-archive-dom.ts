@@ -401,6 +401,12 @@ export function findWorkspaceContainer(anchor: HTMLElement, workspaceId: string)
   let current = anchor.parentElement
   let fallback: HTMLElement | null = null
   for (let depth = 0; depth < 8 && current !== null; depth += 1) {
+    // 找不到明确的工作区边界时不能继续向上回退到整个侧栏；否则归档入口
+    // 会被追加到所有工作区之后，变成截图中的独立底部条目。
+    if (containsForeignWorkspaceHeader(current, anchor, workspaceId)) {
+      current = current.parentElement
+      continue
+    }
     fallback = current
     const hasMoreButton = [...current.querySelectorAll<HTMLElement>('button')].some((button) => {
       return isMoreSessionButton(button) && (resolveWorkspaceId(button) === workspaceId || button === anchor)
@@ -412,6 +418,15 @@ export function findWorkspaceContainer(anchor: HTMLElement, workspaceId: string)
     current = current.parentElement
   }
   return fallback
+}
+
+function containsForeignWorkspaceHeader(container: HTMLElement, anchor: HTMLElement, workspaceId: string): boolean {
+  return [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].some((row) => {
+    if (row === anchor || row.getAttribute('aria-expanded') === null) return false
+    const rowWorkspaceId = resolveWorkspaceId(row)
+    // 未能解析的另一个工作区也不能被当成当前工作区的容器处理。
+    return rowWorkspaceId === undefined || rowWorkspaceId !== workspaceId
+  })
 }
 
 function directChildFor(container: HTMLElement, descendant: HTMLElement): HTMLElement | null {
