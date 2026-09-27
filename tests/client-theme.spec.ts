@@ -102,6 +102,23 @@ test('Agent 选择器位于模型左侧并显示完整 Provider Logo', async () 
   assert.match(bundleSource, /data:image\/(?:png|svg\+xml);base64,/u, 'Client 单文件包应内联 Provider Logo')
 })
 
+test('输入工具栏保持单行并动态滚动显示超长模型名称', async () => {
+  const source = await readFile(join(projectRoot, 'src/client/cli-slots.ts'), 'utf8')
+
+  assert.match(source, /data-composer-card\].*flex-wrap:nowrap!important/u)
+  assert.match(source, /data-composer-card\].*width:0;flex:1 1 0/u)
+  assert.match(source, /codingns4dsh-model-root/u)
+  assert.match(source, /conversation\.input\.model.*select\{[\s\S]*max-width:min\(150px,45cqw\)/u)
+  assert.match(source, /const nativeTriggerStyle = \{ width: '100%'/u)
+  assert.match(source, /@keyframes codingns4dsh-cli-model-scroll/u)
+  assert.match(source, /ResizeObserver/u)
+  assert.match(source, /data-overflow.*String\(scrollDistance > 0\)/u)
+  assert.match(source, /const modelNameStyle = \{ minWidth: 0, maxWidth: 150, flex: '0 1 150px'/u)
+  assert.doesNotMatch(source, /const modelNameStyle = \{[^}]*textOverflow/u)
+  assert.match(source, /const agentRootStyle = \{[^}]*flex: '0 0 auto'/u)
+  assert.match(source, /const agentTriggerLabelStyle = \{ flex: '0 0 auto', whiteSpace: 'nowrap'/u)
+})
+
 test('订阅悬浮框按内容自适应且不产生横向滚动', async () => {
   const source = await readFile(join(projectRoot, 'src/client/subscription-slot.ts'), 'utf8')
   assert.match(source, /width: 'max-content'/u)

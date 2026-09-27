@@ -1,5 +1,6 @@
-import { createElement, useEffect, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
+import type { CSSProperties } from 'react'
 import type { CodingNsCliAdapterDescriptor, CodingNsCliModel, CodingNsCliModelCatalog, CodingNsCliSessionConfig } from '../shared/contracts/cli-adapter.js'
 import type { CodingNsRpcClient } from './features/types.js'
 import { adapterCatalogWithDsh, callCliRpc, findModel, firstModel } from './cli-catalog.js'
@@ -44,12 +45,20 @@ function installComposerStyles(): void {
   style.textContent = [
     'html[data-codingns-agent]:not([data-codingns-agent="dsh"]) [data-slot="conversation.input.model"],',
     'body[data-codingns-agent]:not([data-codingns-agent="dsh"]) [data-slot="conversation.input.model"]{display:none!important}',
+    // DSH 原生输入栏默认允许工具行换行；选择器过长时保持单行并让右侧区域收缩。
+    '[data-composer-card] > div:has([data-slot="conversation.input.right"]){flex-wrap:nowrap!important}',
+    '[data-composer-card] > div:has([data-slot="conversation.input.right"]) > div:has(> [data-slot="conversation.input.right"]){min-width:0;width:0;flex:1 1 0}',
+    '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.right"] > .codingns4dsh-model-root{min-width:0;max-width:min(360px,45cqw);flex:1 1 min(360px,45cqw)}',
+    '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > select{width:100%;min-width:0;max-width:min(150px,45cqw);flex:1 1 min(150px,45cqw);overflow:hidden;white-space:nowrap}',
+    '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > button{width:100%;min-width:0;max-width:min(360px,45cqw);overflow:hidden;white-space:nowrap}',
     '@keyframes codingns4dsh-cli-spin{to{transform:rotate(360deg)}}',
+    '@keyframes codingns4dsh-cli-model-scroll{0%,18%{transform:translateX(0)}82%,100%{transform:translateX(var(--codingns4dsh-model-scroll-offset))}}',
     '.codingns4dsh-cli-spinner{animation:codingns4dsh-cli-spin .8s linear infinite}',
+    '.codingns4dsh-model-name[data-overflow="true"]>span{animation:codingns4dsh-cli-model-scroll 6s ease-in-out infinite alternate;will-change:transform}',
     '.codingns4dsh-agent-trigger:hover:not(:disabled){background:color-mix(in srgb,currentColor 7%,transparent)}',
     '.codingns4dsh-agent-option:hover:not(:disabled){background:color-mix(in srgb,currentColor 7%,transparent)!important}',
     '.codingns4dsh-agent-option[data-selected="true"]{background:color-mix(in srgb,currentColor 10%,transparent)!important}',
-    '@media (prefers-reduced-motion:reduce){.codingns4dsh-cli-spinner{animation-duration:1.6s}}',
+    '@media (prefers-reduced-motion:reduce){.codingns4dsh-cli-spinner{animation-duration:1.6s}.codingns4dsh-model-name[data-overflow="true"]>span{animation:none;transform:translateX(0)}}',
   ].join('')
   document.head.appendChild(style)
 }
@@ -233,10 +242,10 @@ function NativeDropdownChevron({ open, locked = false }: { readonly open: boolea
   }))
 }
 
-const agentRootStyle = { position: 'relative' as const, minWidth: 0, display: 'inline-flex' }
-const agentTriggerStyle = { height: 30, maxWidth: 220, minWidth: 0, color: dshThemeColor.labelPrimary, border: 0, borderRadius: 8, padding: '0 6px', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 14, lineHeight: '20px' }
+const agentRootStyle = { position: 'relative' as const, minWidth: 0, flex: '0 0 auto', display: 'inline-flex' }
+const agentTriggerStyle = { height: 30, minWidth: 0, color: dshThemeColor.labelPrimary, border: 0, borderRadius: 8, padding: '0 6px', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 14, lineHeight: '20px', whiteSpace: 'nowrap' as const }
 const agentTriggerIconStyle = { width: 20, height: 20, flex: '0 0 20px', objectFit: 'contain' as const }
-const agentTriggerLabelStyle = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }
+const agentTriggerLabelStyle = { flex: '0 0 auto', whiteSpace: 'nowrap' as const }
 const nativeDropdownChevronStyle = { display: 'block', flex: '0 0 14px', color: dshThemeColor.labelCaption, transformOrigin: 'center' }
 const agentMenuStyle = { ...dshPopupSurfaceStyle, position: 'absolute' as const, zIndex: 1100, bottom: 'calc(100% + 8px)', left: 0, minWidth: 238, maxWidth: 'min(320px, calc(100vw - 32px))', maxHeight: 'min(400px, calc(100vh - 96px))', overflowY: 'auto' as const, padding: 5, border: 0, borderRadius: 8 }
 const agentOptionStyle = { width: '100%', minHeight: 40, color: 'inherit', border: 0, borderRadius: 6, padding: '5px 8px 5px 4px', background: 'transparent', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' as const, fontSize: 14, lineHeight: '20px' }
@@ -251,6 +260,48 @@ type ModelPane = 'root' | 'model' | 'effort'
 interface ModelCatalogState {
   readonly adapterId: string
   readonly value: CodingNsCliModelCatalog
+}
+
+interface ModelNameProps {
+  readonly label: string
+  readonly loading: boolean
+}
+
+/** 模型名称超出 150px 时，在固定视口内往返滚动展示完整文本。 */
+function ModelName({ label, loading }: ModelNameProps): ReactElement {
+  const viewportRef = useRef<HTMLSpanElement | null>(null)
+  const contentRef = useRef<HTMLSpanElement | null>(null)
+  const [scrollDistance, setScrollDistance] = useState(0)
+
+  useEffect(() => {
+    const updateOverflow = (): void => {
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      if (viewport === null || content === null) return
+      const nextDistance = Math.max(0, Math.ceil(content.getBoundingClientRect().width - viewport.clientWidth))
+      setScrollDistance((current) => current === nextDistance ? current : nextDistance)
+    }
+    updateOverflow()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateOverflow)
+    if (viewportRef.current !== null) observer.observe(viewportRef.current)
+    if (contentRef.current !== null) observer.observe(contentRef.current)
+    return () => observer.disconnect()
+  }, [label])
+
+  const contentStyle = {
+    display: 'inline-block',
+    whiteSpace: 'nowrap' as const,
+    '--codingns4dsh-model-scroll-offset': `-${scrollDistance}px`,
+  } as CSSProperties
+  return createElement('span', {
+    ref: viewportRef,
+    className: 'codingns4dsh-model-name',
+    'data-overflow': String(scrollDistance > 0),
+    role: loading ? 'status' : undefined,
+    'aria-live': loading ? 'polite' : undefined,
+    style: modelNameStyle,
+  }, createElement('span', { ref: contentRef, style: contentStyle }, label))
 }
 
 function ModelSlot(props: CliSlotProps): ReactElement | null {
@@ -352,10 +403,10 @@ function ModelSlot(props: CliSlotProps): ReactElement | null {
             createElement('span', { style: { flex: '1 1 auto' } }, effort === 'default' ? 'Default' : effort), effort === effortValue && createElement('span', { 'aria-hidden': true }, '✓'),
           )),
         ]
-  return createElement('div', { style: { position: 'relative', minWidth: 0, display: 'inline-flex' } },
+  return createElement('div', { className: 'codingns4dsh-model-root', style: { position: 'relative', minWidth: 0, maxWidth: '100%', flex: '1 1 min(360px, 45cqw)', display: 'inline-flex' } },
     createElement('button', { type: 'button', disabled: triggerDisabled, 'aria-label': t('cli.chooseModel', { model: modelLabel, effort: effortLabel }), 'aria-busy': loading, 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: () => { setPane('root'); setOpen((value) => !value) }, style: nativeTriggerStyle },
       loading && createElement('span', { className: 'codingns4dsh-cli-spinner', 'aria-hidden': true, style: modelSpinnerStyle }),
-      createElement('span', { role: loading ? 'status' : undefined, 'aria-live': loading ? 'polite' : undefined, style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, modelLabel),
+      createElement(ModelName, { label: modelLabel, loading }),
       !loading && createElement('span', { style: { color: dshThemeColor.labelCaption, whiteSpace: 'nowrap' } }, effortLabel),
       !loading && createElement(NativeDropdownChevron, { open }),
     ),
@@ -363,7 +414,8 @@ function ModelSlot(props: CliSlotProps): ReactElement | null {
   )
 }
 
-const nativeTriggerStyle = { minWidth: 0, maxWidth: 'min(360px, 45cqw)', height: 28, color: dshThemeColor.labelSecondary, cursor: 'pointer', background: 'transparent', border: 0, borderRadius: 24, padding: '0 4px 0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, lineHeight: '20px' }
+const nativeTriggerStyle = { width: '100%', minWidth: 0, maxWidth: 'min(360px, 45cqw)', height: 28, color: dshThemeColor.labelSecondary, cursor: 'pointer', background: 'transparent', border: 0, borderRadius: 24, padding: '0 4px 0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, lineHeight: '20px' }
+const modelNameStyle = { minWidth: 0, maxWidth: 150, flex: '0 1 150px', display: 'block', overflow: 'hidden', whiteSpace: 'nowrap' as const }
 const nativeMenuStyle = { ...dshPopupSurfaceStyle, position: 'absolute' as const, zIndex: 1100, right: 0, bottom: 'calc(100% + 8px)', minWidth: 240, maxWidth: 'min(420px, calc(100vw - 32px))', maxHeight: 'min(360px, calc(100vh - 96px))', overflowY: 'auto' as const, padding: 4, border: 0, borderRadius: 20 }
 const nativeMenuCellStyle = { width: '100%', minHeight: 40, color: 'inherit', cursor: 'pointer', background: 'transparent', border: 0, borderRadius: 10, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' as const, fontSize: 14, lineHeight: '22px' }
 const nativeMenuLabelStyle = { flex: 'none', whiteSpace: 'nowrap' as const }
