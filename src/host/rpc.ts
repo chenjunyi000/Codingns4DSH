@@ -206,9 +206,12 @@ export function createCodingNsSettingsRpcHandler(provider: SettingsProvider): Co
 function readCodingNsSettings(provider: SettingsProvider): { value: CodingNsSettings; revision: number } {
   const descriptor = findCodingNsSettingsDescriptor(provider)
   if (descriptor === undefined) throw new CodingNsRpcError('CODINGNS_SETTINGS_UNAVAILABLE', 'Codingns4DSH 设置尚未注册')
-  const value = typeof provider.get === 'function'
-    ? provider.get(CODINGNS_SETTINGS_NAMESPACE) as CodingNsSettings
-    : descriptor.value as CodingNsSettings
+  // 0.1.7 的 ConfigForm namespace 由 Bundle entry id 决定。包名改为 scoped 后，
+  // descriptor.ns 可能是 `@jingyi0605/codingns4dsh`，不能继续固定读取旧的 `codingns`。
+  const providerValue = typeof provider.get === 'function'
+    ? provider.get(descriptor.ns) as CodingNsSettings | undefined
+    : undefined
+  const value = providerValue ?? descriptor.value as CodingNsSettings
   // cliSessions 是 Host-only 索引，包含 providerSessionId/rawStoreRef，不能通过设置 RPC
   // 暴露给浏览器。外部会话列表必须走 cli/session/list，由 Host 按需返回摘要。
   const { cliSessions: _cliSessions, ...clientValue } = value

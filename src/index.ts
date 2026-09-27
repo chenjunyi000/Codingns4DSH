@@ -2,7 +2,9 @@
 import { apply as hostApply } from './host/index.js'
 
 /** Cordis Bundle 标准插件名称。 */
-export const name = 'codingns4dsh'
+// Bundle 的运行时名称必须与 npm 包名和 dsh.bundle.patch 中的 entry id 保持一致。
+// 包名改为 scoped 后仍导出旧名称，会让 DSH 的 Bundle、ConfigForm 和 Client 处于不同身份。
+export const name = '@jingyi0605/codingns4dsh'
 /** DSH 0.1.7 原生配置入口；Host-only 的 cliSessions 已标记为 volatile。 */
 export { CodingNsConfigSchema as Config } from './host/settings.js'
 /** Host Cordis 入口。 */

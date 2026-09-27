@@ -55,6 +55,11 @@ test('package manifest declares the DSH bundle and client entry', () => {
   assert.equal(versionFile.dshProtocolVersion, 1)
 })
 
+test('根 Bundle 导出名称与 scoped package 名称一致', async () => {
+  const entry = await import('../data/build/dist/index.js') as { readonly name?: unknown }
+  assert.equal(entry.name, manifest.name)
+})
+
 test('bundle patch and example profile use DSH native shapes', async () => {
   const patch = await readFile(join(root, 'dsh.bundle.patch'), 'utf8')
   assert.match(patch, /id: '@jingyi0605\/codingns4dsh'/u)
