@@ -107,11 +107,12 @@ The model list is read from each CLI and can be switched at any time; the compos
 Session rows show the Agent logo and archive entry, and the composer dock shows subscription or upstream usage for Agents whose limits can be read (cache hit rate, per-model stats and cost included).
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/subscription-plan.jpg" alt="Codex subscription allowance and reset time">
-</div>
-
-<div align="center">
-  <img width="70%" src="assets/screenshots/subscription-usage.jpg" alt="Codex upstream usage and cost statistics">
+  <table>
+    <tr>
+      <td><img width="100%" src="assets/screenshots/subscription-usage.jpg" alt="Codex upstream usage and cost statistics"></td>
+      <td><img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex subscription allowance and reset time"></td>
+    </tr>
+  </table>
 </div>
 
 Usage comes from the Agent's own quota API or a configured upstream source; it is read on the Host and never stored in the browser.

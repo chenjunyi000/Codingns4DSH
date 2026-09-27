@@ -108,11 +108,12 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 会话行显示 Agent Logo 与归档入口，输入框下方显示可读取额度的 Agent 的订阅或上游用量（含缓存命中率、按模型统计与费用）。
 
 <div align="center">
-  <img width="70%" src="assets/screenshots/subscription-plan.jpg" alt="Codex 订阅额度与重置时间">
-</div>
-
-<div align="center">
-  <img width="70%" src="assets/screenshots/subscription-usage.jpg" alt="Codex 上游用量与费用统计">
+  <table>
+    <tr>
+      <td><img width="100%" src="assets/screenshots/subscription-usage.jpg" alt="Codex 上游用量与费用统计"></td>
+      <td><img width="100%" src="assets/screenshots/subscription-plan.jpg" alt="Codex 订阅额度与重置时间"></td>
+    </tr>
+  </table>
 </div>
 
 用量来自 Agent 自身的额度接口或已配置的上游用量来源；数据只在 Host 上读取，不写入浏览器存储。
