@@ -66,13 +66,12 @@ export function apply(ctx?: Context): void {
       hasWebServer: (hostCtx as Context & { webServer?: unknown }).webServer !== undefined,
     })
     const webServerPort = (hostCtx as Context & { webServer: { port: number } }).webServer.port
-    // LAN 入口和中继 Web 页面可能使用非 loopback URL，但它们都已经经过
-    // DSH Host 的认证边界并回到本机 Host。通过启动页注入 transport 所有权，
-    // 让 DSH 原生 ui-settings 保持 host 模式，而不是错误降级为 memory 模式。
+    // Desktop 自己会通过 dshDesktopBoot 注入带 streamBaseUrl 的 __DSH_TRANSPORT__。
+    // 插件不能用只有 ownsHost 的对象覆盖它，否则 Desktop 的 /api/remote.mux
+    // 会退回 dsh-app://app 并返回 404。远程 iframe 的 transport 由自身桥接代码注入。
     const indexInjectionEvents = hostCtx as unknown as { on(name: string, listener: (table: unknown[]) => void): unknown }
     debugInfo('codingns4dsh: host index injection registration begin')
     indexInjectionEvents.on('webserver/index-inject', (table) => {
-      table.push({ kind: 'global', name: '__DSH_TRANSPORT__', value: { ownsHost: true } })
       table.push({ kind: 'global', name: DSH_VERSION_INJECTION_NAME, value: dshVersion })
     })
     debugInfo('codingns4dsh: host index injection registration ready')

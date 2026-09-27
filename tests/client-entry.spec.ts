@@ -35,12 +35,12 @@ test('远程 DSH Web 声明已认证 Host 所有权以启用持久设置', async
   assert.match(source, /openStream: openRemoteStream,[\s\S]{0,240}ownsHost: true/u)
 })
 
-test('Host 启动页为 LAN 和本机 Web 注入 Host 所有权标记', async () => {
+test('Host 启动页注入真实 DSH 版本且不覆盖 Desktop Transport', async () => {
   const source = await readFile(hostSource, 'utf8')
   assert.match(source, /webserver\/index-inject/u)
-  assert.match(source, /name: '__DSH_TRANSPORT__'/u)
-  assert.match(source, /value: \{ ownsHost: true \}/u)
   assert.match(source, /name: DSH_VERSION_INJECTION_NAME/u)
+  assert.match(source, /streamBaseUrl/u)
+  assert.doesNotMatch(source, /name: '__DSH_TRANSPORT__'/u)
 })
 
 test('Client 构建产物不包含 Node 专属模块', async () => {
