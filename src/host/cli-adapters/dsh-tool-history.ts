@@ -47,7 +47,9 @@ const TRUNCATION_MARKER = '\n...[内容因长度限制已截断]'
 export class CodingNsDshToolHistoryProjector {
   private readonly records = new Map<string, ToolRecord>()
   private readonly deferNativeAppend: boolean
+  private readonly waitForAssistantMessage: boolean
   private readonly removeNativeEventListener: (() => void) | undefined
+  private precedingAssistantContent: readonly Record<string, unknown>[] | undefined
   private anonymousSequence = 0
   private turnChars = 0
   private observedCalls = 0
@@ -59,15 +61,24 @@ export class CodingNsDshToolHistoryProjector {
     private readonly sessionId: string,
     private readonly adapterId?: string,
   ) {
-    // 工具事件必须尽早进入当前 step。新桥接优先写入原生 tool/call 与 tool/result；
-    // 自定义标记只负责把这次通知立即送进实时 Conversation。不能把工具伪装成
-    // assistant/attempt，因为 DSH 会把后者当成模型结算，天然排到正文之后。
+    // 原生 Session 的 assistant/message 是按 llm/stream 结算落盘的，通常晚于外部
+    // 工具通知。只要 Host 能发布 Session 事件，就等当前 step 的可见正文先落盘，
+    // 再追加工具声明/call/result；否则工具会被 UI 排到正文上方。
     const subscribe = nativeSessions?.supportsEvents === true ? nativeSessions.subscribe : undefined
+    this.waitForAssistantMessage = nativeSessions?.appendToolCall !== undefined
+      && this.sessionId.trim() !== ''
+      && subscribe !== undefined
     this.deferNativeAppend = nativeSessions?.appendToolCall === undefined && nativeSessions?.appendExternalToolEvent === undefined && subscribe !== undefined
     this.removeNativeEventListener = subscribe?.call(nativeSessions!, {
       onEvent: (session, event) => {
         if (session !== nativeSessions?.get(sessionId)) return
-        if (!isNativeStepStart(event) || this.flushScheduled) return
+        if (isNativeStepStart(event)) this.precedingAssistantContent = undefined
+        if (isNativeVisibleAssistantMessage(event)) this.precedingAssistantContent = nativeAssistantContent(event)
+        const shouldFlush = this.waitForAssistantMessage
+          ? isNativeVisibleAssistantMessage(event)
+            || this.hasPendingNativeRecords() && (isNativeStepStart(event) || this.finalized && isNativeStepEnd(event))
+          : isNativeStepStart(event)
+        if (!shouldFlush || this.flushScheduled) return
         this.flushScheduled = true
         queueMicrotask(() => {
           this.flushScheduled = false
@@ -131,6 +142,12 @@ export class CodingNsDshToolHistoryProjector {
     if (this.nativeSessions?.appendToolCall !== undefined && this.sessionId.trim() !== '') {
       // DSH Chat 原生识别 tool/call 为运行中的工具节点，tool/result 负责更新它。
       // 不再额外伪造 reasoning-delta，否则每个工具通知都会触发 assistant 正文刷新。
+      if (this.waitForAssistantMessage) {
+        // 正文可能已经先于 Provider 工具通知落盘；此时无需等待下一条 step
+        // 事件，排队到当前事件循环末尾即可避免 Session append 重入。
+        if (this.precedingAssistantContent !== undefined) this.scheduleFlush()
+        return null
+      }
       const persisted = this.persistNativeRecord(record)
       if (!persisted && this.nativeSessions.supportsEvents) this.scheduleFlush()
       return null
@@ -150,8 +167,10 @@ export class CodingNsDshToolHistoryProjector {
       this.settle(record, record.failed || reason !== 'stop')
     }
     if (this.nativeSessions?.appendToolCall !== undefined) {
-      this.flushNativeRecords()
-      this.removeNativeEventListener?.()
+      if (!this.waitForAssistantMessage) {
+        this.flushNativeRecords()
+        this.removeNativeEventListener?.()
+      }
     } else if (this.nativeSessions?.appendExternalToolEvent !== undefined) {
       this.flushExternalMarkers()
       this.removeNativeEventListener?.()
@@ -190,7 +209,14 @@ export class CodingNsDshToolHistoryProjector {
   private flushNativeRecords(): void {
     if (this.nativeSessions?.appendToolCall === undefined || this.sessionId.trim() === '') return
     for (const record of this.records.values()) this.persistNativeRecord(record)
-    if (this.finalized) this.removeNativeEventListener?.()
+    if (this.finalized && !this.hasPendingNativeRecords()) this.removeNativeEventListener?.()
+  }
+
+  private hasPendingNativeRecords(): boolean {
+    for (const record of this.records.values()) {
+      if (record.handle === null || record.settled && !record.resultAppended) return true
+    }
+    return false
   }
 
   private persistNativeRecord(record: ToolRecord): boolean {
@@ -281,6 +307,7 @@ export class CodingNsDshToolHistoryProjector {
         callId: record.callId,
         name: normalized.name,
         arguments: normalized.arguments,
+        ...(this.precedingAssistantContent === undefined ? {} : { precedingAssistantContent: this.precedingAssistantContent }),
         ...(this.adapterId === undefined ? {} : { adapterId: this.adapterId }),
       })
     } catch {
@@ -372,6 +399,31 @@ function meaningfulToolName(incoming: string, previous: string | undefined): str
 
 function isNativeStepStart(value: unknown): boolean {
   return isRecord(value) && value.type === 'step/start'
+}
+
+function isNativeStepEnd(value: unknown): boolean {
+  return isRecord(value) && value.type === 'step/end'
+}
+
+/** 只把包含可见文本的 assistant/message 视为正文结算，忽略工具声明消息。 */
+function isNativeVisibleAssistantMessage(value: unknown): boolean {
+  if (!isRecord(value) || value.type !== 'assistant/message') return false
+  const data = isRecord(value.data) ? value.data : null
+  const message = isRecord(data?.message) ? data.message : null
+  if (message?.role !== 'assistant' || !Array.isArray(message.content)) return false
+  return message.content.some((part) => {
+    if (!isRecord(part)) return false
+    if (part.type === 'text' || part.type === 'reasoning') return typeof part.text === 'string' && part.text.length > 0
+    return false
+  })
+}
+
+function nativeAssistantContent(value: unknown): readonly Record<string, unknown>[] {
+  if (!isRecord(value)) return []
+  const data = isRecord(value.data) ? value.data : null
+  const message = isRecord(data?.message) ? data.message : null
+  if (!Array.isArray(message?.content)) return []
+  return message.content.filter(isRecord).map((part) => ({ ...part }))
 }
 
 function parseRecord(value: string | undefined): Record<string, unknown> | null {

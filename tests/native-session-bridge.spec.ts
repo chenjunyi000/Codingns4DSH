@@ -123,6 +123,7 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
     callId: 'external-1',
     name: 'read_directory',
     arguments: '{"path":"."}',
+    precedingAssistantContent: [{ type: 'text', text: '先检查目录。' }],
     adapterId: 'codex',
   })
   assert.deepEqual(handle, { sessionId: 'native-tools', turn: 3, step: 2, callId: 'external-1', callSeq: 3 })
@@ -138,6 +139,9 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
           id: 'external-tool-external-1-3-2',
           role: 'assistant',
           content: [{
+            type: 'text',
+            text: '先检查目录。',
+          }, {
             type: 'tool-call',
             id: 'external-1',
             name: 'read_directory',
@@ -162,8 +166,9 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
         step: 2,
         message: {
           id: 'external-1-result-3-2',
-          role: 'user',
-          content: [{ type: 'tool-result', toolCallId: 'external-1', content: [{ type: 'text', text: 'a.ts' }] }],
+          role: 'tool',
+          toolCallId: 'external-1',
+          content: [{ type: 'text', text: 'a.ts' }],
           source: { kind: 'tool', callId: 'external-1' },
         },
       },
@@ -202,6 +207,43 @@ test('原生会话桥接保存外部 Agent 的 request/context 容量元数据',
     type: 'request/context',
     seq: 2,
     data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 258400 },
+  })
+})
+
+test('原生会话桥接把失败结果写成带 isError 的 V4 tool-role 消息', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'turn/start', seq: 0, data: { turn: 1 } },
+    { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown, options?: unknown) {
+      const event = { type, seq: events.length, data, ...(options === undefined ? {} : { options }) }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'failed-tool' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+  const handle = bridge.appendToolCall?.('failed-tool', { callId: 'failed-1', name: 'bash', arguments: '{}', adapterId: 'codex' })
+  assert.equal(bridge.appendToolResult?.(handle!, { output: 'permission denied', isError: true, error: 'permission denied' }), true)
+  assert.deepEqual(events.at(-1)?.data, {
+    turn: 1,
+    step: 1,
+    message: {
+      id: 'failed-1-result-1-1',
+      role: 'tool',
+      toolCallId: 'failed-1',
+      content: [{ type: 'text', text: 'permission denied' }],
+      source: { kind: 'tool', callId: 'failed-1' },
+      isError: true,
+    },
+    error: { name: 'ExternalToolError', code: 'EXTERNAL_TOOL_FAILED', reason: 'permission denied' },
   })
 })
 
@@ -282,12 +324,9 @@ test('原生会话桥接按当前 step 顺序保存外部工具 call/result 事�
         step: 2,
         message: {
           id: 'bash-1-result-3-2',
-          role: 'user',
-          content: [{
-            type: 'tool-result',
-            toolCallId: 'bash-1',
-            content: [{ type: 'text', text: '/workspace' }],
-          }],
+          role: 'tool',
+          toolCallId: 'bash-1',
+          content: [{ type: 'text', text: '/workspace' }],
           source: { kind: 'tool', callId: 'bash-1' },
         },
       },
@@ -334,6 +373,43 @@ test('原生会话桥接通过 DSH approval 和 userQuestions 服务完成交互
   })
   assert.deepEqual(approvalRequests, [{ agent, toolName: 'edit', callId: 'edit-1', reason: '修改文件' }])
   assert.deepEqual(questionRequests, [{ agent, questions: [{ id: 'language', question: '选择语言' }] }])
+})
+
+test('原生会话桥接使用 Agent.inject 把外部工具推进下一个合法 step', () => {
+  const messages: unknown[] = []
+  const agent = { id: 'step-session', inject(message: unknown) { messages.push(message) } }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'agents' ? { get(id: string) { return id === agent.id ? agent : undefined } } : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.injectNextStep?.('step-session', '工具一已完成'), true)
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    id: (messages[0] as { id: string }).id,
+    role: 'user',
+    content: [{ type: 'text', text: '工具一已完成' }],
+    source: { kind: 'plugin', plugin: 'codingns4dsh', form: 'notice', summary: '工具一已完成' },
+  })
+  assert.equal(bridge.injectNextStep?.('missing'), false)
+})
+
+test('DSH 0.1.7 使用 model-selection source 注入下一个 step', () => {
+  const messages: unknown[] = []
+  const agent = { id: 'modern-step-session', inject(message: unknown) { messages.push(message) } }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'agents' ? { get(id: string) { return id === agent.id ? agent : undefined } } : undefined
+    },
+  } as never, '0.1.7-rc.2')
+
+  assert.equal(bridge.injectNextStep?.('modern-step-session', '工具已完成'), true)
+  assert.deepEqual((messages[0] as { source: unknown }).source, {
+    kind: 'model-selection',
+    form: 'notice',
+    summary: '工具已完成',
+  })
 })
 
 test('原生会话桥接通过 WorkspaceController 同步侧栏归档状态', async () => {

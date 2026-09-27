@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   CodingNsAgentQuestion,
@@ -22,6 +23,8 @@ export interface CodingNsNativeToolCall {
   readonly callId: string
   readonly name: string
   readonly arguments: string
+  /** 当前 step 已经落盘的 assistant 内容；追加工具声明时一并保留，避免覆盖正文。 */
+  readonly precedingAssistantContent?: readonly Record<string, unknown>[]
   /** 外部适配器 ID；旧调用方缺省时保持通用来源标记。 */
   readonly adapterId?: string
 }
@@ -119,6 +122,8 @@ export interface CodingNsNativeSessionBridge {
   appendExternalToolEvent?(sessionId: string, event: CodingNsNativeExternalToolEvent): boolean
   /** 写入当前原生步骤的路由上下文元数据，不携带凭据或消息正文。 */
   appendRequestContext?(sessionId: string, context: CodingNsNativeRequestContext): boolean
+  /** 在当前 Agent turn 的下一个合法 step 注入插件上下文，不唤醒空闲 Agent。 */
+  injectNextStep?(sessionId: string, summary?: string): boolean
   /** 使用 DSH 原生 approval 组件请求一次权限决定；服务不可用时拒绝。 */
   requestApproval?(sessionId: string, request: CodingNsNativeApprovalRequest): Promise<CodingNsNativeApprovalOutcome>
   /** 使用 DSH 原生 userQuestions 组件提问；服务不可用或取消时返回 null。 */
@@ -134,7 +139,7 @@ export interface CodingNsNativeSessionBridge {
   }): () => void
 }
 
-export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeSessionBridge {
+export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: string): CodingNsNativeSessionBridge {
   // Cordis Context 是运行时代理，直接读取未在 inject 中声明的可选服务会抛错。
   // get() 专门用于无强制依赖的服务探测，精简 Host 缺少服务时会返回 undefined。
   const storeValue: unknown = ctx.get('sessions')
@@ -151,6 +156,8 @@ export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeS
     ? (ctx as unknown as { on(name: string, listener: (...args: unknown[]) => unknown): () => unknown }).on.bind(ctx)
     : undefined
   const externalHandles = new Map<string, CodingNsNativeToolCallHandle>()
+  let injectedStepSequence = 0
+  const modernInjectedSource = isModernDshVersion(dshVersion)
   const appendNativeToolCall = (sessionId: string, call: CodingNsNativeToolCall): CodingNsNativeToolCallHandle | null => {
     const session = appendableSession(store?.get(sessionId))
     const position = session === null ? null : activeStep(session)
@@ -163,12 +170,15 @@ export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeS
       message: {
         id: `external-tool-${call.callId}-${position.turn}-${position.step}`,
         role: 'assistant',
-        content: [{
-          type: 'tool-call',
-          id: call.callId,
-          name: call.name,
-          arguments: call.arguments,
-        }],
+        content: [
+          ...(call.precedingAssistantContent ?? []),
+          {
+            type: 'tool-call',
+            id: call.callId,
+            name: call.name,
+            arguments: call.arguments,
+          },
+        ],
         source: {
           kind: 'model',
           plugin: 'codingns4dsh',
@@ -197,14 +207,11 @@ export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeS
       step: handle.step,
       message: {
         id: `${handle.callId}-result-${handle.turn}-${handle.step}`,
-        role: 'user',
-        content: [{
-          type: 'tool-result',
-          toolCallId: handle.callId,
-          content: [{ type: 'text', text: result.output }],
-          ...(result.isError ? { isError: true } : {}),
-        }],
+        role: 'tool',
+        toolCallId: handle.callId,
+        content: [{ type: 'text', text: result.output }],
         source: { kind: 'tool', callId: handle.callId },
+        ...(result.isError ? { isError: true } : {}),
       },
       ...(result.isError
         ? { error: { name: 'ExternalToolError', code: 'EXTERNAL_TOOL_FAILED', ...(error ? { reason: error } : {}) } }
@@ -224,6 +231,25 @@ export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeS
         provider: context.provider,
         model: context.model,
         ...(context.contextWindow === undefined ? {} : { contextWindow: context.contextWindow }),
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+  const injectNativeNextStep = (sessionId: string, summary = '外部工具已完成，继续处理当前任务。'): boolean => {
+    const agent = nativeAgent(ctx, sessionId)
+    if (agent === null || typeof (agent as { inject?: unknown }).inject !== 'function') return false
+    injectedStepSequence += 1
+    const boundedSummary = summary.trim().slice(0, 120) || '外部工具已完成，继续处理当前任务。'
+    try {
+      ;(agent as { inject(message: unknown): void }).inject({
+        id: `codingns-external-step-${injectedStepSequence}-${randomUUID()}`,
+        role: 'user',
+        content: [{ type: 'text', text: boundedSummary }],
+        source: modernInjectedSource
+          ? { kind: 'model-selection', form: 'notice', summary: boundedSummary }
+          : { kind: 'plugin', plugin: 'codingns4dsh', form: 'notice', summary: boundedSummary },
       })
       return true
     } catch {
@@ -275,6 +301,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context): CodingNsNativeS
     },
     appendRequestContext(sessionId, context) {
       return appendNativeRequestContext(sessionId, context)
+    },
+    injectNextStep(sessionId, summary) {
+      return injectNativeNextStep(sessionId, summary)
     },
     appendExternalToolEvent(sessionId, externalTool) {
       try {
@@ -427,6 +456,16 @@ function isWorkspaceController(value: unknown): value is CodingNsNativeWorkspace
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function isModernDshVersion(value: string | undefined): boolean {
+  if (value === undefined) return false
+  const match = /^(\d+)\.(\d+)\.(\d+)/u.exec(value.trim())
+  if (match === null) return false
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  const patch = Number(match[3])
+  return major > 0 || minor > 1 || minor === 1 && patch >= 7
 }
 
 function nativeAgent(ctx: Context, sessionId: string): unknown | null {

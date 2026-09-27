@@ -52,20 +52,11 @@ test('公共工具投影层聚合生命周期并提取 Provider 文本块', () =
   assert.deepEqual(sink.results[0]?.result, { output: 'Found 2 items', isError: false })
 })
 
-test('公共工具投影层在当前 step 立即追加原生工具事件', async () => {
+test('公共工具投影层在没有事件总线时立即追加原生工具事件', () => {
   const calls: string[] = []
-  const session = {}
-  let onEvent: ((subject: unknown, event: unknown) => void) | undefined
-  let publishing = false
   const bridge = {
-    supportsEvents: true,
-    get() { return session },
-    subscribe(handlers: { onEvent?: (subject: unknown, event: unknown) => void }) {
-      onEvent = handlers.onEvent
-      return () => { onEvent = undefined }
-    },
+    supportsEvents: false,
     appendToolCall() {
-      if (publishing) throw new Error('Session 正在发布事件时禁止重入 append')
       calls.push('tool/call')
       return { sessionId: 'session-deferred', turn: 1, step: 1, callId: 'call-1', callSeq: 1 }
     },
@@ -80,11 +71,82 @@ test('公共工具投影层在当前 step 立即追加原生工具事件', async
   projector.finalize('stop')
 
   assert.deepEqual(calls, ['tool/call', 'tool/result'])
-  publishing = true
-  onEvent?.(session, { type: 'step/start' })
-  publishing = false
+})
+
+test('公共工具投影层先落盘 assistant 正文，再追加原生工具事件', async () => {
+  const calls: string[] = []
+  const toolCalls: Array<Record<string, unknown>> = []
+  const session = {}
+  let onEvent: ((subject: unknown, event: unknown) => void) | undefined
+  const bridge = {
+    supportsEvents: true,
+    get() { return session },
+    subscribe(handlers: { onEvent?: (subject: unknown, event: unknown) => void }) {
+      onEvent = handlers.onEvent
+      return () => { onEvent = undefined }
+    },
+    appendToolCall(_sessionId: string, call: Record<string, unknown>) {
+      toolCalls.push(call)
+      calls.push('tool/call')
+      return { sessionId: 'session-ordered', turn: 1, step: 1, callId: 'call-1', callSeq: 1 }
+    },
+    appendToolResult() {
+      calls.push('tool/result')
+      return true
+    },
+  }
+  const projector = new CodingNsDshToolHistoryProjector(bridge as never, 'session-ordered')
+  projector.observe({ type: 'tool-event', toolName: 'bash', callId: 'call-1', input: 'pwd', status: 'completed' })
+  projector.finalize('stop')
+  assert.deepEqual(calls, [])
+
+  const emit = (event: unknown) => {
+    calls.push('assistant/message')
+    onEvent?.(session, event)
+  }
+  emit({
+    type: 'assistant/message',
+    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '我先检查当前目录。' }] } },
+  })
   await Promise.resolve()
+
+  assert.deepEqual(calls, ['assistant/message', 'tool/call', 'tool/result'])
+  assert.deepEqual(toolCalls[0]?.precedingAssistantContent, [{ type: 'text', text: '我先检查当前目录。' }])
+})
+
+test('公共工具投影层在正文先于工具通知时也保留正文并排队追加工具', async () => {
+  const calls: string[] = []
+  const toolCalls: Array<Record<string, unknown>> = []
+  const session = {}
+  let onEvent: ((subject: unknown, event: unknown) => void) | undefined
+  const bridge = {
+    supportsEvents: true,
+    get() { return session },
+    subscribe(handlers: { onEvent?: (subject: unknown, event: unknown) => void }) {
+      onEvent = handlers.onEvent
+      return () => { onEvent = undefined }
+    },
+    appendToolCall(_sessionId: string, call: Record<string, unknown>) {
+      toolCalls.push(call)
+      calls.push('tool/call')
+      return { sessionId: 'session-text-first', turn: 1, step: 1, callId: 'call-text-first', callSeq: 1 }
+    },
+    appendToolResult() {
+      calls.push('tool/result')
+      return true
+    },
+  }
+  const projector = new CodingNsDshToolHistoryProjector(bridge as never, 'session-text-first')
+  onEvent?.(session, {
+    type: 'assistant/message',
+    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '先说明执行计划。' }] } },
+  })
+  projector.observe({ type: 'tool-event', toolName: 'bash', callId: 'call-text-first', input: 'pwd', status: 'completed' })
+  assert.deepEqual(calls, [])
+  await Promise.resolve()
+
   assert.deepEqual(calls, ['tool/call', 'tool/result'])
+  assert.deepEqual(toolCalls[0]?.precedingAssistantContent, [{ type: 'text', text: '先说明执行计划。' }])
 })
 
 test('公共工具投影层优先按通知顺序保存外部工具标记，不追加原生 call/result', () => {
