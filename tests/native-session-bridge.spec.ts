@@ -220,6 +220,38 @@ test('原生会话桥接保存外部 Agent 的 request/context 容量元数据',
   })
 })
 
+test('原生会话桥接跳过等价 request/context 并保留已有上下文容量', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'request/context', seq: 0, data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 258400 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-context-stable' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendRequestContext?.('native-context-stable', {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+  }), true)
+  assert.equal(bridge.appendRequestContext?.('native-context-stable', {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+    contextWindow: 258400,
+  }), true)
+  assert.equal(events.length, 1)
+})
+
 test('原生会话桥接把失败结果写成带 isError 的 V4 tool-role 消息', () => {
   const events: Array<Record<string, any>> = [
     { type: 'turn/start', seq: 0, data: { turn: 1 } },

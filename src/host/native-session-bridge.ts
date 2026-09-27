@@ -222,6 +222,14 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     const session = appendableSession(store?.get(sessionId))
     if (session === null || context.provider.trim() === '' || context.model.trim() === '') return false
     try {
+      // request/context 是 token-meter 的容量来源。相同路由重复追加会让
+      // 投影先清空旧 pressure，再等待下一条 usage，ContextMeter 因而闪烁。
+      // 保留已有容量并跳过等价事件，让用量更新直接落到同一个组件上。
+      const previous = latestRequestContext(session)
+      if (previous !== null
+        && previous.provider === context.provider
+        && previous.model === context.model
+        && (context.contextWindow === undefined || previous.contextWindow === context.contextWindow)) return true
       session.append('request/context', {
         provider: context.provider,
         model: context.model,
@@ -393,6 +401,12 @@ interface AppendableSession {
   append(type: string, data: unknown, options?: unknown): unknown
 }
 
+interface RequestContextSnapshot {
+  readonly provider: string
+  readonly model: string
+  readonly contextWindow?: number
+}
+
 interface NativeAgentRegistry {
   get(sessionId: string): unknown
 }
@@ -409,6 +423,26 @@ function appendableSession(value: unknown): AppendableSession | null {
   if (!isRecord(value)) return null
   if (typeof value.snapshotEvents !== 'function' || typeof value.append !== 'function') return null
   return value as unknown as AppendableSession
+}
+
+function latestRequestContext(session: AppendableSession): RequestContextSnapshot | null {
+  let events: readonly unknown[]
+  try { events = session.snapshotEvents() } catch { return null }
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const candidate = events[index]
+    const event: Record<string, unknown> | null = isRecord(candidate) ? candidate : null
+    if (event?.type !== 'request/context') continue
+    const data = isRecord(event.data) ? event.data : null
+    if (typeof data?.provider !== 'string' || typeof data.model !== 'string') return null
+    return {
+      provider: data.provider,
+      model: data.model,
+      ...(typeof data.contextWindow === 'number' && Number.isFinite(data.contextWindow) && data.contextWindow > 0
+        ? { contextWindow: data.contextWindow }
+        : {}),
+    }
+  }
+  return null
 }
 
 function activeStep(session: AppendableSession): { turn: number; step: number } | null {
