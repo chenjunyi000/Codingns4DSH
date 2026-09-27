@@ -1,6 +1,6 @@
 <div align="center">
 
-# Codingns for DeepSeek Harness
+# CodingNS for DeepSeek Harness
 
 **把外部 Agent CLI、持久终端、工作区调试和远程访问，装进 DSH 原生界面。**
 
