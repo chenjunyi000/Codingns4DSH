@@ -753,6 +753,59 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
   await features.disable('cliAdapters')
 })
 
+test('Codex 在原生会话不可注入下一步时不启用分段模式', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  let splitToolSteps: boolean | undefined
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    supportsSegmentedTurns: true,
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input) {
+      splitToolSteps = input.splitToolSteps
+      yield { type: 'tool-event', toolName: 'shell', callId: 'call-1', status: 'completed' } as const
+      yield { type: 'text-delta', text: '工具完成后的正文' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      supportsEvents: false,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async listRemote() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      canInjectNextStep() { return false },
+      injectNextStep() { throw new Error('不应调用注入') },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  await table.resolve('cli/session/set')?.handler('session/set', { sessionId: 'codex-no-injection', adapterId: 'codex' })
+
+  const chunks = []
+  for await (const chunk of listener!({ sessionId: 'codex-no-injection', messages: [{ role: 'user', content: '执行工具' }] }, async function* () {})) chunks.push(chunk)
+
+  assert.equal(splitToolSteps, undefined)
+  assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && chunk.text === '工具完成后的正文'), true)
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  await features.disable('cliAdapters')
+})
+
 test('OpenCode 和 Command Code 不按工具完成切分 DSH step', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined

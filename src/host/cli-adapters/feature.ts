@@ -141,6 +141,8 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             ...(registry.supportsSegmentedTurns(config.adapterId)
               && nativeSessions?.available === true
               && nativeSessions.injectNextStep !== undefined
+              && (nativeSessions.canInjectNextStep === undefined
+                || nativeSessions.canInjectNextStep(sessionId))
               ? { splitToolSteps: true }
               : {}),
           }
