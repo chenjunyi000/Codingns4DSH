@@ -75,7 +75,7 @@ export async function repairLegacySessionLog(path: string, signal?: AbortSignal)
   const source = await readFileBytes(path)
   throwIfAborted(signal)
   const parsed = decodeLog(path, source)
-  const repaired = repairEvents(parsed.events)
+  const repaired = repairEvents(parsed.events, isV4Log(path, parsed.header))
   if (repaired === null) return false
   throwIfAborted(signal)
   await publishRepair(path, parsed.header, repaired, parsed.compression, source, signal)
@@ -139,10 +139,11 @@ function decodeZstd(bytes: Buffer): string {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-function repairEvents(events: readonly SessionEvent[]): SessionEvent[] | null {
+function repairEvents(events: readonly SessionEvent[], canonicalizeV4Results = false): SessionEvent[] | null {
   const mapping: number[] = []
   const insertBefore = new Map<number, { callId: string; name: string; arguments: string; turn: number; step: number }>()
   const pending = new Set<string>()
+  let canonicalized = false
   for (const event of events) {
     const oldSeq = event.seq!
     if (event.type === 'assistant/message') registerDeclaredCalls(event, pending)
@@ -159,7 +160,16 @@ function repairEvents(events: readonly SessionEvent[]): SessionEvent[] | null {
       if (callId !== null) pending.delete(callId)
     }
   }
-  if (insertBefore.size === 0) return null
+  if (insertBefore.size === 0 && !canonicalizeV4Results) return null
+  if (canonicalizeV4Results) {
+    for (const event of events) {
+      if (canonicalizeV4ToolResult(event) !== event) {
+        canonicalized = true
+        break
+      }
+    }
+  }
+  if (insertBefore.size === 0 && !canonicalized) return null
 
   let nextSeq = 0
   for (const event of events) {
@@ -174,9 +184,38 @@ function repairEvents(events: readonly SessionEvent[]): SessionEvent[] | null {
     const oldSeq = event.seq!
     const call = insertBefore.get(oldSeq)
     if (call !== undefined) output.push(createDeclaration(event, call, mapping[oldSeq]! - 1))
-    output.push(remapEvent(event, mapping[oldSeq]!, mapping))
+    const normalized = canonicalizeV4Results ? canonicalizeV4ToolResult(event) : event
+    output.push(remapEvent(normalized, mapping[oldSeq]!, mapping))
   }
   return output
+}
+
+function isV4Log(path: string, header: Record<string, unknown>): boolean {
+  return header.version === 4 || /\.v4\.jsonl(?:\.zstd)?$/u.test(path)
+}
+
+/** 将插件旧版在 V4 文件中留下的 V3 tool-result wrapper 提升为 tool-role 消息。 */
+function canonicalizeV4ToolResult(event: SessionEvent): SessionEvent {
+  if (event.type !== 'tool/result') return event
+  const data = isRecord(event.data) ? event.data : undefined
+  const message = data && isRecord(data.message) ? data.message : undefined
+  if (message?.role !== 'user') return event
+  const source = isRecord(message.source) ? message.source : undefined
+  const callId = source?.kind === 'tool' && typeof source.callId === 'string' ? source.callId : undefined
+  const content = message.content
+  if (callId === undefined || !Array.isArray(content) || content.length !== 1) return event
+  const wrapper = content[0]
+  if (!isRecord(wrapper) || wrapper.type !== 'tool-result' || wrapper.toolCallId !== callId || !Array.isArray(wrapper.content)) return event
+  if (wrapper.isError !== undefined && typeof wrapper.isError !== 'boolean') return event
+  const { content: _legacyContent, ...rest } = message
+  const normalizedMessage = {
+    ...rest,
+    role: 'tool',
+    toolCallId: callId,
+    content: wrapper.content,
+    ...(wrapper.isError === undefined ? {} : { isError: wrapper.isError }),
+  }
+  return { ...event, data: { ...data, message: normalizedMessage } }
 }
 
 function registerDeclaredCalls(event: SessionEvent, pending: Set<string>): void {
@@ -200,7 +239,13 @@ function toolCallData(event: SessionEvent): { callId: string; name: string; argu
 function toolResultCallId(event: SessionEvent): string | null {
   const data = isRecord(event.data) ? event.data : undefined
   const message = data && isRecord(data.message) ? data.message : undefined
-  return typeof message?.toolCallId === 'string' ? message.toolCallId : null
+  if (typeof message?.toolCallId === 'string') return message.toolCallId
+  const content = message?.content
+  if (!Array.isArray(content) || content.length !== 1) return null
+  const wrapper = content[0]
+  return isRecord(wrapper) && wrapper.type === 'tool-result' && typeof wrapper.toolCallId === 'string'
+    ? wrapper.toolCallId
+    : null
 }
 
 function createDeclaration(event: SessionEvent, call: { callId: string; name: string; arguments: string; turn: number; step: number }, seq: number): SessionEvent {

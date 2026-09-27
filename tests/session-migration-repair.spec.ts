@@ -64,6 +64,28 @@ test('DSH 0.1.7 v4 日志中的裸调用也能在恢复前修复', async () => {
   }
 })
 
+test('DSH 0.1.7 v4 日志中的旧 tool-result wrapper 会提升为 tool-role 消息', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codingns-repair-v4-wrapper-'))
+  try {
+    const path = join(root, 'session.v4.jsonl')
+    const rows = sampleEvents(false)
+    rows[0] = { type: 'session', version: 4 }
+    await writeFile(path, encodeNone(rows))
+    assert.equal(await repairLegacySessionLog(path), true)
+    const repaired = decodeNone(await readFile(path))
+    const message = repaired.events.find((event) => event.type === 'tool/result')?.data?.message
+    assert.deepEqual(message, {
+      id: 'one-result',
+      role: 'tool',
+      toolCallId: 'one',
+      content: [{ type: 'text', text: 'ok' }],
+      source: { kind: 'tool', callId: 'one' },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('修复失败时保持原文件不变', async () => {
   const root = await mkdtemp(join(tmpdir(), 'codingns-repair-failure-'))
   try {
