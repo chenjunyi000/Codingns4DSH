@@ -29,7 +29,7 @@ import { CLIENT_FEATURES } from './features/index.js'
 import type { CodingNsClientFeatureModule, CodingNsClientServices, CodingNsRpcClient } from './features/types.js'
 import { ensureCryptoRandomUUID } from './lan-access.js'
 import { CodingNsSettingsSection } from './settings-section.js'
-import { createCodingNsSettingsBridge } from './settings-bridge.js'
+import { callCodingNsRpc, createCodingNsSettingsBridge } from './settings-bridge.js'
 import { debugInfo } from '../shared/debug.js'
 import { createConfigFormSettingsStore, type DshClientConfigForms, type DshConfigForm } from '../dsh-capabilities/client/config-forms-adapter.js'
 import type { CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
@@ -237,15 +237,52 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
   const forms = ctx.get('configForms') as DshClientConfigForms | undefined
   const form = findConfigForm(forms)
   debugInfo('codingns4dsh: client settings source=configForms', { hasConfigForms: forms !== undefined, hasForm: form !== undefined })
-  return createConfigFormSettingsStore({ get: <T>() => form as DshConfigForm<T> | undefined }, CODINGNS_SETTINGS_NAMESPACE)
+  return createConfigFormSettingsStore(
+    { get: <T>() => form as DshConfigForm<T> | undefined },
+    CODINGNS_SETTINGS_NAMESPACE,
+    form === undefined
+      ? undefined
+      : {
+        // DSH 0.1.7 的 ConfigForm 会把 Host 后台索引更新也纳入 revision。
+        // Codingns4DSH 的路径操作是原子的，交给 Host RPC 无条件合并，避免
+        // 模块开关因为 cliSessions 的后台心跳而永久冲突。
+        writeUnfenced: async (ops) => callCodingNsRpc<{
+          readonly value: CodingNsSettings
+          readonly revision: number
+        }>(rpc, 'settings/set', { ops }),
+      },
+  )
 }
 
 function findConfigForm(forms: DshClientConfigForms | undefined): DshConfigForm<CodingNsSettings> | undefined {
   if (forms === undefined) return undefined
+  // ConfigForms.get 对未知 entry 也会返回一个 Form；必须先看共享 mirror 中
+  // Host 实际提供的 namespace，否则会永远拿到旧的 `codingns` 空表单。
+  try {
+    const namespaces = forms.describe?.().getSnapshot().view?.namespaces
+    debugInfo('codingns4dsh: client config form namespaces', {
+      namespaces: namespaces?.map((item) => item.ns),
+    })
+    const servedId = CODINGNS_SETTINGS_ENTRY_IDS.find((id) => namespaces?.some((item) => item.ns === id))
+    if (servedId !== undefined) {
+      const form = forms.get<CodingNsSettings>(servedId)
+      debugInfo('codingns4dsh: client config form namespace selected', { namespace: servedId, hasForm: form !== undefined })
+      return form
+    }
+  } catch {
+    // mirror 尚未就绪时继续按 scoped entry 优先的兼容顺序探测。
+  }
   for (const id of CODINGNS_SETTINGS_ENTRY_IDS) {
     try {
       const form = forms.get<CodingNsSettings>(id)
-      if (form !== undefined) return form
+      if (form !== undefined && form.getSnapshot().status !== 'unavailable') {
+        debugInfo('codingns4dsh: client config form namespace fallback selected', {
+          namespace: id,
+          status: form.getSnapshot().status,
+          revision: form.getSnapshot().revision,
+        })
+        return form
+      }
     } catch {
       // 不同 0.1.7 构建可能只接受其中一个 entry id，继续尝试别名。
     }

@@ -140,7 +140,13 @@ function FeatureCard({ entry, snapshot, services, restartStates, notify }: Featu
     }
     void services.settings
       .mutate([{ op: 'set', path: [CODINGNS_MODULES_FIELD, module.descriptor.name], value: next }])
-      .then(() => notify({ kind: 'success', message: t(next ? 'settings.moduleEnabled' : 'settings.moduleDisabled', { label: t(ui.labelKey ?? ui.label) }) }))
+      .then((accepted) => {
+        if (!accepted) {
+          notify({ kind: 'error', message: t('settings.moduleWriteRejected') })
+          return
+        }
+        notify({ kind: 'success', message: t(next ? 'settings.moduleEnabled' : 'settings.moduleDisabled', { label: t(ui.labelKey ?? ui.label) }) })
+      })
       .catch((cause: unknown) => {
         notify({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause) })
       })

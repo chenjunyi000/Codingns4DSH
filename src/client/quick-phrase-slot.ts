@@ -124,7 +124,7 @@ function QuickPhraseSlot(props: QuickPhraseSlotProps): ReactElement | null {
       op: 'set',
       path: ['workspaceSessionEnhancement', 'quickPhrasesSeeded'],
       value: true,
-    }]).then(() => setSaveError(false)).catch(() => setSaveError(true)).finally(() => setSaving(false))
+    }]).then((accepted) => setSaveError(!accepted)).catch(() => setSaveError(true)).finally(() => setSaving(false))
   }
 
   const addPhrase = (): void => {

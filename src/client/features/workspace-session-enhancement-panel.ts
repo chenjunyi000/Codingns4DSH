@@ -24,7 +24,13 @@ export function WorkspaceSessionEnhancementPanel({ services, enabled, snapshot, 
       op: 'set',
       path: [CODINGNS_WORKSPACE_SESSION_ENHANCEMENT_FIELD, field],
       value: nextValue,
-    }]).then(() => notify({ kind: 'success', message: '工作区会话设置已保存' })).catch((cause: unknown) => {
+    }]).then((accepted) => {
+      if (!accepted) {
+        notify({ kind: 'error', message: t('settings.moduleWriteRejected') })
+        return
+      }
+      notify({ kind: 'success', message: '工作区会话设置已保存' })
+    }).catch((cause: unknown) => {
       notify({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause) })
     })
   }

@@ -127,6 +127,13 @@ test('Client 入口兼容 DSH 0.1.7 ConfigForm，不把旧 settingsScope 作为�
   assert.match(source, /createConfigFormSettingsStore/u)
 })
 
+test('Client ConfigForm 选择 Host 实际提供的 scoped namespace，不误用旧空表单', async () => {
+  const source = await readFile(clientSource, 'utf8')
+  assert.match(source, /forms\.describe\?\.\(\)\.getSnapshot\(\)\.view\?\.namespaces/u)
+  assert.match(source, /form\.getSnapshot\(\)\.status !== 'unavailable'/u)
+  assert.match(source, /CODINGNS_SETTINGS_ENTRY_IDS\.find/u)
+})
+
 test('Client 版本门禁可用 ConfigForms 标识现代 DSH', async () => {
   const source = await readFile(runtimeVersionSource, 'utf8')
   assert.match(source, /hasModernConfigForms\(ctx\)/u)

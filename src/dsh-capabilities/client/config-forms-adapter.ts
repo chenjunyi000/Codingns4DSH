@@ -13,12 +13,32 @@ export interface DshConfigForm<T> {
 
 export interface DshClientConfigForms {
   get<T>(namespace: string): DshConfigForm<T> | undefined
+  /** 0.1.7 ConfigForms 的共享 settings mirror；用于确认真正被 Host 提供的 entry。 */
+  describe?: () => {
+    getSnapshot: () => {
+      readonly view?: { readonly namespaces: readonly { readonly ns: string }[] }
+    }
+  }
+}
+
+/** 通过 Codingns4DSH Host RPC 写入设置；省略 ConfigForm 的全局 revision 栅栏。 */
+export interface DshConfigFormUnfencedWriter {
+  (operations: readonly { readonly op: 'set' | 'unset'; readonly path: readonly string[]; readonly value?: unknown }[]): Promise<{
+    readonly value: CodingNsSettings
+    readonly revision: number
+  }>
+}
+
+export interface DshConfigFormSettingsOptions {
+  /** DSH 0.1.7 后台可能持续更新同一 entry 的 Host-only 索引时使用。 */
+  readonly writeUnfenced?: DshConfigFormUnfencedWriter
 }
 
 /** 0.1.7 Client ConfigForm 路由适配器。 */
 export function createConfigFormSettingsStore(
   forms: DshClientConfigForms,
   namespace: string,
+  options: DshConfigFormSettingsOptions = {},
 ): CodingNsSettingsStore<CodingNsSettings> {
   const form = forms.get<CodingNsSettings>(namespace)
   if (form === undefined) {
@@ -31,40 +51,67 @@ export function createConfigFormSettingsStore(
     }
   }
   let snapshot = toStoreSnapshot(form.getSnapshot())
+  debugInfo('codingns4dsh: client config form selected', {
+    namespace,
+    status: snapshot.status,
+    revision: snapshot.revision,
+    writable: snapshot.writable,
+  })
   const listeners = new Set<() => void>()
   const refresh = (): void => {
     const next = toStoreSnapshot(form.getSnapshot())
+    // 自有 Host RPC 的写入答复可能先于原生 mirror 事件到达；旧 revision
+    // 只能被丢弃，不能把刚接受的模块开关覆盖回去。
+    if (snapshot.revision !== undefined && next.revision !== undefined && next.revision < snapshot.revision) return
     if (sameSnapshot(snapshot, next)) return
     snapshot = next
     for (const listener of [...listeners]) listener()
   }
   const unsubscribeForm = form.subscribe(refresh)
+  const publishWrite = (response: { readonly value: CodingNsSettings; readonly revision: number }): boolean => {
+    const next = {
+      value: toClientValue(response.value),
+      revision: response.revision,
+      writable: true,
+      status: 'ready' as const,
+    }
+    if (sameSnapshot(snapshot, next)) return true
+    snapshot = next
+    for (const listener of [...listeners]) listener()
+    return true
+  }
+  const write = async (
+    operations: readonly { readonly op: 'set' | 'unset'; readonly path: readonly string[]; readonly value?: unknown }[],
+    formWrite: () => Promise<void | boolean>,
+    formRetry: () => Promise<void | boolean> = () => form.mutate(operations),
+  ): Promise<boolean> => {
+    if (options.writeUnfenced !== undefined) {
+      debugInfo('codingns4dsh: client settings host rpc write', {
+        namespace,
+        paths: operations.map((operation) => operation.path.join('.')),
+      })
+      const response = await options.writeUnfenced(operations)
+      debugInfo('codingns4dsh: client settings host rpc write accepted', {
+        namespace,
+        revision: response.revision,
+      })
+      return publishWrite(response)
+    }
+    const result = await writeWithRetry(formWrite, formRetry)
+    refresh()
+    return result
+  }
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
     mutate: async (operations, revision) => {
-      const result = await writeWithRetry(
-        () => form.mutate(operations, revision),
-        () => form.mutate(operations),
-      )
-      refresh()
-      return result
+      return write(operations, () => form.mutate(operations, revision))
     },
     set: async (field, value) => {
-      const result = await writeWithRetry(
-        () => form.set(field, value),
-        () => form.set(field, value),
-      )
-      refresh()
-      return result
+      return write([{ op: 'set', path: [field], value }], () => form.set(field, value), () => form.set(field, value))
     },
     unset: async (field) => {
-      const result = await writeWithRetry(
-        () => form.unset(field),
-        () => form.unset(field),
-      )
-      refresh()
-      return result
+      return write([{ op: 'unset', path: [field] }], () => form.unset(field), () => form.unset(field))
     },
     dispose: () => {
       unsubscribeForm()
@@ -92,15 +139,19 @@ async function writeWithRetry(
 }
 
 function toStoreSnapshot(snapshot: ReturnType<DshConfigForm<CodingNsSettings>['getSnapshot']>) {
-  const value = snapshot.value === undefined
-    ? undefined
-    : (({ cliSessions: _cliSessions, ...clientValue }) => clientValue)(snapshot.value)
+  const value = toClientValue(snapshot.value)
   return {
     value: value as CodingNsSettings | undefined,
     revision: snapshot.revision,
     writable: snapshot.writable,
     status: snapshot.status ?? 'ready' as const,
   }
+}
+
+function toClientValue(value: CodingNsSettings | undefined): CodingNsSettings | undefined {
+  return value === undefined
+    ? undefined
+    : (({ cliSessions: _cliSessions, ...clientValue }) => clientValue)(value)
 }
 
 function sameSnapshot(left: ReturnType<typeof toStoreSnapshot>, right: ReturnType<typeof toStoreSnapshot>): boolean {

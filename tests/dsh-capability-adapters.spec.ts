@@ -60,6 +60,43 @@ test('0.1.7 Client ConfigForm revision 冲突后使用最新快照重试写入',
   assert.equal(attempts, 2)
 })
 
+test('0.1.7 Client 设置写入通过 Host RPC 跳过后台索引 revision 冲突', async () => {
+  const value = { controlBaseUrl: 'https://example.test', modules: {}, cliSessions: [] }
+  let formMutations = 0
+  let received: unknown
+  const form = {
+    getSnapshot: () => ({ value, revision: 3, writable: true as const, status: 'ready' as const }),
+    subscribe: () => () => undefined,
+    mutate: async () => {
+      formMutations += 1
+      throw new Error('不应调用带 revision 的 ConfigForm')
+    },
+    set: async () => {
+      formMutations += 1
+      throw new Error('不应调用带 revision 的 ConfigForm')
+    },
+    unset: async () => {
+      formMutations += 1
+      throw new Error('不应调用带 revision 的 ConfigForm')
+    },
+  }
+  const store = createConfigFormSettingsStore({ get: () => form }, 'codingns', {
+    writeUnfenced: async (operations) => {
+      received = operations
+      return {
+        value: { ...value, modules: { reverseProxy: true } },
+        revision: 9,
+      }
+    },
+  })
+
+  assert.equal(await store.mutate([{ op: 'set', path: ['modules', 'reverseProxy'], value: true }]), true)
+  assert.equal(formMutations, 0)
+  assert.deepEqual(received, [{ op: 'set', path: ['modules', 'reverseProxy'], value: true }])
+  assert.equal(store.getSnapshot().value?.modules.reverseProxy, true)
+  assert.equal(store.getSnapshot().revision, 9)
+})
+
 test('统一 RPC dispatch 只使用宿主传入的 peer context', async () => {
   const table = new CodingNsRpcTable()
   let received: unknown

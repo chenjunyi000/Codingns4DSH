@@ -103,29 +103,7 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
   dispose(): void { this.localUnsubscribe() }
 
   private async call<T>(endpoint: string, payload: unknown): Promise<T> {
-    let result
-    try {
-      debugInfo('codingns4dsh: client rpc request', { channel: CODINGNS_RPC_CHANNEL, endpoint })
-      result = await this.rpc.call(CODINGNS_RPC_CHANNEL, endpoint, payload)
-    } catch (error) {
-      // DSH 原生连接通常把自定义 RPC 映射到 /api；保留逻辑通道兼容
-      // Codingns4DSH Transport，同时在普通 Web Host 上回退到实际 Fetch 路由。
-      const message = error instanceof Error ? error.message : String(error)
-      if (!/HTTP (?:404|405)\b/u.test(message)) throw error
-      debugWarn('codingns4dsh: client rpc fallback', { endpoint, error: message })
-      try {
-        result = await this.rpc.call('/api', `codingns/${endpoint}`, payload)
-      } catch (fallbackError) {
-        console.error('codingns4dsh: client rpc fallback failed', { endpoint, error: fallbackError })
-        throw fallbackError
-      }
-    }
-    if (!result.ok) {
-      console.error('codingns4dsh: client rpc response error', { endpoint, error: result.error })
-      throw new Error(result.error.message)
-    }
-    debugInfo('codingns4dsh: client rpc response success', { endpoint })
-    return result.value as T
+    return callCodingNsRpc<T>(this.rpc, endpoint, payload)
   }
 
   private publish(next: CodingNsSettingsSnapshot<CodingNsSettings>): void {
@@ -137,6 +115,33 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
     const snapshot = this.local.getSnapshot()
     return snapshot.mode === 'memory' || snapshot.status === 'unavailable'
   }
+}
+
+/** 调用 Codingns4DSH Host RPC，并兼容 DSH 原生连接与普通 Web API 回退。 */
+export async function callCodingNsRpc<T>(rpc: CodingNsRpcClient, endpoint: string, payload: unknown): Promise<T> {
+  let result
+  try {
+    debugInfo('codingns4dsh: client rpc request', { channel: CODINGNS_RPC_CHANNEL, endpoint })
+    result = await rpc.call(CODINGNS_RPC_CHANNEL, endpoint, payload)
+  } catch (error) {
+    // DSH 原生连接通常把自定义 RPC 映射到 /api；保留逻辑通道兼容
+    // Codingns4DSH Transport，同时在普通 Web Host 上回退到实际 Fetch 路由。
+    const message = error instanceof Error ? error.message : String(error)
+    if (!/HTTP (?:404|405)\b/u.test(message)) throw error
+    debugWarn('codingns4dsh: client rpc fallback', { endpoint, error: message })
+    try {
+      result = await rpc.call('/api', `codingns/${endpoint}`, payload)
+    } catch (fallbackError) {
+      console.error('codingns4dsh: client rpc fallback failed', { endpoint, error: fallbackError })
+      throw fallbackError
+    }
+  }
+  if (!result.ok) {
+    console.error('codingns4dsh: client rpc response error', { endpoint, error: result.error })
+    throw new Error(result.error.message)
+  }
+  debugInfo('codingns4dsh: client rpc response success', { endpoint })
+  return result.value as T
 }
 
 type JsonValue = Extract<SettingsMutation[number], { readonly op: 'set' }>['value']
