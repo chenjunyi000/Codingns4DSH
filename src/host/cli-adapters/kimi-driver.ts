@@ -9,7 +9,7 @@ import { probeStoredSession, readFirstJsonRecord, resolveSessionDirectory } from
 import { firstToolText, isToolRecord, normalizeToolStatus, serializeToolValue } from './tool-observation.js'
 import { isQuestionEvent, readAgentQuestions } from './interaction-events.js'
 import { usageChunk } from './rpc-driver-utils.js'
-import { terminateChildProcess } from './process-utils.js'
+import { commandEnvironment, terminateChildProcess } from './process-utils.js'
 
 interface KimiPendingInteraction {
   readonly rpcId: string | number
@@ -121,7 +121,7 @@ export class KimiCliDriver extends StandardStreamDriver {
     if (input.cwd) args.push(this.legacySyntax ? '--cwd' : '--work-dir', input.cwd)
     if (input.modelId && !isProviderDefaultModel(input.modelId)) args.push('--model', input.modelId)
     const child = this.runSpawn(command, args, {
-      cwd: input.cwd ?? process.cwd(), env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: process.platform === 'win32',
+      cwd: input.cwd ?? process.cwd(), env: commandEnvironment(command), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: process.platform === 'win32',
     })
     const stdin = (child as unknown as { stdin: { write(data: string): void } }).stdin
     const interaction: KimiInteractionState = {
@@ -210,7 +210,7 @@ export class KimiCliDriver extends StandardStreamDriver {
 
   private detectSyntax(command: string): void {
     try {
-      const result = this.runSpawnSync(command, ['--help'], { encoding: 'utf8', timeout: 5_000, windowsHide: true, shell: process.platform === 'win32' })
+      const result = this.runSpawnSync(command, ['--help'], { encoding: 'utf8', timeout: 5_000, windowsHide: true, shell: process.platform === 'win32', env: commandEnvironment(command) })
       const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.toLowerCase()
       this.legacySyntax = /(?:^|\s)wire(?:\s|$)/u.test(output) && !output.includes('--wire')
     } catch {

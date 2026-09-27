@@ -12,7 +12,7 @@ import { isProviderDefaultModel } from './model-catalog.js'
 import { firstToolText, normalizeToolStatus, serializeToolValue } from './tool-observation.js'
 import { isQuestionEvent, questionAnswersList, readAgentQuestions } from './interaction-events.js'
 import { usageChunk } from './rpc-driver-utils.js'
-import { terminateChildProcess } from './process-utils.js'
+import { commandEnvironment, resolveCommandPath, terminateChildProcess } from './process-utils.js'
 
 const WINDOWS = process.platform === 'win32'
 const DEFAULT_BINARIES = WINDOWS ? ['opencode.exe', 'opencode'] : ['opencode']
@@ -350,7 +350,7 @@ export class OpenCodeDriver implements CodingNsCliDriver {
     try {
       child = this.runSpawn(command, [...this.serverArgs, '--port', String(port)], {
         cwd,
-        env: { ...process.env },
+        env: commandEnvironment(command),
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
         shell: WINDOWS,
@@ -404,6 +404,16 @@ export class OpenCodeDriver implements CodingNsCliDriver {
           return { command, version: output.match(/\d+\.\d+\.\d+/u)?.[0] ?? null }
         }
       } catch { /* PATH 中没有命令 */ }
+      const resolved = resolveCommandPath(command, this.runSpawnSync)
+      if (resolved === null) continue
+      try {
+        const result = this.runSpawnSync(resolved, ['--version'], { encoding: 'utf8', timeout: 3_000, windowsHide: true, shell: WINDOWS, env: commandEnvironment(resolved) })
+        const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+        if (result.status === 0) {
+          this.cachedBinary = resolved
+          return { command: resolved, version: output.match(/\d+\.\d+\.\d+/u)?.[0] ?? null }
+        }
+      } catch { /* 登录 Shell 找到的命令也可能已失效 */ }
     }
     return null
   }

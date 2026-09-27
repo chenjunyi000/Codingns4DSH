@@ -11,7 +11,7 @@ import type {
 import type { CodingNsCliDriver, CodingNsCliSessionProbeInput, CodingNsCliSessionProbeResult } from './driver.js'
 import { firstToolText, serializeToolValue } from './tool-observation.js'
 import { usageChunk } from './rpc-driver-utils.js'
-import { terminateChildProcess } from './process-utils.js'
+import { commandEnvironment, resolveCommandPath, terminateChildProcess } from './process-utils.js'
 
 const WINDOWS = process.platform === 'win32'
 const COMMAND_CODE_BINARIES = WINDOWS
@@ -121,6 +121,7 @@ export class CommandCodeDriver implements CodingNsCliDriver {
   private readonly runSpawnSync: typeof spawnSync
   private readonly runSpawn: typeof spawn
   private cachedBinary: string | null = null
+  private cachedEnvironment: Record<string, string | undefined> | undefined
   private readonly processes = new Set<ChildProcessWithoutNullStreams>()
 
   constructor(options: CommandCodeDriverOptions = {}) {
@@ -132,19 +133,36 @@ export class CommandCodeDriver implements CodingNsCliDriver {
 
   async detect(): Promise<{ installed: boolean; version: string | null; command: string | null }> {
     for (const command of this.binaries) {
-      try {
-        const result = this.runSpawnSync(command, ['--version'], { encoding: 'utf8', timeout: 3_000, windowsHide: true, shell: WINDOWS })
-        const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim()
-        const version = output.match(/\d+\.\d+\.\d+/u)?.[0] ?? null
-        if (result.status === 0 && version !== null) {
-          this.cachedBinary = command
-          return { installed: true, version, command }
-        }
-      } catch {
-        // PATH 中不存在候选命令属于正常的未安装状态。
-      }
+      const direct = this.detectCommand(command)
+      if (direct !== null) return direct
+      if (!this.lookupAfterDetectionFailure) continue
+      const resolved = resolveCommandPath(command, this.runSpawnSync)
+      if (resolved === null) continue
+      const fallback = this.detectCommand(resolved)
+      if (fallback !== null) return fallback
     }
     return { installed: false, version: null, command: null }
+  }
+
+  private lookupAfterDetectionFailure = false
+
+  private detectCommand(command: string): { installed: true; version: string; command: string } | null {
+    this.lookupAfterDetectionFailure = false
+    try {
+      const result = this.runSpawnSync(command, ['--version'], { encoding: 'utf8', timeout: 3_000, windowsHide: true, shell: WINDOWS, env: commandEnvironment(command) })
+      const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim()
+      const version = output.match(/\d+\.\d+\.\d+/u)?.[0] ?? null
+      if (result.status === 0 && version !== null) {
+        this.cachedBinary = command
+        this.cachedEnvironment = commandEnvironment(command)
+        return { installed: true, version, command }
+      }
+      this.lookupAfterDetectionFailure = result.status === null
+    } catch {
+      // PATH 中不存在候选命令属于正常的未安装状态。
+      this.lookupAfterDetectionFailure = true
+    }
+    return null
   }
 
   async listModels(): Promise<CodingNsCliModelCatalog> {
@@ -152,7 +170,7 @@ export class CommandCodeDriver implements CodingNsCliDriver {
     if (!detection.installed || detection.command === null) return emptyCatalog()
     let stdout = ''
     try {
-      const result = this.runSpawnSync(detection.command, ['--list-models'], { encoding: 'utf8', timeout: 12_000, windowsHide: true, shell: WINDOWS })
+      const result = this.runSpawnSync(detection.command, ['--list-models'], { encoding: 'utf8', timeout: 12_000, windowsHide: true, shell: WINDOWS, ...(this.cachedEnvironment === undefined ? {} : { env: this.cachedEnvironment }) })
       stdout = result.stdout ?? ''
     } catch {
       return emptyCatalog()
@@ -200,7 +218,7 @@ export class CommandCodeDriver implements CodingNsCliDriver {
     if (input.modelId) args.push('-m', input.modelId)
     if (input.effortId && input.effortId !== 'default' && input.effortId !== 'Default') args.push('--effort', input.effortId)
 
-    const child = this.runSpawn(binary, args, { cwd: input.cwd ?? process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WINDOWS })
+    const child = this.runSpawn(binary, args, { cwd: input.cwd ?? process.cwd(), env: this.cachedEnvironment ?? commandEnvironment(binary), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WINDOWS })
     this.processes.add(child)
     let finished = false
     const onAbort = (): void => { terminateChildProcess(child) }

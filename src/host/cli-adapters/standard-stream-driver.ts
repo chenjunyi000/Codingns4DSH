@@ -9,7 +9,7 @@ import type {
 import type { CodingNsCliDriver } from './driver.js'
 import { firstToolText, isToolRecord, normalizeToolStatus, serializeToolValue } from './tool-observation.js'
 import { usageChunk } from './rpc-driver-utils.js'
-import { terminateChildProcess } from './process-utils.js'
+import { commandEnvironment, resolveCommandPath, terminateChildProcess } from './process-utils.js'
 
 const WINDOWS = process.platform === 'win32'
 
@@ -38,6 +38,7 @@ export abstract class StandardStreamDriver implements CodingNsCliDriver {
   private readonly versionArgs: readonly string[]
   private readonly modelArgs: readonly string[]
   private cachedBinary: string | null = null
+  private cachedEnvironment: Record<string, string | undefined> | undefined
   private readonly processes = new Set<ChildProcessWithoutNullStreams>()
 
   protected constructor(
@@ -55,26 +56,43 @@ export abstract class StandardStreamDriver implements CodingNsCliDriver {
 
   async detect(): Promise<{ installed: boolean; version: string | null; command: string | null }> {
     for (const command of this.binaries) {
-      try {
-        const result = this.runSpawnSync(command, this.versionArgs, { encoding: 'utf8', timeout: 5_000, windowsHide: true, shell: WINDOWS })
-        const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
-        const version = this.parseVersion(output)
-        if (result.status === 0 && version !== null) {
-          this.cachedBinary = command
-          return { installed: true, version, command }
-        }
-      } catch {
-        // 候选命令不存在时继续尝试下一个名称。
-      }
+      const direct = await this.detectCommand(command)
+      if (direct !== null) return direct
+      if (!this.lookupAfterDetectionFailure) continue
+      const resolved = resolveCommandPath(command, this.runSpawnSync)
+      if (resolved === null) continue
+      const fallback = await this.detectCommand(resolved, commandEnvironment(resolved))
+      if (fallback !== null) return fallback
     }
     return { installed: false, version: null, command: null }
+  }
+
+  private lookupAfterDetectionFailure = false
+
+  private async detectCommand(command: string, env?: Record<string, string | undefined>): Promise<{ installed: true; version: string; command: string } | null> {
+    this.lookupAfterDetectionFailure = false
+    try {
+      const result = this.runSpawnSync(command, this.versionArgs, { encoding: 'utf8', timeout: 5_000, windowsHide: true, shell: WINDOWS, ...(env === undefined ? {} : { env }) })
+      const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+      const version = this.parseVersion(output)
+      if (result.status === 0 && version !== null) {
+        this.cachedBinary = command
+        this.cachedEnvironment = env ?? commandEnvironment(command)
+        return { installed: true, version, command }
+      }
+      this.lookupAfterDetectionFailure = result.status === null
+    } catch {
+      // 候选命令不存在时继续尝试下一个名称。
+      this.lookupAfterDetectionFailure = true
+    }
+    return null
   }
 
   async listModels(): Promise<CodingNsCliModelCatalog> {
     const command = this.cachedBinary ?? (await this.detect()).command
     if (command === null) return emptyCatalog()
     try {
-      const result = this.runSpawnSync(command, this.modelArgs, { encoding: 'utf8', timeout: 12_000, windowsHide: true, shell: WINDOWS })
+      const result = this.runSpawnSync(command, this.modelArgs, { encoding: 'utf8', timeout: 12_000, windowsHide: true, shell: WINDOWS, ...(this.cachedEnvironment === undefined ? {} : { env: this.cachedEnvironment }) })
       if (result.status !== 0) return emptyCatalog()
       return this.parseModels(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
     } catch {
@@ -86,7 +104,7 @@ export abstract class StandardStreamDriver implements CodingNsCliDriver {
     const command = this.cachedBinary ?? (await this.detect()).command
     if (command === null) throw new Error(`${this.descriptor.name} 未安装`)
     const child = this.runSpawn(command, this.buildArgs(input), {
-      cwd: input.cwd ?? process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WINDOWS,
+      cwd: input.cwd ?? process.cwd(), env: this.cachedEnvironment ?? { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WINDOWS,
     })
     this.processes.add(child)
     let emittedFinish = false
@@ -134,6 +152,7 @@ export abstract class StandardStreamDriver implements CodingNsCliDriver {
     for (const child of this.processes) terminateChildProcess(child)
     this.processes.clear()
     this.cachedBinary = null
+    this.cachedEnvironment = undefined
   }
 
   protected parseVersion(output: string): string | null { return output.match(/\b\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?\b/u)?.[0] ?? null }

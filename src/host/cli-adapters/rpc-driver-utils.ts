@@ -1,7 +1,7 @@
 import { spawnSync, type SpawnSyncResult } from 'node:child_process'
 import type { CodingNsCliModelCatalog, CodingNsAgentEvent } from '../../shared/contracts/cli-adapter.js'
 import { JsonRpcProcess, type JsonRpcMessage } from './json-rpc-process.js'
-import { WINDOWS } from './process-utils.js'
+import { commandEnvironment, resolveCommandPath, WINDOWS } from './process-utils.js'
 
 export interface RpcBinaryOptions {
   readonly binaries: readonly string[]
@@ -10,15 +10,29 @@ export interface RpcBinaryOptions {
 
 export async function detectBinary(options: RpcBinaryOptions): Promise<{ installed: boolean; version: string | null; command: string | null }> {
   const run = options.spawnSync ?? spawnSync
+  let lookupAfterDetectionFailure = false
   for (const command of options.binaries) {
+    const direct = detectCommand(command)
+    if (direct !== null) return direct
+    if (!lookupAfterDetectionFailure) continue
+    const resolved = resolveCommandPath(command, run)
+    if (resolved === null) continue
+    const fallback = detectCommand(resolved)
+    if (fallback !== null) return fallback
+  }
+  return { installed: false, version: null, command: null }
+
+  function detectCommand(command: string): { installed: true; version: string; command: string } | null {
+    lookupAfterDetectionFailure = false
     try {
-      const result = run(command, ['--version'], { encoding: 'utf8', timeout: 3_000, windowsHide: true, shell: WINDOWS })
+      const result = run(command, ['--version'], { encoding: 'utf8', timeout: 3_000, windowsHide: true, shell: WINDOWS, env: commandEnvironment(command) })
       const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
       const version = output.match(/\d+\.\d+(?:\.\d+)?/u)?.[0] ?? null
       if (result.status === 0 && version !== null) return { installed: true, version, command }
-    } catch { /* PATH 中没有该命令 */ }
+      lookupAfterDetectionFailure = result.status === null
+    } catch { lookupAfterDetectionFailure = true /* PATH 中没有该命令 */ }
+    return null
   }
-  return { installed: false, version: null, command: null }
 }
 
 /** 把一个 JSON-RPC 请求期间收到的通知排成异步流，同时等待最终响应。 */

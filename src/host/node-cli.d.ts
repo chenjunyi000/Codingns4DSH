@@ -4,6 +4,7 @@ declare module 'node:child_process' {
     timeout?: number
     windowsHide?: boolean
     shell?: boolean
+    env?: Record<string, string | undefined>
   }
   export interface SpawnSyncResult {
     status: number | null

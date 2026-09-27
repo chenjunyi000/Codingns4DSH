@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
-import { terminateChildProcess, WINDOWS } from './process-utils.js'
+import { commandEnvironment, terminateChildProcess, WINDOWS } from './process-utils.js'
 
 /** JSON-RPC 消息的最小形状。不同 Agent 的扩展字段保持在 unknown 中。 */
 export interface JsonRpcMessage {
@@ -148,7 +148,7 @@ export class JsonRpcProcess {
     if (this.child !== null) return
     const child = this.runSpawn(this.options.command, this.options.args ?? [], {
       cwd: this.options.cwd,
-      env: { ...process.env, ...(this.options.env ?? {}) },
+      env: { ...commandEnvironment(this.options.command), ...(this.options.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: WINDOWS,
