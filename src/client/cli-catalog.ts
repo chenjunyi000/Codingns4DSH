@@ -34,7 +34,11 @@ export async function callCliRpc<T>(rpc: CodingNsRpcClient, action: string, payl
 }
 
 export function adapterCatalogWithDsh(catalog: readonly CodingNsCliAdapterDescriptor[]): CodingNsCliAdapterDescriptor[] {
-  return [{ id: 'dsh', name: 'DeepSeek Harness', installed: true, enabled: true, version: null, command: null }, ...catalog]
+  // 对话框只展示实际可用的适配器；未安装或已停用的适配器由设置页管理。
+  return [
+    { id: 'dsh', name: 'DeepSeek Harness', installed: true, enabled: true, version: null, command: null },
+    ...catalog.filter((adapter) => adapter.installed && adapter.enabled),
+  ]
 }
 
 export function firstModel(catalog: CodingNsCliModelCatalog): CodingNsCliModel | undefined {

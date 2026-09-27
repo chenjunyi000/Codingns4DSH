@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { archiveCliSession, listCliSessions, restoreCliSession } from '../data/build/dist/client/cli-catalog.js'
-import type { CodingNsCliSessionRecord } from '../data/build/dist/shared/contracts/cli-adapter.js'
+import { adapterCatalogWithDsh, archiveCliSession, listCliSessions, restoreCliSession } from '../data/build/dist/client/cli-catalog.js'
+import type { CodingNsCliAdapterDescriptor, CodingNsCliSessionRecord } from '../data/build/dist/shared/contracts/cli-adapter.js'
 
 const record: CodingNsCliSessionRecord = {
   dshSessionId: 'dsh-session-1',
@@ -14,6 +14,16 @@ const record: CodingNsCliSessionRecord = {
   createdAt: '2026-09-22T08:00:00.000Z',
   updatedAt: '2026-09-22T08:01:00.000Z',
 }
+
+test('对话框适配器目录只保留已安装且已启用的适配器', () => {
+  const catalog: CodingNsCliAdapterDescriptor[] = [
+    { id: 'installed-enabled', name: '可用', installed: true, enabled: true, version: '1.0.0', command: 'available' },
+    { id: 'not-installed', name: '未安装', installed: false, enabled: true, version: null, command: null },
+    { id: 'disabled', name: '已停用', installed: true, enabled: false, version: '1.0.0', command: 'disabled' },
+  ]
+
+  assert.deepEqual(adapterCatalogWithDsh(catalog).map((adapter) => adapter.id), ['dsh', 'installed-enabled'])
+})
 
 test('Client 会话列表兼容 Host 的 items 包装并过滤不完整记录', async () => {
   const rpc = {
