@@ -2,9 +2,10 @@ import { ReverseProxyPanel } from './reverse-proxy-panel.js'
 import type { CodingNsClientFeatureModule } from './types.js'
 import type { CodingNsRpcClient } from './types.js'
 import { startDshH5Bootstrap } from '../dsh-h5-bootstrap.js'
+import { callCodingNsRpc } from '../settings-bridge.js'
 import { LOGIN_PROTECTION_SESSION_EVENT, readLoginProtectionSession } from './login-protection-session.js'
 import type { LanAccessDshLoginSettings } from '../../shared/contracts/config.js'
-import { CODINGNS_RPC_CHANNEL } from '../../shared/contracts/transport.js'
+import type { CodingNsAuthSessionSnapshot } from '../../shared/contracts/auth.js'
 
 function isRemoteWebContext(): boolean {
   return (globalThis as typeof globalThis & {
@@ -57,6 +58,11 @@ export const reverseProxyFeature: CodingNsClientFeatureModule = {
     const attempt = async (): Promise<void> => {
       if (stopped || waitingForLogin) return
       try {
+        const auth = await readAuthSnapshot(context.services.rpc)
+        if (auth.status !== 'authenticated') {
+          scheduleRetry()
+          return
+        }
         const protection = await readLoginProtectionSettings(context.services.rpc)
         const loginProtectionToken = readLoginProtectionSession()
         if (protection.enabled && protection.scopes.relay && loginProtectionToken === undefined) {
@@ -69,8 +75,12 @@ export const reverseProxyFeature: CodingNsClientFeatureModule = {
       } catch (error) {
         if (stopped || abort.signal.aborted) return
         console.error('codingns4dsh: 中继连接建立失败，将在稍后重试', error)
-        retryTimer = setTimeout(() => { void attempt() }, 5_000)
+        scheduleRetry()
       }
+    }
+    const scheduleRetry = (): void => {
+      if (retryTimer !== undefined || stopped || abort.signal.aborted) return
+      retryTimer = setTimeout(() => { retryTimer = undefined; void attempt() }, 5_000)
     }
     void attempt()
     return async () => {
@@ -96,14 +106,9 @@ export async function startBrowserRelayConnection(rpc: CodingNsRpcClient, signal
 }
 
 async function readLoginProtectionSettings(rpc: CodingNsRpcClient): Promise<LanAccessDshLoginSettings> {
-  let response
-  try {
-    response = await rpc.call(CODINGNS_RPC_CHANNEL, 'lanAccessDsh/login/get', {})
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (!/HTTP (?:404|405)\b/u.test(message)) throw error
-    response = await rpc.call('/api', 'codingns/lanAccessDsh/login/get', {})
-  }
-  if (!response.ok) throw new Error(response.error.message)
-  return response.value as LanAccessDshLoginSettings
+  return callCodingNsRpc<LanAccessDshLoginSettings>(rpc, 'lanAccessDsh/login/get', {})
+}
+
+async function readAuthSnapshot(rpc: CodingNsRpcClient): Promise<CodingNsAuthSessionSnapshot> {
+  return callCodingNsRpc<CodingNsAuthSessionSnapshot>(rpc, 'auth/snapshot', {})
 }

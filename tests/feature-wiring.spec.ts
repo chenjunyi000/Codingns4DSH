@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FeatureRegistry, type FeatureModule } from '../data/build/dist/features/index.js'
 import { createCodingNsRpcHandler, createCodingNsSettingsRpcHandler } from '../data/build/dist/host/rpc.js'
-import { CodingNsRpcTable } from '../data/build/dist/host/rpc-table.js'
+import { CodingNsRpcError, CodingNsRpcTable } from '../data/build/dist/host/rpc-table.js'
 import { createAuthFeature } from '../data/build/dist/host/features/index.js'
 import {
   cliAdaptersFeature,
@@ -195,6 +195,69 @@ test('RPC 主处理器把分发结果转成 Connection 结果，不向外抛错'
   const unknown = await handler('terminal/list', {}, signal)
   assert.equal(unknown.ok, false)
   assert.equal(unknown.ok === false ? unknown.error.code : '', 'CODINGNS_RPC_NOT_FOUND')
+})
+
+test('RPC 主处理器将未认证拒绝记录为 warning，其他异常仍记录为 error', async () => {
+  const table = new CodingNsRpcTable()
+  table.register('auth', (action) => {
+    if (action === 'snapshot') throw new CodingNsRpcError('CODINGNS_RPC_UNAUTHENTICATED', 'Codingns4DSH 尚未登录')
+    throw new Error('控制站不可用')
+  })
+  const handler = createCodingNsRpcHandler(table)
+  const warnings: unknown[][] = []
+  const errors: unknown[][] = []
+  const originalWarn = console.warn
+  const originalError = console.error
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  console.error = (...args: unknown[]) => errors.push(args)
+  try {
+    const unauthenticated = await handler('auth/snapshot', {}, new AbortController().signal)
+    const failed = await handler('auth/login', {}, new AbortController().signal)
+    assert.equal(unauthenticated.ok, false)
+    assert.equal(failed.ok, false)
+    assert.equal(warnings.length, 1)
+    assert.equal(errors.length, 1)
+    assert.deepEqual((warnings[0]?.[1] as { code?: string }).code, 'CODINGNS_RPC_UNAUTHENTICATED')
+  } finally {
+    console.warn = originalWarn
+    console.error = originalError
+  }
+})
+
+test('中继模块未登录时等待认证，不请求 DSH 设备列表', async () => {
+  const calls: string[] = []
+  const globalScope = globalThis as typeof globalThis & {
+    addEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void
+    removeEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void
+  }
+  const previousAddEventListener = globalScope.addEventListener
+  const previousRemoveEventListener = globalScope.removeEventListener
+  globalScope.addEventListener = () => undefined
+  globalScope.removeEventListener = () => undefined
+  try {
+    const disposer = reverseProxyFeature.start({
+      services: {
+        rpc: {
+          call: async (_channel: string, endpoint: string) => {
+            calls.push(endpoint)
+            assert.equal(endpoint, 'auth/snapshot')
+            return {
+              ok: true,
+              value: { status: 'logged_out', account: null, currentDevice: null, binding: null, expiresAt: null, errorCode: null },
+            }
+          }
+        },
+      },
+    } as never)
+    await new Promise((resolve) => setImmediate(resolve))
+    await disposer?.()
+  } finally {
+    if (previousAddEventListener === undefined) delete globalScope.addEventListener
+    else globalScope.addEventListener = previousAddEventListener
+    if (previousRemoveEventListener === undefined) delete globalScope.removeEventListener
+    else globalScope.removeEventListener = previousRemoveEventListener
+  }
+  assert.deepEqual(calls, ['auth/snapshot'])
 })
 
 test('远程设置 RPC 返回版本并只允许修改 Codingns4DSH 字段', async () => {
