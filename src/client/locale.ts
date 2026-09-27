@@ -362,7 +362,7 @@ const zh: Record<string, string> = {
   'relay.dshVersion': 'DSH 版本：{value}',
   'relay.computerName': '计算机名：{value}',
   'relay.host': 'Host：{value}',
-  'relay.devicesSummary': '当前设备 {current}，其他活动设备 {count} 台',
+  'relay.devicesSummary': '当前设备 {current}，活动设备 {count} 台',
   'relay.deviceStatus': '设备状态：{value}',
   'relay.dshDevices': 'Codingns4DSH 设备',
   'relay.selectDevice': '选择 DSH Host',
