@@ -279,8 +279,9 @@ export class LanAccessDshProxy {
       dshSocket.once('error', removeDsh)
       // DSH 的 API 信任校验依据上游看到的 Host/Origin。局域网入口的地址
       // 与真实 DSH 地址不同，直接透传会导致静态页面能打开但所有 /api 返回 403。
-      // 只改写请求头，响应和 WebSocket 帧仍然原样双向转发。测试运行时的最小
-      // FakeStream 没有 Node Writable 接口，保留原始 pipe 以便验证连接关系。
+      // 改写请求头，并兼容旧版 Connection RPC 的正文格式；响应和 WebSocket 帧仍然
+      // 原样双向转发。测试运行时的最小 FakeStream 没有 Node Writable 接口，保留原始
+      // pipe 以便验证连接关系。
       if (typeof (dshSocket as unknown as { on?: unknown }).on === 'function') {
         const localAddress = isLoopbackSocket(localSocket)
         const authTransform = new LanAccessDshAuthTransform(localSocket, (request) => this.authorize(request, localAddress))
@@ -487,9 +488,9 @@ function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (c
  * Content-Length/分块边界时误把 keep-alive 上的第二个请求当成正文。WebSocket
  * 升级请求则保持 Upgrade，升级后的帧不再经过头部解析。
  */
-class LanAccessDshRequestTransform extends Transform {
+export class LanAccessDshRequestTransform extends Transform {
   private pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
-  private bodyRemaining = 0
+  private pendingRequest: PendingLanRequest | null = null
   private finished = false
 
   constructor(private readonly targetAuthority: string, private readonly upstreamCookie: string | null = null) {
@@ -507,18 +508,27 @@ class LanAccessDshRequestTransform extends Transform {
   }
 
   _flush(callback: TransformCallback): void {
+    if (this.pendingRequest !== null) {
+      // 请求正文不完整时无法判断是否为 JSON，保留原正文并只改写请求头。
+      this.push(rewriteLanAccessDshRequestHeaders(this.pendingRequest.head, this.targetAuthority, this.upstreamCookie ?? undefined))
+      if (this.pending.length > 0) this.push(this.pending)
+      callback()
+      return
+    }
     if (this.pending.length > 0) callback(null, this.pending)
     else callback()
   }
 
   private drainPending(): void {
     while (!this.finished) {
-      if (this.bodyRemaining > 0) {
-        const size = Math.min(this.bodyRemaining, this.pending.length)
-        if (size === 0) return
-        this.push(this.pending.subarray(0, size))
-        this.pending = this.pending.subarray(size)
-        this.bodyRemaining -= size
+      if (this.pendingRequest !== null) {
+        if (this.pending.length < this.pendingRequest.bodyLength) return
+        const body = this.pending.subarray(0, this.pendingRequest.bodyLength)
+        this.pending = this.pending.subarray(this.pendingRequest.bodyLength)
+        const normalizedBody = normalizeLanAccessDshRpcBody(this.pendingRequest.path, this.pendingRequest.method, body)
+        const head = rewriteLanAccessDshRequestHeaders(this.pendingRequest.head, this.targetAuthority, this.upstreamCookie ?? undefined)
+        this.push(concatBytes(rewriteContentLength(head, normalizedBody.length), normalizedBody))
+        this.pendingRequest = null
         continue
       }
 
@@ -536,9 +546,9 @@ class LanAccessDshRequestTransform extends Transform {
       const head = this.pending.subarray(0, end + 4)
       this.pending = this.pending.subarray(end + 4)
       const upgrade = isUpgradeRequest(head)
-      this.push(rewriteLanAccessDshRequestHeaders(head, this.targetAuthority, this.upstreamCookie ?? undefined))
       if (upgrade) {
         // WebSocket 头部之后全部是帧数据，不能再次进入 HTTP 头缓存。
+        this.push(rewriteLanAccessDshRequestHeaders(head, this.targetAuthority, this.upstreamCookie ?? undefined))
         this.finished = true
         if (this.pending.length > 0) {
           this.push(this.pending)
@@ -549,6 +559,7 @@ class LanAccessDshRequestTransform extends Transform {
       // DSH 的普通请求均为无体 GET 或带 Content-Length 的 JSON POST。
       // 分块上传无法安全识别下一条请求，遇到它时透传本连接剩余字节。
       if (/\r\ntransfer-encoding:\s*[^\r\n]*\bchunked\b/iu.test(decodeLatin1(head))) {
+        this.push(rewriteLanAccessDshRequestHeaders(head, this.targetAuthority, this.upstreamCookie ?? undefined))
         this.finished = true
         if (this.pending.length > 0) {
           this.push(this.pending)
@@ -556,9 +567,47 @@ class LanAccessDshRequestTransform extends Transform {
         }
         return
       }
-      this.bodyRemaining = contentLengthOf(head)
+      const bodyLength = contentLengthOf(head)
+      if (bodyLength === 0) {
+        this.push(rewriteLanAccessDshRequestHeaders(head, this.targetAuthority, this.upstreamCookie ?? undefined))
+        continue
+      }
+      const requestLine = decodeLatin1(head).split('\r\n', 1)[0] ?? ''
+      const parts = requestLine.split(' ')
+      this.pendingRequest = {
+        head,
+        method: parts[0] ?? 'GET',
+        path: (parts[1] ?? '/').split('?', 1)[0] ?? '/',
+        bodyLength,
+      }
     }
   }
+}
+
+interface PendingLanRequest {
+  head: Uint8Array
+  method: string
+  path: string
+  bodyLength: number
+}
+
+/** 兼容旧版 DSH Web Client 直接把 RPC 参数放入 payload 的请求格式。 */
+export function normalizeLanAccessDshRpcBody(path: string, method: string, body: Uint8Array): Uint8Array {
+  if (method.toUpperCase() !== 'POST' || !path.startsWith('/api/')) return body
+  try {
+    const message = JSON.parse(new TextDecoder().decode(body)) as unknown
+    if (!isOfficialConnectionRpcMessage(message) || !isRecord(message.payload) || 'args' in message.payload) return body
+    return new TextEncoder().encode(JSON.stringify({ ...message, payload: { args: message.payload } }))
+  } catch {
+    return body
+  }
+}
+
+/** 只兼容 DSH 官方两段式 Remote endpoint，不能改写 CodingNS 自有 RPC。 */
+function isOfficialConnectionRpcMessage(value: unknown): value is { type: 'client-request'; method: string; payload: unknown } {
+  if (!isRecord(value) || value.type !== 'client-request' || typeof value.method !== 'string') return false
+  const parts = value.method.split('/')
+  return parts.length === 2 && parts.every((part) => part !== '') && parts[0] !== 'codingns'
 }
 
 /** 改写请求中的 Host、Origin，并关闭普通 HTTP 上游连接。 */
@@ -595,6 +644,14 @@ export function rewriteLanAccessDshRequestHeaders(input: Uint8Array, targetAutho
 function contentLengthOf(input: Uint8Array): number {
   const match = /\r\ncontent-length:\s*(\d+)/iu.exec(decodeLatin1(input))
   return match?.[1] === undefined ? 0 : Number(match[1])
+}
+
+function rewriteContentLength(input: Uint8Array, length: number): Uint8Array {
+  const lines = decodeLatin1(input).split('\r\n')
+  for (let index = 1; index < lines.length; index += 1) {
+    if (/^content-length\s*:/iu.test(lines[index] ?? '')) lines[index] = `Content-Length: ${length}`
+  }
+  return encodeLatin1(lines.join('\r\n'))
 }
 
 function isUpgradeRequest(input: Uint8Array): boolean {

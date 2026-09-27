@@ -114,6 +114,40 @@ test('本地 DSH Web Provider 使用官方认证 URL 换取并复用 Cookie', as
   assert.equal(requests[2]?.cookie, 'dsh-auth-test=session-cookie')
 })
 
+test('本地 DSH Web Provider 兼容未包装 args 的旧版 Connection RPC 请求', async () => {
+  let requestBody = ''
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/session/list')) requestBody = String(init?.body ?? '')
+    return new Response(url.endsWith('/api/session/list') ? '{"items":[]}' : '<html></html>', {
+      status: 200,
+      headers: { 'content-type': url.endsWith('/api/session/list') ? 'application/json' : 'text/html' },
+    })
+  }
+  const provider = createLocalDshWebRuntimeProvider({ port: 3080, dshVersion: '0.1.6-alpha.2', fetcher })
+  const session = await provider.openSession({})
+  await provider.request?.(session, {
+    path: '/api/session/list',
+    method: 'POST',
+    body: JSON.stringify({ type: 'client-request', rpcId: 'rpc-1', method: 'session/list', payload: { _request: {} } }),
+  })
+  const envelope = JSON.parse(requestBody) as { payload?: { args?: { _request?: unknown } } }
+  assert.deepEqual(envelope.payload?.args, { _request: {} })
+})
+
+test('本地 DSH Web Provider 不改写 CodingNS 自有 RPC 的 payload', async () => {
+  let requestBody = ''
+  const fetcher: typeof fetch = async (_input, init) => {
+    requestBody = String(init?.body ?? '')
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const provider = createLocalDshWebRuntimeProvider({ port: 3080, dshVersion: '0.1.6-alpha.2', fetcher })
+  const session = await provider.openSession({})
+  const body = JSON.stringify({ type: 'client-request', rpcId: 'rpc-codingns', method: 'codingns/settings/get', payload: {} })
+  await provider.request?.(session, { path: '/api/codingns/settings/get', method: 'POST', body })
+  assert.equal(requestBody, body)
+})
+
 test('本地 DSH Web Provider 为 WebSocket 握手注入认证 Cookie', async () => {
   let socketOptions: { readonly headers?: Readonly<Record<string, string>> } | undefined
   const fetcher: typeof fetch = async (input) => {

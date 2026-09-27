@@ -4,9 +4,11 @@ import { FeatureRegistry } from '../data/build/dist/features/index.js'
 import { createLanAccessDshFeature } from '../data/build/dist/host/features/index.js'
 import {
   LanAccessDshProxy,
+  LanAccessDshRequestTransform,
   InMemoryLanAccessDshLoginStore,
   createLanAccessDshRpcHandler,
   normalizeLanAccessDshConfig,
+  normalizeLanAccessDshRpcBody,
   rewriteLanAccessDshRequestHeaders,
   type LanAccessDshRuntime,
   type LanAccessDshStream,
@@ -133,6 +135,51 @@ test('局域网代理改写上游 Host/Origin 并保留 WebSocket 升级', () =>
   const rewrittenUpgrade = new TextDecoder().decode(rewriteLanAccessDshRequestHeaders(upgrade, '127.0.0.1:3080'))
   assert.match(rewrittenUpgrade, /Connection: Upgrade/u)
   assert.match(rewrittenUpgrade, /Upgrade: websocket/u)
+})
+
+test('局域网代理兼容未包装 args 的 Connection RPC 请求', () => {
+  const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
+  const decode = (value: Uint8Array): unknown => JSON.parse(new TextDecoder().decode(value)) as unknown
+  const oldBody = encode({ type: 'client-request', rpcId: 'rpc-1', method: 'session/list', payload: { _request: {} } })
+  assert.deepEqual(decode(normalizeLanAccessDshRpcBody('/api/session/list', 'POST', oldBody)), {
+    type: 'client-request',
+    rpcId: 'rpc-1',
+    method: 'session/list',
+    payload: { args: { _request: {} } },
+  })
+
+  const wrapped = encode({ type: 'client-request', payload: { args: { _request: {} } } })
+  assert.deepEqual(normalizeLanAccessDshRpcBody('/api/session/list', 'POST', wrapped), wrapped)
+  assert.deepEqual(normalizeLanAccessDshRpcBody('/api/session/list', 'GET', oldBody), oldBody)
+  assert.deepEqual(normalizeLanAccessDshRpcBody('/workspace/list', 'POST', oldBody), oldBody)
+  assert.deepEqual(normalizeLanAccessDshRpcBody('/api/session/list', 'POST', encode({ payload: { _request: {} } })), encode({ payload: { _request: {} } }))
+  const codingNsBody = encode({ type: 'client-request', rpcId: 'rpc-codingns', method: 'codingns/settings/get', payload: {} })
+  assert.deepEqual(normalizeLanAccessDshRpcBody('/api/codingns/settings/get', 'POST', codingNsBody), codingNsBody)
+})
+
+test('局域网代理重写 RPC 正文时同步更新 Content-Length', async () => {
+  const body = new TextEncoder().encode(JSON.stringify({ type: 'client-request', rpcId: 'rpc-2', method: 'session/list', payload: { _request: {} } }))
+  const request = new TextEncoder().encode([
+    'POST /api/session/list HTTP/1.1',
+    'Host: 10.255.0.83:13080',
+    'Content-Length: ' + body.length,
+    'Connection: keep-alive',
+    '',
+    '',
+  ].join('\r\n'))
+  const transform = new LanAccessDshRequestTransform('127.0.0.1:3080')
+  const chunks: Uint8Array[] = []
+  await new Promise<void>((resolve, reject) => {
+    transform.on('data', (chunk: Uint8Array) => chunks.push(new Uint8Array(chunk)))
+    transform.once('end', resolve)
+    transform.once('error', reject)
+    transform.end(new Uint8Array([...request, ...body]))
+  })
+  const output = new TextDecoder().decode(new Uint8Array(chunks.reduce<number[]>((all, chunk) => [...all, ...chunk], [])))
+  const [head, outputBody] = output.split('\r\n\r\n', 2)
+  assert.match(head ?? '', /Content-Length: \d+/u)
+  assert.equal(Number(head?.match(/Content-Length: (\d+)/u)?.[1]), new TextEncoder().encode(outputBody ?? '').length)
+  assert.deepEqual(JSON.parse(outputBody ?? '{}'), { type: 'client-request', rpcId: 'rpc-2', method: 'session/list', payload: { args: { _request: {} } } })
 })
 
 test('Host 模块独立登记 lanAccessDsh RPC，停用后注销', async () => {

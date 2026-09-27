@@ -403,7 +403,7 @@ export function createLocalDshWebRuntimeProvider(options: LocalDshWebRuntimeProv
       if (!allowed.some((prefix) => path === prefix || path.startsWith(prefix))) throw new Error('DSH Web 请求路径不在白名单内')
       const init: RequestInit = { method: input.method ?? 'GET' }
       if (input.headers !== undefined) init.headers = Object.fromEntries(input.headers)
-      if (input.body !== undefined) init.body = input.body
+      if (input.body !== undefined) init.body = normalizeConnectionRpcBody(path, input.method ?? 'GET', input.body)
       await ensureAuthenticated()
       const response = await fetchLocal(path, init)
       debug.log('web.provider.request.response', { sessionId: session.sessionId, path, method: input.method ?? 'GET', status: response.status })
@@ -451,6 +451,29 @@ function getSetCookie(headers: Headers): string | undefined {
     if (match?.[1] !== undefined) return match[1]
   }
   return undefined
+}
+
+/**
+ * DSH Gateway 的 Connection RPC 要求请求参数位于 payload.args。
+ * 旧版 DSH Web Client 曾把单个参数对象直接放进 payload；只在 `/api/*`
+ * 的 POST RPC 请求上补这一层，已经符合协议的请求保持字节级语义不变。
+ */
+function normalizeConnectionRpcBody(path: string, method: string, body: string): string {
+  if (method.toUpperCase() !== 'POST' || !path.startsWith('/api/')) return body
+  try {
+    const message = JSON.parse(body) as unknown
+    if (!isOfficialConnectionRpcMessage(message) || !isRecord(message.payload) || 'args' in message.payload) return body
+    return JSON.stringify({ ...message, payload: { args: message.payload } })
+  } catch {
+    return body
+  }
+}
+
+/** 只兼容 DSH 官方两段式 Remote endpoint，不能改写 CodingNS 自有 RPC。 */
+function isOfficialConnectionRpcMessage(value: unknown): value is { type: 'client-request'; method: string; payload: unknown } {
+  if (!isRecord(value) || value.type !== 'client-request' || typeof value.method !== 'string') return false
+  const parts = value.method.split('/')
+  return parts.length === 2 && parts.every((part) => part !== '') && parts[0] !== 'codingns'
 }
 
 class RemoteWebRuntimeError extends Error {
