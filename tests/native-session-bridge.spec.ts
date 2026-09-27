@@ -123,7 +123,6 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
     callId: 'external-1',
     name: 'read_directory',
     arguments: '{"path":"."}',
-    precedingAssistantContent: [{ type: 'text', text: '先检查目录。' }],
     adapterId: 'codex',
   })
   assert.deepEqual(handle, { sessionId: 'native-tools', turn: 3, step: 2, callId: 'external-1', callSeq: 3 })
@@ -139,9 +138,6 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
           id: 'external-tool-external-1-3-2',
           role: 'assistant',
           content: [{
-            type: 'text',
-            text: '先检查目录。',
-          }, {
             type: 'tool-call',
             id: 'external-1',
             name: 'read_directory',
@@ -175,6 +171,20 @@ test('原生会话桥接把外部工具保存为只读声明/call/result 事件�
       options: { surfaceOp: 'append', sourceEventSeqs: [3] },
     },
   ])
+
+  session.append('assistant/message', {
+    turn: 3,
+    step: 2,
+    message: {
+      id: 'final-answer',
+      role: 'assistant',
+      content: [{ type: 'text', text: '目录已读取。' }],
+      source: { kind: 'model', plugin: 'codingns4dsh', provider: 'codingns-external', model: 'external-agent' },
+    },
+    stream: [],
+  }, { surfaceOp: 'append' })
+  assert.equal(events.at(-1)?.type, 'assistant/message')
+  assert.equal(events.at(-1)?.data?.message?.id, 'final-answer')
 })
 
 test('原生会话桥接保存外部 Agent 的 request/context 容量元数据', () => {

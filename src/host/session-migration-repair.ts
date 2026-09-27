@@ -143,6 +143,7 @@ function repairEvents(events: readonly SessionEvent[], canonicalizeV4Results = f
   const mapping: number[] = []
   const insertBefore = new Map<number, { callId: string; name: string; arguments: string; turn: number; step: number }>()
   const pending = new Set<string>()
+  const normalizedAssistantMessages = new Map<number, SessionEvent>()
   let canonicalized = false
   for (const event of events) {
     const oldSeq = event.seq!
@@ -160,7 +161,17 @@ function repairEvents(events: readonly SessionEvent[], canonicalizeV4Results = f
       if (callId !== null) pending.delete(callId)
     }
   }
-  if (insertBefore.size === 0 && !canonicalizeV4Results) return null
+  const declaredExternalCalls = new Set<string>()
+  for (const event of events) {
+    if (event.type === 'step/start' || event.type === 'turn/start') declaredExternalCalls.clear()
+    const normalized = canonicalizeExternalAssistantMessage(event, declaredExternalCalls)
+    if (normalized !== event) {
+      normalizedAssistantMessages.set(event.seq!, normalized)
+      canonicalized = true
+    }
+    if (event.type === 'step/end' || event.type === 'turn/end') declaredExternalCalls.clear()
+  }
+  if (insertBefore.size === 0 && !canonicalizeV4Results && !canonicalized) return null
   if (canonicalizeV4Results) {
     for (const event of events) {
       if (canonicalizeV4ToolResult(event) !== event) {
@@ -184,7 +195,8 @@ function repairEvents(events: readonly SessionEvent[], canonicalizeV4Results = f
     const oldSeq = event.seq!
     const call = insertBefore.get(oldSeq)
     if (call !== undefined) output.push(createDeclaration(event, call, mapping[oldSeq]! - 1))
-    const normalized = canonicalizeV4Results ? canonicalizeV4ToolResult(event) : event
+    const deduplicated = normalizedAssistantMessages.get(oldSeq) ?? event
+    const normalized = canonicalizeV4Results ? canonicalizeV4ToolResult(deduplicated) : deduplicated
     output.push(remapEvent(normalized, mapping[oldSeq]!, mapping))
   }
   return output
@@ -216,6 +228,25 @@ function canonicalizeV4ToolResult(event: SessionEvent): SessionEvent {
     ...(wrapper.isError === undefined ? {} : { isError: wrapper.isError }),
   }
   return { ...event, data: { ...data, message: normalizedMessage } }
+}
+
+/** 删除外部适配器累积消息中的历史 tool-call，保留当前消息新增的声明。 */
+function canonicalizeExternalAssistantMessage(event: SessionEvent, declared: Set<string>): SessionEvent {
+  if (event.type !== 'assistant/message') return event
+  const data = isRecord(event.data) ? event.data : undefined
+  const message = data && isRecord(data.message) ? data.message : undefined
+  if (!message || !Array.isArray(message.content) || !Array.isArray(data?.stream) || data.stream.length !== 0) return event
+  let changed = false
+  const content = message.content.filter((block) => {
+    if (!isRecord(block) || block.type !== 'tool-call' || typeof block.id !== 'string') return true
+    if (declared.has(block.id)) {
+      changed = true
+      return false
+    }
+    declared.add(block.id)
+    return true
+  })
+  return changed ? { ...event, data: { ...data, message: { ...message, content } } } : event
 }
 
 function registerDeclaredCalls(event: SessionEvent, pending: Set<string>): void {

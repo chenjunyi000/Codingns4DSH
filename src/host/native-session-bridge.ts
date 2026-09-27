@@ -23,8 +23,6 @@ export interface CodingNsNativeToolCall {
   readonly callId: string
   readonly name: string
   readonly arguments: string
-  /** 当前 step 已经落盘的 assistant 内容；追加工具声明时一并保留，避免覆盖正文。 */
-  readonly precedingAssistantContent?: readonly Record<string, unknown>[]
   /** 外部适配器 ID；旧调用方缺省时保持通用来源标记。 */
   readonly adapterId?: string
 }
@@ -170,15 +168,12 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
       message: {
         id: `external-tool-${call.callId}-${position.turn}-${position.step}`,
         role: 'assistant',
-        content: [
-          ...(call.precedingAssistantContent ?? []),
-          {
-            type: 'tool-call',
-            id: call.callId,
-            name: call.name,
-            arguments: call.arguments,
-          },
-        ],
+        content: [{
+          type: 'tool-call',
+          id: call.callId,
+          name: call.name,
+          arguments: call.arguments,
+        }],
         source: {
           kind: 'model',
           plugin: 'codingns4dsh',

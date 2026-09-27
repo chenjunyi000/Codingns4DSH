@@ -73,9 +73,8 @@ test('公共工具投影层在没有事件总线时立即追加原生工具事�
   assert.deepEqual(calls, ['tool/call', 'tool/result'])
 })
 
-test('公共工具投影层先落盘 assistant 正文，再追加原生工具事件', async () => {
+test('公共工具投影层在事件总线存在时也立即追加原生工具事件', async () => {
   const calls: string[] = []
-  const toolCalls: Array<Record<string, unknown>> = []
   const session = {}
   let onEvent: ((subject: unknown, event: unknown) => void) | undefined
   const bridge = {
@@ -85,8 +84,7 @@ test('公共工具投影层先落盘 assistant 正文，再追加原生工具事
       onEvent = handlers.onEvent
       return () => { onEvent = undefined }
     },
-    appendToolCall(_sessionId: string, call: Record<string, unknown>) {
-      toolCalls.push(call)
+    appendToolCall() {
       calls.push('tool/call')
       return { sessionId: 'session-ordered', turn: 1, step: 1, callId: 'call-1', callSeq: 1 }
     },
@@ -97,24 +95,14 @@ test('公共工具投影层先落盘 assistant 正文，再追加原生工具事
   }
   const projector = new CodingNsDshToolHistoryProjector(bridge as never, 'session-ordered')
   projector.observe({ type: 'tool-event', toolName: 'bash', callId: 'call-1', input: 'pwd', status: 'completed' })
-  projector.finalize('stop')
-  assert.deepEqual(calls, [])
-
-  const emit = (event: unknown) => {
-    calls.push('assistant/message')
-    onEvent?.(session, event)
-  }
-  emit({
-    type: 'assistant/message',
-    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '我先检查当前目录。' }] } },
-  })
+  assert.deepEqual(calls, ['tool/call', 'tool/result'])
+  onEvent?.(session, { type: 'assistant/message' })
   await Promise.resolve()
-
-  assert.deepEqual(calls, ['assistant/message', 'tool/call', 'tool/result'])
-  assert.deepEqual(toolCalls[0]?.precedingAssistantContent, [{ type: 'text', text: '我先检查当前目录。' }])
+  projector.finalize('stop')
+  assert.deepEqual(calls, ['tool/call', 'tool/result'])
 })
 
-test('公共工具投影层在正文先于工具通知时也保留正文并排队追加工具', async () => {
+test('公共工具投影层在正文先于工具通知时不复制正文到工具声明', async () => {
   const calls: string[] = []
   const toolCalls: Array<Record<string, unknown>> = []
   const session = {}
@@ -142,11 +130,49 @@ test('公共工具投影层在正文先于工具通知时也保留正文并排�
     data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '先说明执行计划。' }] } },
   })
   projector.observe({ type: 'tool-event', toolName: 'bash', callId: 'call-text-first', input: 'pwd', status: 'completed' })
-  assert.deepEqual(calls, [])
+  assert.deepEqual(calls, ['tool/call', 'tool/result'])
   await Promise.resolve()
 
-  assert.deepEqual(calls, ['tool/call', 'tool/result'])
-  assert.deepEqual(toolCalls[0]?.precedingAssistantContent, [{ type: 'text', text: '先说明执行计划。' }])
+  assert.equal('precedingAssistantContent' in (toolCalls[0] ?? {}), false)
+})
+
+test('公共工具投影层不会把已结算的历史 tool-call 复制到新工具声明', async () => {
+  const toolCalls: Array<Record<string, unknown>> = []
+  const session = {}
+  let onEvent: ((subject: unknown, event: unknown) => void) | undefined
+  const bridge = {
+    supportsEvents: true,
+    get() { return session },
+    subscribe(handlers: { onEvent?: (subject: unknown, event: unknown) => void }) {
+      onEvent = handlers.onEvent
+      return () => { onEvent = undefined }
+    },
+    appendToolCall(_sessionId: string, call: Record<string, unknown>) {
+      toolCalls.push(call)
+      return { sessionId: 'session-no-duplicate-calls', turn: 1, step: 1, callId: String(call.callId), callSeq: toolCalls.length }
+    },
+    appendToolResult() { return true },
+  }
+  const projector = new CodingNsDshToolHistoryProjector(bridge as never, 'session-no-duplicate-calls')
+
+  onEvent?.(session, {
+    type: 'assistant/message',
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '继续执行。' },
+          { type: 'tool-call', id: 'old-call', name: 'bash', arguments: '{}' },
+        ],
+      },
+    },
+  })
+  projector.observe({ type: 'tool-event', toolName: 'bash', callId: 'new-call', input: 'pwd', status: 'completed', output: '/workspace', outputMode: 'snapshot' })
+  await Promise.resolve()
+
+  assert.equal('precedingAssistantContent' in (toolCalls[0] ?? {}), false)
 })
 
 test('公共工具投影层优先按通知顺序保存外部工具标记，不追加原生 call/result', () => {

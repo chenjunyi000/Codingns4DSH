@@ -86,6 +86,103 @@ test('DSH 0.1.7 v4 日志中的旧 tool-result wrapper 会提升为 tool-role �
   }
 })
 
+test('修复外部适配器累积 assistant 消息中的重复 tool-call', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codingns-repair-duplicate-tool-call-'))
+  try {
+    const path = join(root, 'session.v4.jsonl')
+    const rows: Array<Record<string, unknown>> = [
+      { type: 'session', version: 4 },
+      { type: 'turn/start', seq: 0, data: { turn: 1 } },
+      { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+      {
+        type: 'assistant/message',
+        seq: 2,
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            id: 'external-first',
+            role: 'assistant',
+            content: [{ type: 'text', text: '先执行。' }, { type: 'tool-call', id: 'one', name: 'read', arguments: '{}' }],
+            source: { kind: 'model', provider: 'codingns-external', model: 'external-agent' },
+          },
+          stream: [],
+        },
+        surfaceOp: 'append',
+      },
+      { type: 'tool/call', seq: 3, data: { turn: 1, step: 1, callId: 'one', name: 'read', arguments: '{}' } },
+      {
+        type: 'tool/result',
+        seq: 4,
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            id: 'one-result',
+            role: 'tool',
+            toolCallId: 'one',
+            content: [{ type: 'text', text: 'ok' }],
+            source: { kind: 'tool', callId: 'one' },
+          },
+        },
+        sourceEventSeqs: [3],
+        surfaceOp: 'append',
+      },
+      {
+        type: 'assistant/message',
+        seq: 5,
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            id: 'external-second',
+            role: 'assistant',
+            content: [
+              { type: 'text', text: '继续执行。' },
+              { type: 'tool-call', id: 'one', name: 'read', arguments: '{}' },
+              { type: 'tool-call', id: 'two', name: 'write', arguments: '{}' },
+            ],
+            source: { kind: 'model', provider: 'codingns-external', model: 'external-agent' },
+          },
+          stream: [],
+        },
+        surfaceOp: 'append',
+      },
+      { type: 'tool/call', seq: 6, data: { turn: 1, step: 1, callId: 'two', name: 'write', arguments: '{}' } },
+      {
+        type: 'tool/result',
+        seq: 7,
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            id: 'two-result',
+            role: 'tool',
+            toolCallId: 'two',
+            content: [{ type: 'text', text: 'ok' }],
+            source: { kind: 'tool', callId: 'two' },
+          },
+        },
+        sourceEventSeqs: [6],
+        surfaceOp: 'append',
+      },
+      { type: 'step/end', seq: 8, data: { turn: 1, step: 1 } },
+      { type: 'turn/end', seq: 9, data: { turn: 1, reason: { kind: 'completed' } } },
+    ]
+    await writeFile(path, encodeNone(rows))
+
+    assert.equal(await repairLegacySessionLog(path), true)
+    const repaired = decodeNone(await readFile(path))
+    const message = repaired.events.find((event) => event.type === 'assistant/message' && event.data?.message?.id === 'external-second')
+    assert.deepEqual(message?.data?.message?.content, [
+      { type: 'text', text: '继续执行。' },
+      { type: 'tool-call', id: 'two', name: 'write', arguments: '{}' },
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('修复失败时保持原文件不变', async () => {
   const root = await mkdtemp(join(tmpdir(), 'codingns-repair-failure-'))
   try {
