@@ -16,8 +16,6 @@ jobs:
   publish:
     name: 从已发布 tag 发布 npm
     runs-on: ubuntu-latest
-    env:
-      NPM_CONFIG_PROVENANCE: 'true'
 
     steps:
       - name: 检出指定 tag
