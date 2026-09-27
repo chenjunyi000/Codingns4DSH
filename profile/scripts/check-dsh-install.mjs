@@ -33,13 +33,13 @@ function readVersionFromCommand() {
 }
 
 function isCompatible(actual, range) {
-  const match = typeof range === 'string' ? /^>=([^ ]+) <([^ ]+)$/u.exec(range) : undefined
+  const match = typeof range === 'string' ? /^>=([^ ]+) <=([^ ]+)$/u.exec(range) : undefined
   if (!match) return false
   const actualVersion = parseVersion(actual)
   const minimum = parseVersion(match[1])
   const maximum = parseVersion(match[2])
   if (!actualVersion || !minimum || !maximum) return false
-  return compareVersions(actualVersion, minimum) >= 0 && compareVersions(actualVersion, maximum) < 0
+  return compareVersions(actualVersion, minimum) >= 0 && compareVersions(actualVersion, maximum) <= 0
 }
 
 function parseVersion(value) {

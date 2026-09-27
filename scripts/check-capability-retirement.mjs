@@ -28,7 +28,24 @@ function compare(left, right) {
   const a = parse(left); const b = parse(right)
   if (!a || !b) return -1
   for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] - b[index]
-  return String(a[3]).localeCompare(String(b[3]))
+  if (!a[3] && b[3]) return 1
+  if (a[3] && !b[3]) return -1
+  const leftParts = a[3] ? a[3].split('.') : []
+  const rightParts = b[3] ? b[3].split('.') : []
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const leftPart = leftParts[index]
+    const rightPart = rightParts[index]
+    if (leftPart === undefined) return -1
+    if (rightPart === undefined) return 1
+    if (leftPart === rightPart) continue
+    const leftNumber = /^\d+$/u.test(leftPart)
+    const rightNumber = /^\d+$/u.test(rightPart)
+    if (leftNumber && rightNumber) return Number(leftPart) - Number(rightPart)
+    if (leftNumber && !rightNumber) return -1
+    if (!leftNumber && rightNumber) return 1
+    return leftPart < rightPart ? -1 : 1
+  }
+  return 0
 }
 
 function parse(value) {

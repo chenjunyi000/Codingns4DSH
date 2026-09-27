@@ -13,7 +13,7 @@ function route(overrides: Partial<DshCapabilityRoute<unknown>>): DshCapabilityRo
   return {
     id: 'route',
     capability: 'settings.store',
-    supportedDsh: '>=0.1.5-rc.3 <0.1.8-0',
+    supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2',
     runtime: 'host',
     priority: 1,
     status: 'supported',
@@ -26,8 +26,8 @@ function route(overrides: Partial<DshCapabilityRoute<unknown>>): DshCapabilityRo
 
 test('能力 Registry 按版本和优先级选择唯一路由，并冻结 Profile', () => {
   const registry = new DshCapabilityRegistry('0.1.7-rc.2', 'host')
-  registry.register(route({ id: 'legacy', supportedDsh: '>=0.1.5-rc.3 <0.1.7-0', priority: 1, create: () => 'legacy' }))
-  registry.register(route({ id: 'modern', supportedDsh: '>=0.1.7-rc.2 <0.1.8-0', priority: 2, create: () => 'modern' }))
+  registry.register(route({ id: 'legacy', supportedDsh: '>=0.1.5-rc.3 <=0.1.6', priority: 1, create: () => 'legacy' }))
+  registry.register(route({ id: 'modern', supportedDsh: '>=0.1.7-rc.2 <=0.1.7-rc.2', priority: 2, create: () => 'modern' }))
   const profile = registry.resolve({})
   assert.equal(profile.capabilities.get('settings.store')?.routeId, 'modern')
   assert.equal(profile.capabilities.get('settings.store')?.value, 'modern')

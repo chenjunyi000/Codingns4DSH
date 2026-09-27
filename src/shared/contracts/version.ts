@@ -5,7 +5,7 @@ export const DSH_VERSION = '0.1.6-alpha.2' as const
 export const DSH_TESTED_VERSION = DSH_VERSION
 
 /** 插件支持的 DSH 版本范围；插件版本与宿主版本独立发布。 */
-export const DSH_COMPATIBILITY = '>=0.1.5-rc.3 <0.1.8-0' as const
+export const DSH_COMPATIBILITY = '>=0.1.5-rc.3 <=0.1.7-rc.2' as const
 
 /** DSH Envelope/Tunnel 协议主版本。 */
 export const DSH_PROTOCOL_VERSION = 1 as const
@@ -30,13 +30,12 @@ interface ParsedVersion {
 
 /** 判断宿主版本是否落在当前插件声明的 DSH 兼容范围内。 */
 export function isDshVersionCompatible(version: string): boolean {
-  const match = /^>=([^ ]+) <([^ ]+)$/u.exec(DSH_COMPATIBILITY)
+  const match = /^>=([^ ]+) <=([^ ]+)$/u.exec(DSH_COMPATIBILITY)
   const actual = parseVersion(version)
   const minimum = parseVersion(match?.[1] ?? '')
   const maximum = parseVersion(match?.[2] ?? '')
   if (!actual || !minimum || !maximum) return version === DSH_VERSION
-  if (actual.major === maximum.major && actual.minor === maximum.minor && actual.patch === maximum.patch && actual.prerelease.length > 0) return false
-  return compareVersions(actual, minimum) >= 0 && compareVersions(actual, maximum) < 0
+  return compareVersions(actual, minimum) >= 0 && compareVersions(actual, maximum) <= 0
 }
 
 /** 判断 DSH 版本是否达到某个功能模块要求的最低版本。 */

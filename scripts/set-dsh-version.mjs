@@ -6,8 +6,8 @@ const nextVersion = process.argv[2]?.trim()
 const nextCompatibility = process.argv[3]?.trim() || createDefaultCompatibility(nextVersion)
 const semver = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
 if (!nextVersion || !semver.test(nextVersion)) throw new Error('用法: pnpm run version:set-dsh -- 0.1.7-rc.1 [兼容范围]')
-if (!/^>=\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)? <\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(nextCompatibility)) {
-  throw new Error('DSH 兼容范围必须形如 ">=0.1.6-alpha.2 <0.1.7"')
+if (!/^>=\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)? <=\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(nextCompatibility)) {
+  throw new Error('DSH 兼容范围必须形如 ">=0.1.5-rc.3 <=0.1.7-rc.2"')
 }
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -63,7 +63,7 @@ console.log(`当前插件兼容范围: ${nextCompatibility}`)
 console.log('请随后运行 pnpm install --lockfile-only 和 pnpm run version:check')
 
 function createDefaultCompatibility(version) {
-  const match = /^(\d+\.\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/u.exec(version ?? '')
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/u.exec(version ?? '')
   if (!match) return ''
-  return `>=${version} <${match[1]}.${Number(match[2]) + 1}`
+  return `>=${version} <=${match[1]}.${match[2]}.${match[3]}`
 }
