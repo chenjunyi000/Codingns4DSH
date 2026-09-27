@@ -139,7 +139,11 @@ test('宿主机重启后 tmux socket 消失时视为会话已丢失并可幂等�
 test('真实 tmux 会话可创建、跨检查保持身份并显式关闭', { skip: findTmux() === null }, async () => {
   const tmuxPath = findTmux()
   assert.notEqual(tmuxPath, null)
-  const realSession = { ...session, runtimeSessionKey: `integration-${process.pid}-${Date.now()}` }
+  const realSession = {
+    ...session,
+    shellPath: process.platform === 'linux' ? '/bin/bash' : session.shellPath,
+    runtimeSessionKey: `integration-${process.pid}-${Date.now()}`,
+  }
   const backend = new TmuxTerminalBackend({ platform: process.platform, tmuxPath: tmuxPath ?? undefined })
   try {
     assert.equal((await backend.create({ session: realSession })).alive, true)
