@@ -40,12 +40,12 @@ test('Desktop dsh-app 页面不请求不存在的本地身份端点', async () =
   assert.match(source, /location\.protocol[\s\S]{0,180}protocol !== 'http:'[\s\S]{0,100}protocol !== 'https:'/u)
 })
 
-test('Host 启动页注入真实 DSH 版本且不覆盖 Desktop Transport', async () => {
+test('Host 启动页合并 Web 所有权且保留 Desktop Transport', async () => {
   const source = await readFile(hostSource, 'utf8')
   assert.match(source, /webserver\/index-inject/u)
+  assert.match(source, /injectDshWebTransportOwnership/u)
   assert.match(source, /name: DSH_VERSION_INJECTION_NAME/u)
   assert.match(source, /streamBaseUrl/u)
-  assert.doesNotMatch(source, /name: '__DSH_TRANSPORT__'/u)
 })
 
 test('Client 构建产物不包含 Node 专属模块', async () => {

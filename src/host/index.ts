@@ -20,6 +20,7 @@ import { detectRuntimeDshVersion, DSH_VERSION_INJECTION_NAME } from './dsh-runti
 import { createDshCapabilityRegistry } from '../dsh-capabilities/index.js'
 import { debugInfo } from '../shared/debug.js'
 import { repairLegacySessionLogs } from './session-migration-repair.js'
+import { injectDshWebTransportOwnership } from './index-injection.js'
 
 export function apply(ctx?: Context): void {
   if (ctx === undefined) return
@@ -66,12 +67,12 @@ export function apply(ctx?: Context): void {
       hasWebServer: (hostCtx as Context & { webServer?: unknown }).webServer !== undefined,
     })
     const webServerPort = (hostCtx as Context & { webServer: { port: number } }).webServer.port
-    // Desktop 自己会通过 dshDesktopBoot 注入带 streamBaseUrl 的 __DSH_TRANSPORT__。
-    // 插件不能用只有 ownsHost 的对象覆盖它，否则 Desktop 的 /api/remote.mux
-    // 会退回 dsh-app://app 并返回 404。远程 iframe 的 transport 由自身桥接代码注入。
+    // 普通 Web 入口需要 ownsHost 才能让非 loopback 地址使用 Host 设置持久化。
+    // Desktop 已经注入完整 Transport 时只合并字段，保留 streamBaseUrl 等路由信息。
     const indexInjectionEvents = hostCtx as unknown as { on(name: string, listener: (table: unknown[]) => void): unknown }
     debugInfo('codingns4dsh: host index injection registration begin')
     indexInjectionEvents.on('webserver/index-inject', (table) => {
+      injectDshWebTransportOwnership(table)
       table.push({ kind: 'global', name: DSH_VERSION_INJECTION_NAME, value: dshVersion })
     })
     debugInfo('codingns4dsh: host index injection registration ready')
