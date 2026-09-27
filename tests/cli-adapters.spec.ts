@@ -30,6 +30,26 @@ test('Command Code 驱动只把带版本号的候选命令视为已安装', asyn
   assert.deepEqual(calls, [['missing-command', '--version'], ['command-code', '--version']])
 })
 
+test('Command Code 在桌面进程 PATH 缺失时通过登录 Shell 解析 CLI', async () => {
+  const calls: string[][] = []
+  const driver = new CommandCodeDriver({
+    binaries: ['command-code'],
+    spawnSync: ((command: string, args: string[], options?: { env?: Record<string, string | undefined> }) => {
+      calls.push([command, ...args])
+      if (args[0] === '-ilc') return { status: 0, stdout: '/Users/test/.local/bin/command-code\n__CODINGNS_PATH__/opt/node/bin:/Users/test/.local/bin\n', stderr: '' }
+      if (command === '/Users/test/.local/bin/command-code' && options?.env?.PATH?.includes('/opt/node/bin') === true) return { status: 0, stdout: 'command-code 2.0.0', stderr: '' }
+      return { status: null, stdout: '', stderr: '' }
+    }) as never,
+  })
+
+  assert.deepEqual(await driver.detect(), { installed: true, version: '2.0.0', command: '/Users/test/.local/bin/command-code' })
+  assert.deepEqual(calls, [
+    ['command-code', '--version'],
+    [process.env.SHELL ?? '/bin/sh', '-ilc', 'command -v "$1"; printf "\\n__CODINGNS_PATH__%s\\n" "$PATH"', 'codingns4dsh-command-lookup', 'command-code'],
+    ['/Users/test/.local/bin/command-code', '--version'],
+  ])
+})
+
 test('Command Code 驱动解析模型分组和默认思考强度', async () => {
   const driver = new CommandCodeDriver({
     homeDirectory: '/definitely/missing',
