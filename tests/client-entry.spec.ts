@@ -35,6 +35,11 @@ test('远程 DSH Web 声明已认证 Host 所有权以启用持久设置', async
   assert.match(source, /openStream: openRemoteStream,[\s\S]{0,240}ownsHost: true/u)
 })
 
+test('Desktop dsh-app 页面不请求不存在的本地身份端点', async () => {
+  const source = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../src/client/account-bar.ts'), 'utf8')
+  assert.match(source, /location\.protocol[\s\S]{0,180}protocol !== 'http:'[\s\S]{0,100}protocol !== 'https:'/u)
+})
+
 test('Host 启动页注入真实 DSH 版本且不覆盖 Desktop Transport', async () => {
   const source = await readFile(hostSource, 'utf8')
   assert.match(source, /webserver\/index-inject/u)

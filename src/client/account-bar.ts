@@ -322,6 +322,11 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
 }
 
 async function fetchLocalIdentity(dom: Document): Promise<{ username: string } | null> {
+  // Desktop 使用 dsh-app://app，不提供网页侧的本地身份路由。
+  // 只有局域网/中转 HTTP 页面才需要查询这个端点；其它协议直接视为未登录，
+  // 避免在 Desktop 控制台制造无意义的 404。
+  const protocol = dom.defaultView?.location.protocol
+  if (protocol !== 'http:' && protocol !== 'https:') return null
   const response = await (dom.defaultView?.fetch.bind(dom.defaultView) ?? fetch)('/__codingns/session', {
     credentials: 'same-origin',
     cache: 'no-store',

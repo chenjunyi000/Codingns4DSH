@@ -113,8 +113,22 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
 
   private isRemote(): boolean {
     const snapshot = this.local.getSnapshot()
-    return snapshot.mode === 'memory' || snapshot.status === 'unavailable'
+    // 远程 DSH Web iframe 内的 settingsScope 属于被访问的 DSH Web Host；
+    // CodingNS 插件设置仍归外层 CodingNS Host 所有，不能误写入 DSH Web 的本地缓存。
+    return isRemoteWebContext() || snapshot.mode === 'memory' || snapshot.status === 'unavailable'
   }
+}
+
+function isRemoteWebContext(): boolean {
+  const runtime = globalThis as typeof globalThis & {
+    __CODINGNS4DSH_REMOTE_WEB_CONTEXT__?: unknown
+    location?: { readonly protocol?: string }
+  }
+  // 中转 iframe 有显式标记；局域网代理直接打开 DSH Web 时没有 iframe，
+  // 但同样属于浏览器 Host，插件设置仍应通过 CodingNS Host RPC 读取。
+  return runtime.__CODINGNS4DSH_REMOTE_WEB_CONTEXT__ === true
+    || runtime.location?.protocol === 'http:'
+    || runtime.location?.protocol === 'https:'
 }
 
 /** 调用 Codingns4DSH Host RPC，并兼容 DSH 原生连接与普通 Web API 回退。 */
