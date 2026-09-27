@@ -136,6 +136,8 @@ export interface CodingNsNativeSessionBridge {
   appendRequestContext?(sessionId: string, context: CodingNsNativeRequestContext): boolean
   /** 在当前步骤即时记录外部 Provider 用量；该事件不进入模型可见 surface。 */
   appendUsageSample?(sessionId: string, usage: CodingNsNativeUsageSample): boolean
+  /** 判断指定会话是否真的具备下一步注入能力。 */
+  canInjectNextStep?(sessionId: string): boolean
   /** 在当前 Agent turn 的下一个合法 step 注入插件上下文，不唤醒空闲 Agent。 */
   injectNextStep?(sessionId: string, summary?: string): boolean
   /** 使用 DSH 原生 approval 组件请求一次权限决定；服务不可用时拒绝。 */
@@ -301,6 +303,10 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
       return false
     }
   }
+  const canInjectNativeNextStep = (sessionId: string): boolean => {
+    const agent = nativeAgent(ctx, sessionId)
+    return agent !== null && typeof (agent as { inject?: unknown }).inject === 'function'
+  }
 
   return {
     get available() {
@@ -349,6 +355,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     },
     appendUsageSample(sessionId, usage) {
       return appendNativeUsageSample(sessionId, usage)
+    },
+    canInjectNextStep(sessionId) {
+      return canInjectNativeNextStep(sessionId)
     },
     injectNextStep(sessionId, summary) {
       return injectNativeNextStep(sessionId, summary)

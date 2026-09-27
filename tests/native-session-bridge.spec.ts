@@ -94,6 +94,7 @@ test('只有 SessionStore 时只复用已有会话，不创建短命会话', asy
   assert.equal(await bridge.ensure('dsh-2'), null)
   sessions.set('dsh-2', { id: 'dsh-2' })
   assert.equal(await bridge.ensure('dsh-2'), 'dsh-2')
+  assert.equal(bridge.canInjectNextStep?.('dsh-2'), false)
   await bridge.flush('dsh-2')
   assert.equal(flushed, 1)
 })
@@ -509,6 +510,7 @@ test('原生会话桥接使用 Agent.inject 把外部工具推进下一个合法
     },
   } as never)
 
+  assert.equal(bridge.canInjectNextStep?.('step-session'), true)
   assert.equal(bridge.injectNextStep?.('step-session', '工具一已完成'), true)
   assert.equal(messages.length, 1)
   assert.deepEqual(messages[0], {
@@ -518,6 +520,7 @@ test('原生会话桥接使用 Agent.inject 把外部工具推进下一个合法
     source: { kind: 'plugin', plugin: 'codingns4dsh', form: 'notice', summary: '工具一已完成' },
   })
   assert.equal(bridge.injectNextStep?.('missing'), false)
+  assert.equal(bridge.canInjectNextStep?.('missing'), false)
 })
 
 test('DSH 0.1.7 使用 model-selection source 注入下一个 step', () => {
