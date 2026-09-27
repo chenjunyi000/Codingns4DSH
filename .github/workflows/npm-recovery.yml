@@ -1,0 +1,52 @@
+name: 一次性恢复 npm 发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: 要发布的已存在 tag
+        required: true
+        default: v0.1.1
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: 从已发布 tag 发布 npm
+    runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_PROVENANCE: 'true'
+
+    steps:
+      - name: 检出指定 tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref }}
+
+      - name: 配置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.1
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: 校验版本并构建
+        run: |
+          test "$(git describe --tags --exact-match)" = "${{ inputs.release_ref }}"
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run version:check
+          pnpm exec tsc --noEmit
+          pnpm run build
+          npm pack --dry-run --ignore-scripts --json
+
+      - name: 发布 npm
+        run: bash scripts/publish-npm-package.sh --mode publish --tag latest --skip-tests
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
