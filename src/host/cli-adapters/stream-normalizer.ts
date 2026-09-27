@@ -16,18 +16,22 @@ export class CodingNsAgentEventNormalizer {
   private text = ''
   private reasoningBoundary = false
   private textBoundary = false
+  private reasoningMessageId: string | undefined
+  private textMessageId: string | undefined
   private usage: UsageChunk | null = null
 
   push(chunk: CodingNsAgentEvent): readonly CodingNsNormalizedAgentEvent[] {
     if (chunk.type === 'reasoning-delta') {
+      const boundary = this.messageBoundary('reasoning', chunk.messageId)
       this.reasoning = this.reasoningBoundary ? chunk.text : this.reasoning + chunk.text
       this.reasoningBoundary = false
-      return chunk.text === '' ? [] : [chunk]
+      return chunk.text === '' ? boundary : [...boundary, chunk]
     }
     if (chunk.type === 'text-delta') {
+      const boundary = this.messageBoundary('text', chunk.messageId)
       this.text = this.textBoundary ? chunk.text : this.text + chunk.text
       this.textBoundary = false
-      return chunk.text === '' ? [] : [chunk]
+      return chunk.text === '' ? boundary : [...boundary, chunk]
     }
     if (chunk.type === 'reasoning-snapshot') return this.appendSnapshot('reasoning', chunk.text)
     if (chunk.type === 'text-snapshot') return this.appendSnapshot('text', chunk.text)
@@ -82,5 +86,16 @@ export class CodingNsAgentEventNormalizer {
     const usage = this.usage
     this.usage = null
     return usage
+  }
+
+  private messageBoundary(channel: 'reasoning' | 'text', messageId: string | undefined): readonly CodingNsNormalizedAgentEvent[] {
+    if (messageId === undefined) return []
+    const previous = channel === 'reasoning' ? this.reasoningMessageId : this.textMessageId
+    if (channel === 'reasoning') this.reasoningMessageId = messageId
+    else this.textMessageId = messageId
+    if (previous === undefined || previous === messageId) return []
+    if (channel === 'reasoning') this.reasoning = ''
+    else this.text = ''
+    return [{ type: 'message-boundary', channel, messageId }]
   }
 }

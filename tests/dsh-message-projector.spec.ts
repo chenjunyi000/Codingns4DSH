@@ -117,6 +117,36 @@ test('公共消息投影层在工具终态到达时立即完成原生组件', as
   assert.deepEqual(order, ['call:edit-1', 'result:edit-1:Done', 'assistant'])
 })
 
+test('Codex assistant item 切换时封口旧正文并分配新的 DSH block', async () => {
+  const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'session-boundary' })
+  const chunks = []
+  chunks.push(...await projector.push({ type: 'text-delta', text: '工具前', messageId: 'message-1' }))
+  chunks.push(...await projector.push({ type: 'text-delta', text: '工具后', messageId: 'message-2' }))
+
+  assert.deepEqual(chunks, [
+    { type: 'text-delta', index: 1, text: '工具前' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: '工具前' } },
+    { type: 'text-delta', index: 3, text: '工具后' },
+  ])
+})
+
+test('工具 step 边界写入不可见 assistant 分隔块，避免 DSH 0.1.7 合并 process group', async () => {
+  const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'step-boundary' })
+  assert.deepEqual(await projector.push({ type: 'step-boundary' }), [
+    { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
+  ])
+})
+
+test('消息 block 切换后执行失败仍写入当前正文 block', async () => {
+  const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'session-failure-boundary' })
+  await projector.push({ type: 'text-delta', text: '工具前', messageId: 'message-1' })
+  await projector.push({ type: 'text-delta', text: '工具后', messageId: 'message-2' })
+  const chunks = await projector.fail('执行失败')
+  assert.equal(chunks[0]?.type, 'text-delta')
+  assert.equal(chunks[0]?.index, 3)
+  assert.equal(chunks.at(-1)?.type, 'finish')
+})
+
 test('公共消息投影层使用 DSH 原生权限和问题组件并回传统一回答', async () => {
   const approvals = []
   const questions = []

@@ -95,7 +95,7 @@ export function apply(ctx?: Context): void {
       dshWebPort: webServerPort,
       dshWebAuthenticatedUrl: hostCtx.connection.authenticatedUrl(`http://127.0.0.1:${String(webServerPort)}`),
       events: { on: hostCtx.on.bind(hostCtx) },
-      nativeSessions: createCodingNsNativeSessionBridge(hostCtx),
+      nativeSessions: createCodingNsNativeSessionBridge(hostCtx, dshVersion),
       terminalProcesses: terminal.processService,
       resolveWorkspaceRoot: (workspaceId) => workspaceRoots.get(workspaceId) ?? resolveWorkspaceRoot(hostCtx, workspaceId),
       registerDebugProxyRoute: (handler) => hostCtx.connection.fetch.register({

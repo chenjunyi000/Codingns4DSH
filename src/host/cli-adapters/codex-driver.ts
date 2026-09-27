@@ -17,6 +17,32 @@ export interface CodexAppServerDriverOptions {
   readonly spawn?: typeof spawn
 }
 
+interface CodexSegmentedTurn {
+  readonly queue: CodexTurnEventQueue
+  removeNotificationListener: () => void
+  removeAbortListener: () => void
+  terminalReason: 'stop' | 'cancel' | 'error' | null
+  done: boolean
+}
+
+interface CodexTurnEventQueue {
+  readonly iterable: AsyncIterable<JsonRpcMessage>
+  next(): Promise<IteratorResult<JsonRpcMessage>>
+  push(message: JsonRpcMessage): void
+  close(): void
+}
+
+interface CodexSession {
+  readonly rpc: JsonRpcProcess
+  readonly cwd: string | undefined
+  threadId: string
+  turnId: string | null
+  providerSessionId: string
+  readonly pendingPermissions: Map<string, (value: unknown) => void>
+  readonly pendingQuestions: Map<string, (value: unknown) => void>
+  segmentedTurn: CodexSegmentedTurn | undefined
+}
+
 /** Codex app-server 的 JSON-RPC 驱动，Host 只暴露统一文本流，不暴露线程和 token。 */
 export class CodexAppServerDriver implements CodingNsCliDriver {
   readonly descriptor = { id: 'codex', name: 'Codex', protocol: 'json-rpc', capabilities: ['models', 'stream', 'resume', 'interrupt', 'tool-events', 'reasoning', 'usage', 'permission', 'questions', 'steer'] as const } as const
@@ -26,15 +52,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   private readonly sessionRoots: readonly string[]
   private cachedBinary: string | null = null
   private readonly processes = new Set<JsonRpcProcess>()
-  private readonly sessions = new Map<string, {
-    rpc: JsonRpcProcess
-    cwd: string | undefined
-    threadId: string
-    turnId: string | null
-    providerSessionId: string
-    pendingPermissions: Map<string, (value: unknown) => void>
-    pendingQuestions: Map<string, (value: unknown) => void>
-  }>()
+  private readonly sessions = new Map<string, CodexSession>()
 
   constructor(options: CodexAppServerDriverOptions = {}) {
     this.binaries = options.binaries ?? ['codex']
@@ -89,6 +107,10 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   async *executeTurn(input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
     const command = this.cachedBinary ?? (await this.detect()).command
     if (command === null) throw new Error('Codex 未安装')
+    if (input.splitToolSteps) {
+      yield* this.executeSegmentedTurn(input, command)
+      return
+    }
     const session = await this.getSession(input, command)
     const rpc = session.rpc
     try {
@@ -176,6 +198,134 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     } finally { /* app-server 在会话结束前保持连接。 */ }
   }
 
+  /**
+   * 将一个 Codex turn 按工具完成点切成多个 DSH step。
+   *
+   * DSH 的 step 边界只能由 Agent Loop 提交；这里仅提前结束本次 llm/stream，
+   * 保留同一个 Codex turn 的通知队列，下一次 llm/stream 再继续消费它。
+   */
+  private async *executeSegmentedTurn(input: CodingNsCliTurnInput, command: string): AsyncIterable<CodingNsAgentEvent> {
+    const session = await this.getSession(input, command)
+    const rpc = session.rpc
+    let active: CodexSegmentedTurn | undefined
+    try {
+      if (session.threadId === '') {
+        const thread = input.providerSessionId
+          ? await rpc.request('thread/resume', { threadId: input.providerSessionId, cwd: input.cwd ?? process.cwd(), ...(!isProviderDefaultModel(input.modelId) ? { model: input.modelId } : {}) }, { signal: input.signal, killOnAbort: false })
+          : await rpc.request('thread/start', { cwd: input.cwd ?? process.cwd(), ...(!isProviderDefaultModel(input.modelId) ? { model: input.modelId } : {}) }, { signal: input.signal, killOnAbort: false })
+        session.threadId = readId(thread) ?? input.providerSessionId ?? input.sessionId
+        session.providerSessionId = session.threadId
+      }
+      active = session.segmentedTurn ?? await this.startSegmentedTurn(session, input)
+      const isNew = session.segmentedTurn === undefined
+      if (isNew) session.segmentedTurn = active
+      if (isNew) yield { type: 'session-binding', providerSessionId: session.providerSessionId }
+
+      for await (const chunk of this.consumeSegment(active, input)) yield chunk
+      if (active.done && session.segmentedTurn === active) session.segmentedTurn = undefined
+    } catch (error) {
+      if (active !== undefined && !active.done) this.closeSegmentedTurn(session, active)
+      if (!input.signal?.aborted) throw error
+      await this.interrupt(input.sessionId)
+    }
+  }
+
+  private async startSegmentedTurn(
+    session: CodexSession,
+    input: CodingNsCliTurnInput,
+  ): Promise<CodexSegmentedTurn> {
+    const eventQueue = createCodexTurnEventQueue()
+    let activeTurnId: string | null = null
+    let turnStartResolved = false
+    const notificationsBeforeTurnStart: JsonRpcMessage[] = []
+    const active: CodexSegmentedTurn = {
+      queue: eventQueue,
+      removeNotificationListener: () => undefined,
+      terminalReason: null,
+      done: false,
+      removeAbortListener: () => undefined,
+    }
+    const acceptNotification = (message: JsonRpcMessage, allowUnidentifiedTool: boolean): void => {
+      if (!isCodexNotificationForTurn(message, session.threadId, activeTurnId, allowUnidentifiedTool)) return
+      const turnId = readTurnId(message)
+      if (turnId !== null) {
+        activeTurnId = turnId
+        session.turnId = turnId
+      }
+      eventQueue.push(message)
+      const reason = readCodexTerminalReason(message)
+      if (reason !== null) {
+        active.terminalReason = reason
+        eventQueue.close()
+      }
+    }
+    const onNotification = (message: JsonRpcMessage): void => {
+      if (!turnStartResolved) {
+        notificationsBeforeTurnStart.push(message)
+        return
+      }
+      acceptNotification(message, true)
+    }
+    active.removeNotificationListener = session.rpc.addNotificationListener(onNotification)
+    const onAbort = (): void => {
+      active.terminalReason = 'cancel'
+      eventQueue.close()
+    }
+    active.removeAbortListener = () => input.signal?.removeEventListener('abort', onAbort)
+    if (input.signal?.aborted) onAbort()
+    else input.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const response = await session.rpc.request('turn/start', {
+        threadId: session.threadId,
+        input: [{ type: 'text', text: input.prompt }],
+        ...(input.effortId ? { effort: input.effortId } : {}),
+      }, { signal: input.signal, killOnAbort: false })
+      const responseTurnId = readTurnId(response)
+      if (responseTurnId !== null) {
+        activeTurnId = responseTurnId
+        session.turnId = responseTurnId
+      }
+      turnStartResolved = true
+      for (const message of notificationsBeforeTurnStart.splice(0)) acceptNotification(message, false)
+      const responseTerminal = buildCodexCompletionNotification(response, session.threadId)
+      if (responseTerminal !== null) onNotification(responseTerminal)
+      return active
+    } catch (error) {
+      this.closeSegmentedTurn(session, active)
+      throw error
+    }
+  }
+
+  private async *consumeSegment(active: CodexSegmentedTurn, input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
+    while (true) {
+      const next = await active.queue.next()
+      if (next.done) {
+        if (input.signal?.aborted) throw new Error('请求已取消')
+        active.done = true
+        active.removeAbortListener()
+        active.removeNotificationListener()
+        yield { type: 'finish', reason: active.terminalReason ?? 'stop' }
+        return
+      }
+      if (input.signal?.aborted) throw new Error('请求已取消')
+      const chunk = codexMessageToChunk(next.value)
+      if (chunk === null) continue
+      yield chunk
+      if (chunk.type === 'tool-event' && (chunk.status === 'completed' || chunk.status === 'failed')) {
+        yield { type: 'step-boundary' }
+        return
+      }
+    }
+  }
+
+  private closeSegmentedTurn(session: CodexSession, active: CodexSegmentedTurn): void {
+    active.done = true
+    active.removeAbortListener()
+    active.removeNotificationListener()
+    active.queue.close()
+    if (session.segmentedTurn === active) session.segmentedTurn = undefined
+  }
+
   /** 将新输入 steer 到当前 Codex turn。 */
   async steer(sessionId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(sessionId)
@@ -216,6 +366,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
 
   dispose(): void {
     for (const session of this.sessions.values()) {
+      if (session.segmentedTurn !== undefined) this.closeSegmentedTurn(session, session.segmentedTurn)
       for (const resolve of session.pendingPermissions.values()) resolve({ approved: false })
       session.pendingPermissions.clear()
       for (const resolve of session.pendingQuestions.values()) resolve({ answers: {} })
@@ -230,6 +381,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   private async getSession(input: CodingNsCliTurnInput, command: string) {
     const previous = this.sessions.get(input.sessionId)
     if (previous !== undefined && previous.cwd === input.cwd) return previous
+    if (previous?.segmentedTurn !== undefined) this.closeSegmentedTurn(previous, previous.segmentedTurn)
     previous?.rpc.dispose()
     const rpc = new JsonRpcProcess({ command, args: ['app-server'], cwd: input.cwd, spawn: this.runSpawn })
     const session = {
@@ -240,6 +392,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       providerSessionId: input.providerSessionId ?? input.sessionId,
       pendingPermissions: new Map<string, (value: unknown) => void>(),
       pendingQuestions: new Map<string, (value: unknown) => void>(),
+      segmentedTurn: undefined as CodexSegmentedTurn | undefined,
     }
     this.processes.add(rpc)
     this.sessions.set(input.sessionId, session)
@@ -313,8 +466,13 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
     const detail = text ?? (typeof params.command === 'string' ? params.command : typeof params.description === 'string' ? params.description : null)
     if (requestId !== null) return { type: 'permission-request', requestId, kind: typeof params.kind === 'string' ? params.kind : 'unknown', ...(detail ? { detail } : {}) }
   }
-  if (method.includes('agentMessage') || method.includes('message') && (type.includes('text') || type === '')) return text ? { type: 'text-delta', text } : null
-  if (method.includes('reason') || type.includes('reason')) return text ? { type: 'reasoning-delta', text } : null
+  const messageId = firstToolText(params.itemId, item.id)
+  if (method.includes('agentMessage') || method.includes('message') && (type.includes('text') || type === '')) {
+    return text ? { type: 'text-delta', text, ...(messageId === undefined ? {} : { messageId }) } : null
+  }
+  if (method.includes('reason') || type.includes('reason')) {
+    return text ? { type: 'reasoning-delta', text, ...(messageId === undefined ? {} : { messageId }) } : null
+  }
   if (isCodexToolEvent(method, type)) {
     const name = firstToolText(item.name, item.toolName, item.tool, item.command !== undefined ? 'command_execution' : undefined, type)
     const callId = firstToolText(item.callId, item.call_id, item.toolCallId, item.id, params.itemId)
@@ -414,27 +572,25 @@ function readTurnId(message: unknown): string | null {
  * 复用父仓库 CodexRuntimeAdapter 的事件队列结构：终止时先排空已入队事件，
  * 再结束异步迭代，保证 turn/completed 前到达的最后一个文本片段不会丢失。
  */
-function createCodexTurnEventQueue(): {
-  readonly iterable: AsyncIterable<JsonRpcMessage>
-  push(message: JsonRpcMessage): void
-  close(): void
-} {
+function createCodexTurnEventQueue(): CodexTurnEventQueue {
   const values: JsonRpcMessage[] = []
   const waiters: Array<(result: IteratorResult<JsonRpcMessage>) => void> = []
   let closed = false
+  const next = (): Promise<IteratorResult<JsonRpcMessage>> => {
+    const value = values.shift()
+    if (value !== undefined) return Promise.resolve({ done: false, value })
+    if (closed) return Promise.resolve({ done: true, value: undefined })
+    return new Promise((resolve) => waiters.push(resolve))
+  }
   return {
     iterable: {
       [Symbol.asyncIterator]() {
         return {
-          next(): Promise<IteratorResult<JsonRpcMessage>> {
-            const value = values.shift()
-            if (value !== undefined) return Promise.resolve({ done: false, value })
-            if (closed) return Promise.resolve({ done: true, value: undefined })
-            return new Promise((resolve) => waiters.push(resolve))
-          },
+          next,
         }
       },
     },
+    next,
     push(message) {
       if (closed) return
       const waiter = waiters.shift()

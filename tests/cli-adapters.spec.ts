@@ -596,6 +596,59 @@ test('CLI 功能模块按会话配置接管 llm/stream，并保留默认 DSH 流
   assert.equal(listener, undefined)
 })
 
+test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const order: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn() {
+      yield { type: 'step-boundary' } as const
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      appendRequestContext() { return true },
+      injectNextStep() {
+        order.push('inject')
+        return true
+      },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  await table.resolve('cli/session/set')?.handler('session/set', { sessionId: 'codex-step-order', adapterId: 'codex' })
+
+  const chunks = []
+  for await (const chunk of listener!({ sessionId: 'codex-step-order', messages: [{ role: 'user', content: '执行工具' }] }, async function* () {})) {
+    chunks.push(chunk)
+    if (chunk.type === 'finish') assert.deepEqual(order, ['inject'])
+  }
+  assert.deepEqual(chunks, [
+    { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ])
+  await features.disable('cliAdapters')
+})
+
 test('CLI 功能模块把异常和取消映射成 DSH 原生终止原因且不会留下运行中工具', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined

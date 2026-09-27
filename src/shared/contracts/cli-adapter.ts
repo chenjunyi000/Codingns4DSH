@@ -107,6 +107,8 @@ export interface CodingNsCliTurnInput {
   readonly signal?: AbortSignal
   readonly providerSessionId?: string
   readonly rawStoreRef?: string
+  /** 仅由 Host 的 DSH 分段桥接使用；让支持的 Provider 在工具完成处结束当前 step。 */
+  readonly splitToolSteps?: boolean
 }
 
 export interface CodingNsAgentPermissionResponse {
@@ -176,10 +178,20 @@ export interface CodingNsAgentToolEvent {
  * 历史和 DSH 原生消息映射全部由公共消息投影层负责。
  */
 export type CodingNsAgentEvent =
-  | { readonly type: 'reasoning-delta'; readonly text: string }
+  | { readonly type: 'reasoning-delta'; readonly text: string; readonly messageId?: string }
   | { readonly type: 'reasoning-snapshot'; readonly text: string }
-  | { readonly type: 'text-delta'; readonly text: string }
+  | { readonly type: 'text-delta'; readonly text: string; readonly messageId?: string }
   | { readonly type: 'text-snapshot'; readonly text: string }
+  | {
+      /** Provider 在同一回合中切换 assistant item 时的内容块边界。 */
+      readonly type: 'message-boundary'
+      readonly channel: 'reasoning' | 'text'
+      readonly messageId: string
+    }
+  | {
+      /** Provider 已完成一个外部工具，Host 应在当前流结束后注入下一个 DSH step。 */
+      readonly type: 'step-boundary'
+    }
   | CodingNsAgentToolEvent
   | {
       readonly type: 'usage'

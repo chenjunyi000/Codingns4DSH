@@ -59,7 +59,9 @@ test('三个 RPC 驱动按各自协议完成握手并转换文本事件', async 
     for await (const chunk of driver.executeTurn({ sessionId: 's1', messages: [], prompt: '你好' })) chunks.push(chunk)
     assert.deepEqual(calls[0], ['fake-agent', ...expectedArgs])
     driver.dispose()
-    assert.deepEqual(chunks.filter((chunk) => chunk.type !== 'session-binding'), [{ type: 'text-delta', text: '完成' }, { type: 'finish', reason: 'stop' }])
+    assert.deepEqual(chunks.filter((chunk) => chunk.type !== 'session-binding'), Driver === CodexAppServerDriver
+      ? [{ type: 'text-delta', text: '完成', messageId: 'message-1' }, { type: 'finish', reason: 'stop' }]
+      : [{ type: 'text-delta', text: '完成' }, { type: 'finish', reason: 'stop' }])
     assert.equal(killed, true)
   }
 })
@@ -134,6 +136,68 @@ test('Codex app-server 保留 item 工具生命周期和失败结果', async () 
   assert.deepEqual(chunks.filter((chunk) => chunk.type === 'tool-event'), [
     { type: 'tool-event', toolName: 'command_execution', callId: 'codex-call-1', input: 'exit 2', status: 'running' },
     { type: 'tool-event', toolName: 'command_execution', callId: 'codex-call-1', input: 'exit 2', error: '失败输出', status: 'failed' },
+  ])
+  driver.dispose()
+})
+
+test('Codex 分段模式在同一个 provider turn 内把每个工具完成拆成独立 step', async () => {
+  let turnStarts = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'initialize') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'segmented-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          turnStarts += 1
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'segmented-turn', status: 'inProgress' } } })}\n`)
+          setImmediate(() => {
+            const event = (method: string, item: Record<string, unknown>): void => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 'segmented-thread', turnId: 'segmented-turn', item } })}\n`)
+            event('item/started', { type: 'commandExecution', id: 'call-1', command: 'pwd', status: 'inProgress' })
+            event('item/completed', { type: 'commandExecution', id: 'call-1', command: 'pwd', aggregated_output: '/one', status: 'completed' })
+            event('item/started', { type: 'commandExecution', id: 'call-2', command: 'ls', status: 'inProgress' })
+            event('item/completed', { type: 'commandExecution', id: 'call-2', command: 'ls', aggregated_output: 'two', status: 'completed' })
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'segmented-thread', turnId: 'segmented-turn', itemId: 'message-1', delta: '完成' } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'segmented-thread', turn: { id: 'segmented-turn', status: 'completed' } } })}\n`)
+          })
+        }
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '执行', splitToolSteps: true })) first.push(chunk)
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '不会重复发送', splitToolSteps: true })) second.push(chunk)
+  const third = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '仍复用同一 turn', splitToolSteps: true })) third.push(chunk)
+
+  assert.equal(turnStarts, 1)
+  assert.deepEqual(first.filter((chunk) => chunk.type), [
+    { type: 'session-binding', providerSessionId: 'segmented-thread' },
+    { type: 'tool-event', toolName: 'command_execution', callId: 'call-1', input: 'pwd', status: 'running' },
+    { type: 'tool-event', toolName: 'command_execution', callId: 'call-1', input: 'pwd', output: '/one', outputMode: 'snapshot', status: 'completed' },
+    { type: 'step-boundary' },
+  ])
+  assert.deepEqual(second.filter((chunk) => chunk.type), [
+    { type: 'tool-event', toolName: 'command_execution', callId: 'call-2', input: 'ls', status: 'running' },
+    { type: 'tool-event', toolName: 'command_execution', callId: 'call-2', input: 'ls', output: 'two', outputMode: 'snapshot', status: 'completed' },
+    { type: 'step-boundary' },
+  ])
+  assert.deepEqual(third, [
+    { type: 'text-delta', text: '完成', messageId: 'message-1' },
+    { type: 'finish', reason: 'stop' },
   ])
   driver.dispose()
 })
@@ -657,7 +721,7 @@ test('Codex 在 turn/start 响应先到时继续等待文本和完成通知', as
   for await (const chunk of driver.executeTurn({ sessionId: 'codex-late', messages: [], prompt: '你好' })) chunks.push(chunk)
   assert.deepEqual(chunks, [
     { type: 'session-binding', providerSessionId: 'thread-late' },
-    { type: 'text-delta', text: '延迟回复' },
+    { type: 'text-delta', text: '延迟回复', messageId: 'message-late' },
     { type: 'finish', reason: 'stop' },
   ])
   driver.dispose()

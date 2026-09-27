@@ -135,6 +135,7 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             ...(config.rawStoreRef ? { rawStoreRef: config.rawStoreRef } : {}),
             ...(cwd === undefined ? {} : { cwd }),
             ...(isAbortSignal(value?.signal) ? { signal: value.signal } : {}),
+            ...(config.adapterId === 'codex' && nativeSessions?.available === true && nativeSessions.injectNextStep !== undefined ? { splitToolSteps: true } : {}),
           }
           const projector = new CodingNsDshMessageProjector({
             adapterId: config.adapterId,
@@ -147,6 +148,14 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           })
           try {
             for await (const chunk of registry.execute({ ...input, adapterId: config.adapterId })) {
+              if (chunk.type === 'step-boundary') {
+                // Agent Loop 会在本次 llm/stream 返回后关闭当前 step，并在返回前
+                // 检查 next-step inbox。必须先注入，再发送 finish，不能等 complete()
+                // 之后再写入，否则 DSH 已经把整个 turn 结算完了。
+                if (nativeSessions?.available === true) nativeSessions.injectNextStep?.(sessionId)
+                for (const dshChunk of await projector.push(chunk)) yield dshChunk
+                continue
+              }
               for (const dshChunk of await projector.push(chunk)) yield dshChunk
               // DSH 要求 finish 是唯一且最后一个 chunk。这里 return 也会关闭上游迭代器。
               if (projector.isFinished) return

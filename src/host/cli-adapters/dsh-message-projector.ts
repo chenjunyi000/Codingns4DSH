@@ -33,6 +33,10 @@ export type CodingNsDshStreamChunk = Readonly<Record<string, unknown>>
 export class CodingNsDshMessageProjector {
   private readonly normalizer = new CodingNsAgentEventNormalizer()
   private readonly toolHistory: CodingNsDshToolHistoryProjector
+  private reasoningIndex = 0
+  private textIndex = 1
+  private reasoningText = ''
+  private textText = ''
   private finished = false
 
   constructor(private readonly options: CodingNsDshMessageProjectorOptions) {
@@ -67,7 +71,7 @@ export class CodingNsDshMessageProjector {
     const projected = await this.flushUsage()
     const reason = cancelled ? 'cancel' : 'error'
     if (!cancelled) {
-      projected.push({ type: 'text-delta', index: 1, text: formatExecutionFailure(this.options.adapterId, message) })
+      projected.push(...await this.project({ type: 'text-delta', text: formatExecutionFailure(this.options.adapterId, message) }))
     }
     projected.push(...await this.project({ type: 'finish', reason }, message))
     return projected
@@ -85,9 +89,23 @@ export class CodingNsDshMessageProjector {
   ): Promise<readonly CodingNsDshStreamChunk[]> {
     switch (event.type) {
       case 'reasoning-delta':
-        return event.text === '' ? [] : [{ type: 'reasoning-delta', index: 0, text: event.text }]
+        if (event.text === '') return []
+        this.reasoningText += event.text
+        return [{ type: 'reasoning-delta', index: this.reasoningIndex, text: event.text }]
       case 'text-delta':
-        return event.text === '' ? [] : [{ type: 'text-delta', index: 1, text: event.text }]
+        if (event.text === '') return []
+        this.textText += event.text
+        return [{ type: 'text-delta', index: this.textIndex, text: event.text }]
+      case 'message-boundary':
+        return this.closeMessageBlock(event.channel)
+      case 'step-boundary':
+        // DSH 0.1.7 的 Chat 分组器会把同一 Turn 中没有可见 assistant
+        // 回复的连续工具节点合并到一个 process group。Codex 的工具已经
+        // 在外部进程完成，分段之间没有 DSH 原生 assistant 文本可供分组器
+        // 识别，因此写入一个 Markdown 引用定义作为不可见的回复边界。
+        // 必须从新行开始；DSH UI 会忽略 definition 节点，而不是把 HTML 当注释解析。
+        // 该内容不会显示给用户，也不会改变工具的原生 step 坐标。
+        return [{ type: 'text-delta', index: this.textIndex, text: '\n\n[//]: # (codingns-step-boundary)' }]
       case 'tool-event':
         return externalToolChunk(this.toolHistory.observe(event))
       case 'permission-request':
@@ -126,6 +144,21 @@ export class CodingNsDshMessageProjector {
         this.toolHistory.finalize(event.reason, failureMessage)
         return [{ type: 'finish', reason: toDshFinishReason(event.reason, failureMessage) }]
     }
+  }
+
+  private closeMessageBlock(channel: 'reasoning' | 'text'): readonly CodingNsDshStreamChunk[] {
+    if (channel === 'reasoning') {
+      if (this.reasoningText === '') return []
+      const chunk = { type: 'block-end', index: this.reasoningIndex, block: { type: 'reasoning', text: this.reasoningText } }
+      this.reasoningText = ''
+      this.reasoningIndex += 2
+      return [chunk]
+    }
+    if (this.textText === '') return []
+    const chunk = { type: 'block-end', index: this.textIndex, block: { type: 'text', text: this.textText } }
+    this.textText = ''
+    this.textIndex += 2
+    return [chunk]
   }
 
   private async requestPermission(event: Extract<CodingNsAgentEvent, { type: 'permission-request' }>): Promise<void> {
