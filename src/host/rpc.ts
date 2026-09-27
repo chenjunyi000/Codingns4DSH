@@ -27,8 +27,16 @@ export function createCodingNsRpcHandler(table: CodingNsRpcTable): ConnectionRpc
       debugInfo('codingns4dsh: host rpc success', { endpoint })
       return success(value)
     } catch (error) {
-      console.error('codingns4dsh: host rpc handler failed', { endpoint, error })
-      return failure(errorCode(error), error instanceof Error ? error.message : String(error))
+      const code = errorCode(error)
+      const details = { endpoint, code, error }
+      if (code === 'CODINGNS_RPC_UNAUTHENTICATED') {
+        // 未登录是正常的业务状态，不能把它伪装成 Host 故障；RPC 仍返回失败，
+        // 让客户端根据稳定错误码决定是否等待登录。
+        console.warn('codingns4dsh: host rpc request rejected', details)
+      } else {
+        console.error('codingns4dsh: host rpc handler failed', details)
+      }
+      return failure(code, error instanceof Error ? error.message : String(error))
     }
   }
 }
