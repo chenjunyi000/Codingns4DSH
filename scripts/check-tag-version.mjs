@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
-const tag = process.env.GITHUB_REF_NAME ?? process.argv[2]
+const tag = process.argv[2] ?? process.env.GITHUB_REF_NAME
 const versionFile = JSON.parse(await readFile(new URL('../version.json', import.meta.url), 'utf8'))
 const expectedVersion = versionFile.pluginVersion
 const actualVersion = typeof tag === 'string' && tag.startsWith('v') ? tag.slice(1) : undefined

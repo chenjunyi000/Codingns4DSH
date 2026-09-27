@@ -1,6 +1,6 @@
 {
   "name": "codingns4dsh-profile",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,7 +10,7 @@
     "preinstall": "node scripts/check-dsh-install.mjs"
   },
   "dependencies": {
-    "@jingyi0605/codingns4dsh": "0.1.1"
+    "@jingyi0605/codingns4dsh": "0.1.2"
   },
   "dsh": {
     "profile": {
