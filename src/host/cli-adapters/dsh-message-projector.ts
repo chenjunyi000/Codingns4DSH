@@ -3,7 +3,7 @@ import type {
   CodingNsAgentQuestionResponse,
   CodingNsAgentPermissionResponse,
 } from '../../shared/contracts/cli-adapter.js'
-import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
+import type { CodingNsNativeSessionBridge, CodingNsNativeUsageSample } from '../native-session-bridge.js'
 import { CodingNsDshToolHistoryProjector } from './dsh-tool-history.js'
 import {
   CodingNsAgentEventNormalizer,
@@ -50,6 +50,7 @@ export class CodingNsDshMessageProjector {
 
   async push(event: CodingNsAgentEvent): Promise<readonly CodingNsDshStreamChunk[]> {
     if (this.finished) return []
+    if (event.type === 'usage') this.recordUsageSample(event)
     const projected: CodingNsDshStreamChunk[] = []
     for (const normalized of this.normalizer.push(event)) {
       projected.push(...await this.project(normalized))
@@ -84,6 +85,34 @@ export class CodingNsDshMessageProjector {
     return projected
   }
 
+  /** Provider 的 usage 到达时立即给 token-meter 一个非 surface 采样点。
+   *
+   * DSH 规范要求正式 usage 仍随 assistant/message 在 finish 前结算，因此这里不
+   * 提前向 LLM 流发送第二个 usage，只写入 assistant/attempt 供上下文计量投影使用。
+   */
+  private recordUsageSample(event: Extract<CodingNsAgentEvent, { type: 'usage' }>): void {
+    const usage: CodingNsNativeUsageSample = {
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
+      ...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
+      ...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
+      ...(event.uncachedInputTokens === undefined ? {} : { uncachedInputTokens: event.uncachedInputTokens }),
+      ...(event.totalTokens === undefined ? {} : { totalTokens: event.totalTokens }),
+      ...(event.cacheHitRate === undefined ? {} : { cacheHitRate: event.cacheHitRate }),
+      ...(event.contextWindow === undefined ? {} : { contextWindow: event.contextWindow }),
+      ...(event.contextTokens === undefined ? {} : { contextTokens: event.contextTokens }),
+      ...(event.contextUsageRatio === undefined ? {} : { contextUsageRatio: event.contextUsageRatio }),
+    }
+    if (event.contextWindow !== undefined) {
+      this.options.nativeSessions?.appendRequestContext?.(this.options.sessionId, {
+        provider: this.options.adapterId,
+        model: this.options.modelId ?? this.options.adapterId,
+        contextWindow: event.contextWindow,
+      })
+    }
+    this.options.nativeSessions?.appendUsageSample?.(this.options.sessionId, usage)
+  }
+
   private async project(
     event: CodingNsNormalizedAgentEvent,
     failureMessage?: string,
@@ -114,13 +143,6 @@ export class CodingNsDshMessageProjector {
         await this.requestQuestions(event)
         return []
       case 'usage':
-        if (event.contextWindow !== undefined) {
-          this.options.nativeSessions?.appendRequestContext?.(this.options.sessionId, {
-            provider: this.options.adapterId,
-            model: this.options.modelId ?? this.options.adapterId,
-            contextWindow: event.contextWindow,
-          })
-        }
         return [{
           type: 'usage',
           usage: {

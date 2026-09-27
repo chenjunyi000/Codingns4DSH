@@ -81,6 +81,20 @@ export interface CodingNsNativeRequestContext {
   readonly contextWindow?: number
 }
 
+/** 外部 Provider 已报告的用量采样；写入 assistant/attempt，不加入模型可见 surface。 */
+export interface CodingNsNativeUsageSample {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens?: number
+  readonly cacheWriteTokens?: number
+  readonly uncachedInputTokens?: number
+  readonly totalTokens?: number
+  readonly cacheHitRate?: number
+  readonly contextWindow?: number
+  readonly contextTokens?: number
+  readonly contextUsageRatio?: number
+}
+
 export interface CodingNsNativeSessionController {
   create?(request: { readonly sessionId?: string; readonly cwd?: string }): Promise<{ readonly sessionId: string }>
   list?(request?: unknown, signal?: AbortSignal): Promise<{ readonly items: readonly unknown[] }>
@@ -120,6 +134,8 @@ export interface CodingNsNativeSessionBridge {
   appendExternalToolEvent?(sessionId: string, event: CodingNsNativeExternalToolEvent): boolean
   /** 写入当前原生步骤的路由上下文元数据，不携带凭据或消息正文。 */
   appendRequestContext?(sessionId: string, context: CodingNsNativeRequestContext): boolean
+  /** 在当前步骤即时记录外部 Provider 用量；该事件不进入模型可见 surface。 */
+  appendUsageSample?(sessionId: string, usage: CodingNsNativeUsageSample): boolean
   /** 在当前 Agent turn 的下一个合法 step 注入插件上下文，不唤醒空闲 Agent。 */
   injectNextStep?(sessionId: string, summary?: string): boolean
   /** 使用 DSH 原生 approval 组件请求一次权限决定；服务不可用时拒绝。 */
@@ -230,10 +246,36 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
         && previous.provider === context.provider
         && previous.model === context.model
         && (context.contextWindow === undefined || previous.contextWindow === context.contextWindow)) return true
+      // Registry 在一轮开始时只能提供适配器身份，不能提供 Provider 容量。
+      // 继承上一条已知容量，避免先写无容量事件导致 ContextMeter 卸载；
+      // 真正的 usage 到达后，投影器会用 Provider 的最新容量覆盖它。
+      const contextWindow = context.contextWindow ?? previous?.contextWindow
       session.append('request/context', {
         provider: context.provider,
         model: context.model,
-        ...(context.contextWindow === undefined ? {} : { contextWindow: context.contextWindow }),
+        ...(contextWindow === undefined ? {} : { contextWindow }),
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+  const appendNativeUsageSample = (sessionId: string, usage: CodingNsNativeUsageSample): boolean => {
+    const session = appendableSession(store?.get(sessionId))
+    const position = session === null ? null : activeStep(session)
+    if (session === null || position === null) return false
+    try {
+      session.append('assistant/attempt', {
+        turn: position.turn,
+        step: position.step,
+        stream: [{
+          type: 'chunk',
+          time: Date.now(),
+          chunk: {
+            type: 'usage',
+            usage: compactUsage(usage),
+          },
+        }],
       })
       return true
     } catch {
@@ -304,6 +346,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     },
     appendRequestContext(sessionId, context) {
       return appendNativeRequestContext(sessionId, context)
+    },
+    appendUsageSample(sessionId, usage) {
+      return appendNativeUsageSample(sessionId, usage)
     },
     injectNextStep(sessionId, summary) {
       return injectNativeNextStep(sessionId, summary)
@@ -469,6 +514,21 @@ function eventSeq(value: unknown): number | null {
 
 function finiteInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+}
+
+function compactUsage(usage: CodingNsNativeUsageSample): Record<string, number> {
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    ...(usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: usage.cacheReadTokens }),
+    ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
+    ...(usage.uncachedInputTokens === undefined ? {} : { uncachedInputTokens: usage.uncachedInputTokens }),
+    ...(usage.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+    ...(usage.cacheHitRate === undefined ? {} : { cacheHitRate: usage.cacheHitRate }),
+    ...(usage.contextWindow === undefined ? {} : { contextWindow: usage.contextWindow }),
+    ...(usage.contextTokens === undefined ? {} : { contextTokens: usage.contextTokens }),
+    ...(usage.contextUsageRatio === undefined ? {} : { contextUsageRatio: usage.contextUsageRatio }),
+  }
 }
 
 function isSessionStore(value: unknown): value is CodingNsNativeSessionStore {

@@ -83,6 +83,40 @@ test('用量带上下文窗口时写入 DSH request/context 元数据', async ()
   }])
 })
 
+test('Provider usage 到达时先写入非 surface 采样，ContextMeter 不等待 finish', async () => {
+  const samples = []
+  const contexts = []
+  const projector = new CodingNsDshMessageProjector({
+    adapterId: 'opencode',
+    modelId: 'deepseek/deepseek-flash',
+    sessionId: 'session-usage-sample',
+    nativeSessions: {
+      appendUsageSample(sessionId, usage) { samples.push({ sessionId, usage }); return true },
+      appendRequestContext(sessionId, context) { contexts.push({ sessionId, context }); return true },
+    },
+  })
+
+  assert.deepEqual(await projector.push({
+    type: 'usage',
+    inputTokens: 120,
+    outputTokens: 8,
+    cacheReadTokens: 9000,
+    contextWindow: 1000000,
+    contextTokens: 9120,
+  }), [])
+  assert.deepEqual(samples, [{
+    sessionId: 'session-usage-sample',
+    usage: { inputTokens: 120, outputTokens: 8, cacheReadTokens: 9000, contextWindow: 1000000, contextTokens: 9120 },
+  }])
+  assert.deepEqual(contexts, [{
+    sessionId: 'session-usage-sample',
+    context: { provider: 'opencode', model: 'deepseek/deepseek-flash', contextWindow: 1000000 },
+  }])
+
+  const finish = await projector.push({ type: 'finish', reason: 'stop' })
+  assert.deepEqual(finish.at(-1), { type: 'finish', reason: { kind: 'stop' } })
+})
+
 test('公共消息投影层在工具终态到达时立即完成原生组件', async () => {
   const order = []
   const projector = new CodingNsDshMessageProjector({

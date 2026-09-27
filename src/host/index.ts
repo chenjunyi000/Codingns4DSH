@@ -208,6 +208,7 @@ export {
   type CodingNsNativeSessionStore,
   type CodingNsNativeWorkspaceController,
   type CodingNsNativeRequestContext,
+  type CodingNsNativeUsageSample,
 } from './native-session-bridge.js'
 export {
   repairLegacySessionLog,

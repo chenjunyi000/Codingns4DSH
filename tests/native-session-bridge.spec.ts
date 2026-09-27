@@ -252,6 +252,89 @@ test('原生会话桥接跳过等价 request/context 并保留已有上下文容
   assert.equal(events.length, 1)
 })
 
+test('原生会话桥接在路由切换时继承已知上下文容量', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'request/context', seq: 0, data: { provider: 'glor', model: 'deepseek-v4.1-flash', contextWindow: 1000000 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-context-route' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendRequestContext?.('native-context-route', {
+    provider: 'opencode',
+    model: 'deepseek/deepseek-flash',
+  }), true)
+  assert.deepEqual(events.at(-1), {
+    type: 'request/context',
+    seq: 1,
+    data: { provider: 'opencode', model: 'deepseek/deepseek-flash', contextWindow: 1000000 },
+  })
+})
+
+test('原生会话桥接把即时 usage 写入非 surface assistant/attempt', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'turn/start', seq: 0, data: { turn: 1 } },
+    { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-usage-sample' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendUsageSample?.('native-usage-sample', {
+    inputTokens: 120,
+    outputTokens: 8,
+    cacheReadTokens: 9000,
+    contextWindow: 1000000,
+    contextTokens: 9120,
+  }), true)
+  assert.deepEqual(events.at(-1), {
+    type: 'assistant/attempt',
+    seq: 2,
+    data: {
+      turn: 1,
+      step: 1,
+      stream: [{
+        type: 'chunk',
+        time: events.at(-1)?.data?.stream?.[0]?.time,
+        chunk: {
+          type: 'usage',
+          usage: {
+            inputTokens: 120,
+            outputTokens: 8,
+            cacheReadTokens: 9000,
+            contextWindow: 1000000,
+            contextTokens: 9120,
+          },
+        },
+      }],
+    },
+  })
+})
+
 test('原生会话桥接把失败结果写成带 isError 的 V4 tool-role 消息', () => {
   const events: Array<Record<string, any>> = [
     { type: 'turn/start', seq: 0, data: { turn: 1 } },
