@@ -2,6 +2,10 @@
   "name": "@jingyi0605/codingns4dsh",
   "version": "0.1.2",
   "description": "Codingns4DSH 插件骨架与连接契约",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jingyi0605/Codingns4DSH"
+  },
   "type": "module",
   "main": "./data/build/dist/index.js",
   "types": "./data/build/dist/index.d.ts",
