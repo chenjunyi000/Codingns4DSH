@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '要校验并发布的版本 tag'
+        required: true
+        default: 'v0.1.2'
 
 concurrency:
   group: npm-publish-${{ github.ref }}
@@ -38,7 +44,7 @@ jobs:
 
       - name: 校验 tag 与版本源
         run: |
-          node scripts/check-tag-version.mjs
+          node scripts/check-tag-version.mjs "${{ inputs.release_tag || github.ref_name }}"
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm run version:check
 
