@@ -35,11 +35,15 @@ test('公共消息投影层统一处理正文、思考、工具、用量和唯�
   chunks.push(...await projector.push({ type: 'text-delta', text: '终态后不得输出' }))
 
   assert.deepEqual(chunks, [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: '检查' },
     { type: 'reasoning-delta', index: 0, text: '目录' },
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: '开始' },
     { type: 'text-delta', index: 1, text: '完成' },
     { type: 'usage', usage: { inputTokens: 3, outputTokens: 4 } },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: '检查目录' } },
+    { type: 'block-end', index: 1, block: { type: 'text', text: '开始完成' } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
   assert.deepEqual(calls, [{
@@ -124,15 +128,18 @@ test('Codex assistant item 切换时封口旧正文并分配新的 DSH block', a
   chunks.push(...await projector.push({ type: 'text-delta', text: '工具后', messageId: 'message-2' }))
 
   assert.deepEqual(chunks, [
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: '工具前' },
     { type: 'block-end', index: 1, block: { type: 'text', text: '工具前' } },
-    { type: 'text-delta', index: 3, text: '工具后' },
+    { type: 'block-start', index: 2, blockType: 'text' },
+    { type: 'text-delta', index: 2, text: '工具后' },
   ])
 })
 
 test('工具 step 边界写入不可见 assistant 分隔块，避免 DSH 0.1.7 合并 process group', async () => {
   const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'step-boundary' })
   assert.deepEqual(await projector.push({ type: 'step-boundary' }), [
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
   ])
 })
@@ -143,7 +150,8 @@ test('消息 block 切换后执行失败仍写入当前正文 block', async () =
   await projector.push({ type: 'text-delta', text: '工具后', messageId: 'message-2' })
   const chunks = await projector.fail('执行失败')
   assert.equal(chunks[0]?.type, 'text-delta')
-  assert.equal(chunks[0]?.index, 3)
+  assert.equal(chunks[0]?.index, 2)
+  assert.equal(chunks.at(-2)?.type, 'block-end')
   assert.equal(chunks.at(-1)?.type, 'finish')
 })
 

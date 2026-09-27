@@ -413,13 +413,23 @@ test('Command Code 累积快照经公共消息投影层只输出新增后缀和�
   })) chunks.push(...await projector.push(event))
 
   assert.deepEqual(chunks.filter((chunk) => chunk.codingnsExternalTool === undefined), [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: 'The user asks.' },
     { type: 'reasoning-delta', index: 0, text: ' Let me inspect.' },
+    { type: 'block-start', index: 2, blockType: 'reasoning' },
+    { type: 'block-end', index: 2, block: { type: 'reasoning', text: ' ' } },
+    { type: 'block-start', index: 3, blockType: 'reasoning' },
+    { type: 'block-end', index: 3, block: { type: 'reasoning', text: ' ' } },
+    { type: 'block-start', index: 4, blockType: 'reasoning' },
+    { type: 'block-end', index: 4, block: { type: 'reasoning', text: ' ' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: 'I' },
     { type: 'text-delta', index: 1, text: "'ll" },
     { type: 'text-delta', index: 1, text: ' list' },
     { type: 'text-delta', index: 1, text: ' the current directory.' },
     { type: 'usage', usage: { inputTokens: 9, outputTokens: 10 } },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'The user asks. Let me inspect.' } },
+    { type: 'block-end', index: 1, block: { type: 'text', text: "I'll list the current directory." } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
 })
@@ -477,8 +487,11 @@ test('Command Code 真实会话模式中的多工具边界和 reasoning 改写�
     { type: 'text-delta', index: 1, text: 'Now build.' },
     { type: 'text-delta', index: 1, text: 'Found' },
   ])
-  assert.deepEqual(durableChunks.slice(-2), [
+  assert.deepEqual(durableChunks.filter(({ type }) => type === 'usage'), [
     { type: 'usage', usage: { inputTokens: 11, outputTokens: 21 } },
+  ])
+  assert.deepEqual(durableChunks.slice(-2), [
+    { type: 'block-end', index: 1, block: { type: 'text', text: "I'll check.Now build.Found" } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
 })
@@ -568,7 +581,9 @@ test('CLI 功能模块按会话配置接管 llm/stream，并保留默认 DSH 流
     ],
   }, async function* () { yield { type: 'text-delta', text: '默认' } })) chunks.push(chunk)
   assert.deepEqual(chunks, [
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: '来自 CLI' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: '来自 CLI' } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
   assert.equal(capturedPrompt, '你好')
@@ -643,7 +658,9 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
     if (chunk.type === 'finish') assert.deepEqual(order, ['inject'])
   }
   assert.deepEqual(chunks, [
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: '\n\n[//]: # (codingns-step-boundary)' } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
   await features.disable('cliAdapters')
@@ -730,12 +747,16 @@ test('CLI 功能模块只把快照新增后缀转换成 DSH delta 并只输出�
   for await (const chunk of listener!({ sessionId: 'snapshot-dsh', messages: [{ role: 'user', content: '继续' }] }, async function* () {})) chunks.push(chunk)
 
   assert.deepEqual(chunks, [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: '思' },
     { type: 'reasoning-delta', index: 0, text: '考' },
     { type: 'reasoning-delta', index: 0, text: '新增' },
+    { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: 'I' },
     { type: 'text-delta', index: 1, text: "'ll" },
     { type: 'usage', usage: { inputTokens: 3, outputTokens: 4 } },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: '思考新增' } },
+    { type: 'block-end', index: 1, block: { type: 'text', text: "I'll" } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
   await features.disable('cliAdapters')

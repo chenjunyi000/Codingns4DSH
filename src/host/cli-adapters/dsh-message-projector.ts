@@ -33,8 +33,9 @@ export type CodingNsDshStreamChunk = Readonly<Record<string, unknown>>
 export class CodingNsDshMessageProjector {
   private readonly normalizer = new CodingNsAgentEventNormalizer()
   private readonly toolHistory: CodingNsDshToolHistoryProjector
-  private reasoningIndex = 0
-  private textIndex = 1
+  private reasoningIndex: number | undefined = 0
+  private textIndex: number | undefined = 1
+  private nextBlockIndex = 2
   private reasoningText = ''
   private textText = ''
   private finished = false
@@ -90,12 +91,10 @@ export class CodingNsDshMessageProjector {
     switch (event.type) {
       case 'reasoning-delta':
         if (event.text === '') return []
-        this.reasoningText += event.text
-        return [{ type: 'reasoning-delta', index: this.reasoningIndex, text: event.text }]
+        return this.appendDelta('reasoning', event.text)
       case 'text-delta':
         if (event.text === '') return []
-        this.textText += event.text
-        return [{ type: 'text-delta', index: this.textIndex, text: event.text }]
+        return this.appendDelta('text', event.text)
       case 'message-boundary':
         return this.closeMessageBlock(event.channel)
       case 'step-boundary':
@@ -105,9 +104,9 @@ export class CodingNsDshMessageProjector {
         // 识别，因此写入一个 Markdown 引用定义作为不可见的回复边界。
         // 必须从新行开始；DSH UI 会忽略 definition 节点，而不是把 HTML 当注释解析。
         // 该内容不会显示给用户，也不会改变工具的原生 step 坐标。
-        return [{ type: 'text-delta', index: this.textIndex, text: '\n\n[//]: # (codingns-step-boundary)' }]
+        return this.appendDelta('text', '\n\n[//]: # (codingns-step-boundary)')
       case 'tool-event':
-        return externalToolChunk(this.toolHistory.observe(event))
+        return this.externalToolChunk(this.toolHistory.observe(event))
       case 'permission-request':
         await this.requestPermission(event)
         return []
@@ -140,25 +139,70 @@ export class CodingNsDshMessageProjector {
       case 'session-binding':
         return []
       case 'finish':
+        const closed = [
+          ...this.closeMessageBlock('reasoning'),
+          ...this.closeMessageBlock('text'),
+        ]
         this.finished = true
         this.toolHistory.finalize(event.reason, failureMessage)
-        return [{ type: 'finish', reason: toDshFinishReason(event.reason, failureMessage) }]
+        closed.push({ type: 'finish', reason: toDshFinishReason(event.reason, failureMessage) })
+        return closed
     }
+  }
+
+  private appendDelta(channel: 'reasoning' | 'text', text: string): readonly CodingNsDshStreamChunk[] {
+    const opened = channel === 'reasoning' ? this.reasoningText === '' : this.textText === ''
+    const index = this.openBlock(channel)
+    if (channel === 'reasoning') this.reasoningText += text
+    else this.textText += text
+    const delta = { type: `${channel}-delta`, index, text }
+    return opened ? [{ type: 'block-start', index, blockType: channel }, delta] : [delta]
+  }
+
+  private openBlock(channel: 'reasoning' | 'text'): number {
+    const current = channel === 'reasoning' ? this.reasoningIndex : this.textIndex
+    if (current !== undefined) return current
+    const index = this.nextBlockIndex
+    this.nextBlockIndex += 1
+    if (channel === 'reasoning') this.reasoningIndex = index
+    else this.textIndex = index
+    return index
   }
 
   private closeMessageBlock(channel: 'reasoning' | 'text'): readonly CodingNsDshStreamChunk[] {
     if (channel === 'reasoning') {
       if (this.reasoningText === '') return []
-      const chunk = { type: 'block-end', index: this.reasoningIndex, block: { type: 'reasoning', text: this.reasoningText } }
+      const index = this.reasoningIndex
+      if (index === undefined) return []
+      const chunk = { type: 'block-end', index, block: { type: 'reasoning', text: this.reasoningText } }
       this.reasoningText = ''
-      this.reasoningIndex += 2
+      this.reasoningIndex = undefined
       return [chunk]
     }
     if (this.textText === '') return []
-    const chunk = { type: 'block-end', index: this.textIndex, block: { type: 'text', text: this.textText } }
+    const index = this.textIndex
+    if (index === undefined) return []
+    const chunk = { type: 'block-end', index, block: { type: 'text', text: this.textText } }
     this.textText = ''
-    this.textIndex += 2
+    this.textIndex = undefined
     return [chunk]
+  }
+
+  private externalToolChunk(marker: CodingNsDshExternalToolMarker | null): readonly CodingNsDshStreamChunk[] {
+    if (marker === null) return []
+    const index = this.nextBlockIndex
+    this.nextBlockIndex += 1
+    return [
+      { type: 'block-start', index, blockType: 'reasoning' },
+      {
+        type: 'reasoning-delta',
+        index,
+        // 空 delta 会被 DSH 的流式聚合器丢弃，空格能保留 live-chunk 但不会显示思考正文。
+        text: ' ',
+        codingnsExternalTool: marker,
+      },
+      { type: 'block-end', index, block: { type: 'reasoning', text: ' ' } },
+    ]
   }
 
   private async requestPermission(event: Extract<CodingNsAgentEvent, { type: 'permission-request' }>): Promise<void> {
@@ -187,22 +231,6 @@ export class CodingNsDshMessageProjector {
     if (response === null) throw new Error('DSH 原生问题组件不可用或问题已取消')
     await responder(response)
   }
-}
-
-/**
- * 没有 DSH 原生 Session 时的工具展示回退：使用空白 reasoning chunk 携带私有标记，
- * 只让 Client 的实时 Conversation 投影读取，不会再次执行工具。完整 Host 直接使用
- * 原生 tool/call 与 tool/result，不经过这里。
- */
-function externalToolChunk(marker: CodingNsDshExternalToolMarker | null): readonly CodingNsDshStreamChunk[] {
-  if (marker === null) return []
-  return [{
-    type: 'reasoning-delta',
-    index: 0,
-    // 空 delta 会被 DSH 的流式聚合器丢弃，空格能保留 live-chunk 但不会显示思考正文。
-    text: ' ',
-    codingnsExternalTool: marker,
-  }]
 }
 
 function toDshFinishReason(reason: 'stop' | 'cancel' | 'error', failureMessage?: string): Record<string, unknown> {
