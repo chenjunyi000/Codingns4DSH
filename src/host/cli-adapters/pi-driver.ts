@@ -26,7 +26,13 @@ export class PiAgentDriver implements CodingNsCliDriver {
   private readonly sessionRoots: readonly string[]
   private cachedBinary: string | null = null
   private readonly processes = new Set<JsonRpcProcess>()
-  private readonly sessions = new Map<string, { rpc: JsonRpcProcess; cwd: string | undefined; providerSessionId: string; needsResume: boolean }>()
+  private readonly sessions = new Map<string, {
+    rpc: JsonRpcProcess
+    cwd: string | undefined
+    rawStoreRef: string | undefined
+    providerSessionId: string
+    stateLoaded: boolean
+  }>()
 
   constructor(options: PiAgentDriverOptions = {}) {
     this.binaries = options.binaries ?? ['pi', 'pi-agent']
@@ -51,7 +57,7 @@ export class PiAgentDriver implements CodingNsCliDriver {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 12_000)
     try {
-      const response = await rpc.request('get_available_models', {}, { signal: controller.signal })
+      const response = await rpc.request('get_available_models', {}, { signal: controller.signal, wireFormat: 'pi' })
       const catalog = parsePiCatalog(response)
       if (catalog.groups.length > 0) return catalog
     } catch { /* 旧版 Pi 没有模型 RPC 时继续读取表格。 */ }
@@ -78,19 +84,30 @@ export class PiAgentDriver implements CodingNsCliDriver {
   async *executeTurn(input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
     const command = this.cachedBinary ?? (await this.detect()).command
     if (command === null) throw new Error('Pi Agent 未安装')
-    const session = this.getSession(input.sessionId, command, input.cwd, input.providerSessionId)
+    const session = this.getSession(input.sessionId, command, input.cwd, input.providerSessionId, input.rawStoreRef)
     const rpc = session.rpc
     try {
-      // 新版 Pi 接受可选模型设置；旧版会以错误响应结束，随后仍可使用默认模型。
-      if (session.needsResume && input.providerSessionId) {
+      // Pi 的 sessionId 由进程创建；先读状态，避免把 DSH sessionId 错当成 Provider 会话标识。
+      if (!session.stateLoaded) {
         try {
-          await rpc.request('resume', { sessionId: input.providerSessionId }, { signal: input.signal, killOnAbort: false })
-          session.providerSessionId = input.providerSessionId
-        } catch { /* 旧版 Pi 没有显式 resume，继续复用当前进程 */ }
-        session.needsResume = false
+          const state = await rpc.request('get_state', {}, { signal: input.signal, killOnAbort: false, wireFormat: 'pi' })
+          const discoveredId = readPiStateSessionId(state)
+          if (discoveredId) session.providerSessionId = discoveredId
+        } catch { /* 旧版 Pi 不提供 get_state 时保留 Host 侧回退标识。 */ }
+        session.stateLoaded = true
       }
       if (!isProviderDefaultModel(input.modelId)) {
-        try { await rpc.request('set_model', { model: input.modelId }, { signal: input.signal, killOnAbort: false }) } catch { /* 兼容旧版 */ }
+        const model = parsePiModelId(input.modelId)
+        if (model !== null) {
+          try {
+            await rpc.request('set_model', model, { signal: input.signal, killOnAbort: false, wireFormat: 'pi' })
+          } catch { /* 模型目录或旧版 Pi 不支持切换时继续使用当前模型。 */ }
+        }
+      }
+      if (input.effortId && input.effortId !== 'default') {
+        try {
+          await rpc.request('set_thinking_level', { level: input.effortId }, { signal: input.signal, killOnAbort: false, wireFormat: 'pi' })
+        } catch { /* 旧版 Pi 不支持单独设置思考等级时使用当前等级。 */ }
       }
       yield { type: 'session-binding', providerSessionId: session.providerSessionId }
       const stream = streamPiPrompt(rpc, input.prompt, input.signal)
@@ -120,22 +137,22 @@ export class PiAgentDriver implements CodingNsCliDriver {
   async steer(sessionId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     if (session === undefined) throw new Error('Pi 会话不存在')
-    await session.rpc.request('steer', { message: prompt }, { killOnAbort: false })
+    await session.rpc.request('steer', { message: prompt }, { killOnAbort: false, wireFormat: 'pi' })
   }
 
   /** 向运行中的 Pi 会话追加 follow-up。 */
   async followUp(sessionId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     if (session === undefined) throw new Error('Pi 会话不存在')
-    await session.rpc.request('follow_up', { message: prompt }, { killOnAbort: false })
+    await session.rpc.request('follow_up', { message: prompt }, { killOnAbort: false, wireFormat: 'pi' })
   }
 
   /** 中断当前 turn，但保留 Pi 进程供同一会话继续使用。 */
   async interrupt(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     if (session === undefined) return
-    try { await session.rpc.request('interrupt', {}, { killOnAbort: false }) }
-    catch { try { session.rpc.notify('abort', {}) } catch { /* 进程可能已退出 */ } }
+    try { await session.rpc.request('abort', {}, { killOnAbort: false, wireFormat: 'pi' }) }
+    catch { try { session.rpc.notify('abort', {}, 'pi') } catch { /* 进程可能已退出 */ } }
   }
 
   dispose(): void {
@@ -145,17 +162,30 @@ export class PiAgentDriver implements CodingNsCliDriver {
     this.cachedBinary = null
   }
 
-  private getSession(sessionId: string, command: string, cwd: string | undefined, providerSessionId: string | undefined) {
+  private getSession(
+    sessionId: string,
+    command: string,
+    cwd: string | undefined,
+    providerSessionId: string | undefined,
+    rawStoreRef: string | undefined,
+  ) {
     const previous = this.sessions.get(sessionId)
-    if (previous !== undefined && previous.cwd === cwd) return previous
+    if (previous !== undefined
+      && previous.cwd === cwd
+      && (providerSessionId === undefined || providerSessionId === previous.providerSessionId)
+      && (rawStoreRef === undefined || rawStoreRef === previous.rawStoreRef)) return previous
     previous?.rpc.dispose()
-    const rpc = new JsonRpcProcess({ command, args: ['--mode', 'rpc'], cwd, spawn: this.runSpawn })
+    const args = ['--mode', 'rpc']
+    if (rawStoreRef?.trim()) args.push('--session', rawStoreRef.trim())
+    else if (providerSessionId?.trim()) args.push('--session-id', providerSessionId.trim())
+    const rpc = new JsonRpcProcess({ command, args, cwd, spawn: this.runSpawn })
     this.processes.add(rpc)
     const session = {
       rpc,
       cwd,
+      rawStoreRef,
       providerSessionId: providerSessionId ?? sessionId,
-      needsResume: providerSessionId !== undefined,
+      stateLoaded: false,
     }
     this.sessions.set(sessionId, session)
     return session
@@ -179,8 +209,8 @@ async function* streamPiPrompt(
   const listener = (message: JsonRpcMessage): void => {
     queue.push(message)
     const type = piEventType(message)
-    if (type === 'agent_settled') terminalReason = 'stop'
-    else if (type === 'error' || type === 'agent_error' || type === 'agent_failed') terminalReason = 'error'
+    if (type === 'error' || type === 'agent_error' || type === 'agent_failed' || piEventHasError(message)) terminalReason = 'error'
+    else if (type === 'agent_settled' && terminalReason === null) terminalReason = 'stop'
     notify()
   }
   const removeListener = rpc.addNotificationListener(listener)
@@ -188,7 +218,7 @@ async function* streamPiPrompt(
   if (signal?.aborted) onAbort()
   else signal?.addEventListener('abort', onAbort, { once: true })
 
-  void rpc.request('prompt', { message: prompt }, { signal, killOnAbort: false }).then(
+  void rpc.request('prompt', { message: prompt }, { signal, killOnAbort: false, wireFormat: 'pi' }).then(
     () => { promptSettled = true; notify() },
     () => {
       promptSettled = true
@@ -215,6 +245,13 @@ async function* streamPiPrompt(
 function piEventType(message: JsonRpcMessage): string {
   const params = isRecord(message.params) ? message.params : message
   return typeof params.type === 'string' ? params.type.toLowerCase() : ''
+}
+
+function piEventHasError(message: JsonRpcMessage): boolean {
+  const params = isRecord(message.params) ? message.params : message
+  const event = isRecord(params.message) ? params.message : params
+  const stopReason = textValue(event.stopReason ?? params.stopReason)
+  return stopReason === 'error' || stopReason === 'failed' || typeof event.errorMessage === 'string' && event.errorMessage.trim() !== ''
 }
 
 function parsePiCliCatalog(output: string): CodingNsCliModelCatalog {
@@ -261,7 +298,13 @@ function piMessageToChunk(message: Record<string, any>): CodingNsAgentEvent | nu
   const assistantEvent = isRecord(params.assistantMessageEvent) ? params.assistantMessageEvent : null
   const completedMessage = isRecord(params.message) ? params.message : null
   const rootType = typeof event.type === 'string' ? event.type : typeof params.event === 'string' ? params.event : ''
-  if (rootType === 'agent_settled' || rootType === 'agent_end' || rootType === 'turn_end') return null
+  if (rootType === 'agent_start'
+    || rootType === 'agent_settled'
+    || rootType === 'agent_end'
+    || rootType === 'turn_start'
+    || rootType === 'turn_end'
+    || rootType === 'message_start'
+    || rootType === 'message_end') return null
   const type = assistantEvent !== null && typeof assistantEvent.type === 'string' ? assistantEvent.type : rootType
   const text = textValue(assistantEvent?.delta ?? params.delta ?? params.text ?? params.content ?? params.message)
   if (type.includes('text_delta') || type === 'text-delta' || type === 'assistant_message_event' && text) return text ? { type: 'text-delta', text } : null
@@ -302,4 +345,17 @@ function readSessionId(message: Record<string, any>): string | null {
   const params = isRecord(message.params) ? message.params : message
   for (const key of ['sessionId', 'session_id', 'providerSessionId']) if (typeof params[key] === 'string' && params[key].trim()) return params[key].trim()
   return null
+}
+
+function readPiStateSessionId(value: unknown): string | null {
+  if (!isRecord(value)) return null
+  const data = isRecord(value.data) ? value.data : value
+  return textValue(data.sessionId ?? data.session_id) ?? null
+}
+
+function parsePiModelId(value: string | undefined): { provider: string; modelId: string } | null {
+  if (!value) return null
+  const separator = value.indexOf('/')
+  if (separator <= 0 || separator === value.length - 1) return null
+  return { provider: value.slice(0, separator), modelId: value.slice(separator + 1) }
 }

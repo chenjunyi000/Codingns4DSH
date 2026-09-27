@@ -22,25 +22,26 @@ test('三个 RPC 驱动按各自协议完成握手并转换文本事件', async 
         const stderr = new PassThrough()
         const stdin = {
           write(data: string): void {
-            const request = JSON.parse(data) as { id: number; method: string; params?: unknown }
+            const request = JSON.parse(data) as { id: number; method?: string; type?: string; params?: unknown }
+            const command = request.method ?? request.type
             let result: Record<string, unknown> = {}
-            if (request.method === 'thread/start') result = { threadId: 'thread-1' }
-            if (request.method === 'session/new') {
+            if (command === 'thread/start') result = { threadId: 'thread-1' }
+            if (command === 'session/new') {
               assert.deepEqual(request.params, { cwd: process.cwd(), mcpServers: [] })
               result = { sessionId: 'session-1' }
             }
-            if (request.method === 'prompt') {
+            if (command === 'prompt') {
               stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'message_update', params: { type: 'text_delta', delta: '完成' } })}\n`)
               stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result })}\n`)
               setImmediate(() => stdout.write(`${JSON.stringify({ type: 'agent_settled' })}\n`))
               return
             }
-            if (request.method === 'session/prompt') {
+            if (command === 'session/prompt') {
               stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'message_update', params: { type: 'text_delta', delta: '完成' } })}\n`)
               stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { stopReason: 'end_turn' } })}\n`)
               return
             }
-            if (request.method === 'turn/start') {
+            if (command === 'turn/start') {
               result = { turn: { id: 'turn-1', status: 'inProgress' } }
               stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result })}\n`)
               setImmediate(() => {
@@ -80,8 +81,9 @@ test('Pi RPC 保留工具执行的参数、增量结果和完成状态', async (
       const stdout = new PassThrough()
       const stderr = new PassThrough()
       const stdin = { write(data: string): void {
-        const request = JSON.parse(data) as { id: number; method: string }
-        if (request.method !== 'prompt') {
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
+        const command = request.method ?? request.type
+        if (command !== 'prompt') {
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
           return
         }
@@ -394,8 +396,9 @@ test('RPC 执行收到取消信号时结束为 cancel 并清理进程', async ()
       const stdout = new PassThrough()
       const stderr = new PassThrough()
       const stdin = { write(data: string): void {
-        const request = JSON.parse(data) as { id: number; method: string }
-        if (request.method !== 'prompt') stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
+        const command = request.method ?? request.type
+        if (command !== 'prompt') stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
       } }
       return { stdout, stderr, stdin, kill() { killed = true; stdout.end(); stderr.end(); return true } }
     }) as never,
@@ -463,8 +466,9 @@ test('Pi 同一 sessionId 跨轮复用 RPC 进程，并在 dispose 时统一回�
       const stdout = new PassThrough()
       const stderr = new PassThrough()
       const stdin = { write(data: string): void {
-        const request = JSON.parse(data) as { id: number; method: string }
-        if (request.method === 'prompt') {
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
+        const command = request.method ?? request.type
+        if (command === 'prompt') {
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'message_update', params: { type: 'text_delta', delta: 'ok' } })}\n`)
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
           setImmediate(() => stdout.write(`${JSON.stringify({ type: 'agent_settled' })}\n`))
@@ -581,8 +585,9 @@ test('Pi 在 prompt 响应先到时继续等待文本和 agent_settled', async (
       const stdout = new PassThrough()
       const stderr = new PassThrough()
       const stdin = { write(data: string): void {
-        const request = JSON.parse(data) as { id: number; method: string }
-        if (request.method !== 'prompt') {
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
+        const command = request.method ?? request.type
+        if (command !== 'prompt') {
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
           return
         }
@@ -613,7 +618,7 @@ test('Pi prompt 被拒绝时结束为 error', async () => {
       const stdout = new PassThrough()
       const stderr = new PassThrough()
       const stdin = { write(data: string): void {
-        const request = JSON.parse(data) as { id: number; method: string }
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
         stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32000, message: '拒绝' } })}\n`)
       } }
       return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
@@ -621,6 +626,36 @@ test('Pi prompt 被拒绝时结束为 error', async () => {
   })
   const chunks = []
   for await (const chunk of driver.executeTurn({ sessionId: 'pi-error', messages: [], prompt: '你好' })) chunks.push(chunk)
+  assert.deepEqual(chunks.at(-1), { type: 'finish', reason: 'error' })
+  driver.dispose()
+})
+
+test('Pi turn_end 的 Provider 错误不会被 agent_settled 覆盖为成功', async () => {
+  const driver = new PiAgentDriver({
+    binaries: ['fake-pi'],
+    spawnSync: (() => ({ status: 0, stdout: 'pi 0.85.1', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method?: string; type?: string }
+        const command = request.method ?? request.type
+        if (command !== 'prompt') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        stdout.write(`${JSON.stringify({ id: request.id, type: 'response', command: 'prompt', success: true })}\n`)
+        setImmediate(() => {
+          stdout.write(`${JSON.stringify({ type: 'turn_end', message: { stopReason: 'error', errorMessage: '认证失败' } })}\n`)
+          stdout.write(`${JSON.stringify({ type: 'agent_settled' })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+  const chunks = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'pi-provider-error', messages: [], prompt: '你好' })) chunks.push(chunk)
+  assert.deepEqual(chunks.filter((chunk) => chunk.type === 'tool-event'), [])
   assert.deepEqual(chunks.at(-1), { type: 'finish', reason: 'error' })
   driver.dispose()
 })

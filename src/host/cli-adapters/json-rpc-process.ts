@@ -26,6 +26,8 @@ export interface JsonRpcRequestOptions {
   readonly onNotification?: (message: JsonRpcMessage) => void
   /** 取消本次请求时是否同时终止整个 Agent 进程；长期会话应关闭此项。 */
   readonly killOnAbort?: boolean
+  /** Pi 使用 type/data 顶层命令，不是 JSON-RPC method/params。 */
+  readonly wireFormat?: 'jsonrpc' | 'pi'
 }
 
 /**
@@ -65,13 +67,8 @@ export class JsonRpcProcess {
     if (options.signal?.aborted) onAbort()
     else options.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      // Pi 的模型探测命令是自定义 RPC：请求体使用 `type`，不能包成 JSON-RPC
-      // method，否则 Pi 会回报 “Unknown command: undefined”。其余适配器仍走标准 JSON-RPC。
-      if (method === 'get_available_models') {
-        this.write({ id, type: method, ...(isRecord(params) ? params : {}) })
-      } else {
-        this.write({ jsonrpc: '2.0', id, method, params })
-      }
+      if (options.wireFormat === 'pi') this.write({ id, type: method, ...(isRecord(params) ? params : {}) })
+      else this.write({ jsonrpc: '2.0', id, method, params })
       const result = await promise
       if (options.signal?.aborted) throw new Error('请求已取消')
       return result
@@ -82,10 +79,11 @@ export class JsonRpcProcess {
     }
   }
 
-  /** 发送无需响应的 JSON-RPC 通知，例如 initialized 或 cancel。 */
-  notify(method: string, params: unknown = {}): void {
+  /** 发送无需响应的协议通知，例如 initialized 或 cancel。 */
+  notify(method: string, params: unknown = {}, wireFormat: 'jsonrpc' | 'pi' = 'jsonrpc'): void {
     this.ensureStarted()
-    this.write({ jsonrpc: '2.0', method, params })
+    if (wireFormat === 'pi') this.write({ type: method, ...(isRecord(params) ? params : {}) })
+    else this.write({ jsonrpc: '2.0', method, params })
   }
 
   /** 注册 Agent 发起的 JSON-RPC 服务端请求处理器，例如 Codex 权限审批。 */
