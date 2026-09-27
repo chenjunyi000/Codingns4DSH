@@ -1,0 +1,293 @@
+# 任务清单 - PeerHost 管理与多 Host 工作区会话聚合
+
+状态：待实施。
+
+## 使用规则
+
+- `TODO`：未开始。
+- `IN_PROGRESS`：正在实现。
+- `IN_REVIEW`：代码与验证完成，等待复核。
+- `DONE`：已回写验证证据。
+- `BLOCKED`：外部能力或决策阻塞，必须写明原因。
+- 每个任务完成后立即回写状态、改动文件和验证命令，不允许最后一次性补记录。
+- 任务只修改本任务列出的边界；发现跨边界需求时先在“风险与待确认项”中记录，再拆新任务。
+
+## 阶段 1：建立 Spec 边界、能力矩阵和内部契约
+
+### 1.1 注册 PeerHost 能力 ID 与 Feature descriptor
+
+- 状态：`TODO`
+- 做什么：在能力注册表中增加 PeerHost store、握手、HTTP/WS 代理、聚合、Relay 和导航降级能力，注册独立 `peer-host` Feature。
+- 做完看到什么：能力画像能解释 PeerHost 是否可用，模块启停不影响现有 Feature。
+- 依赖什么：spec005 能力注册与 FeatureRegistry；无业务代码依赖。
+- 先看哪些文档：`requirements.md` 需求 1、12；`design.md` §3。
+- 主要改哪些文件：`src/dsh-capabilities/types.ts`、`src/dsh-capabilities/matrix.ts`、`src/client/features/index.ts`、`src/host/features/index.ts`、对应测试。
+- 明确不做什么：不连接真实目标 Host，不添加管理面板，不扩大 DSH manifest 范围。
+- 怎么验证：能力矩阵单测、Feature 缺失能力禁用测试、`pnpm run typecheck`。
+
+### 1.2 定义 PeerHost、HostScope 和聚合 DTO
+
+- 状态：`TODO`
+- 做什么：新增 `PeerHostRecord`、`PeerHostRoute`、`PeerHostStatus`、`HostScope`、工作区/会话摘要和结构化错误码。
+- 做完看到什么：Host、Client、代理和导航共享同一套内部契约，不再用裸 workspace/session ID。
+- 依赖什么：1.1；现有 `src/shared/contracts/peer-host.ts` 和 `src/features/resource-scope/index.ts`。
+- 先看哪些文档：`requirements.md` 需求 2、7、8；`design.md` §4、§11。
+- 主要改哪些文件：`src/shared/contracts/peer-host.ts`、`src/shared/contracts/resource-scope.ts`（如需要）、`src/shared/errors/`、契约测试。
+- 明确不做什么：不决定数据库实现，不把 DSH 私有类型暴露给业务模块。
+- 怎么验证：类型检查、序列化/反序列化测试、错误码稳定性测试。
+
+### 1.3 建立版本和能力 fixture
+
+- 状态：`TODO`
+- 做什么：为 DSH 0.1.5-rc.3、0.1.6-alpha.2、0.1.7-rc.2 建立 PeerHost 能力 fixture，记录原生导航、WS 和 Remote Web Context 能力差异。
+- 做完看到什么：每个版本都有明确的 ready/degraded/unavailable 结果。
+- 依赖什么：1.1、1.2；现有 spec005 版本矩阵。
+- 先看哪些文档：`docs/20260927-父仓库PeerHost实现对照与本项目边界.md`、现有 DSH 调查报告。
+- 主要改哪些文件：`src/dsh-capabilities/matrix.ts`、`tests/fixtures/`、`tests/dsh-capability-registry.spec.ts`、对应调查文档。
+- 明确不做什么：不通过字符串版本判断绕过能力探测，不宣称未验证的中转能力可用。
+- 怎么验证：`pnpm run version:check`、能力报告和三版本 fixture 测试。
+
+## 阶段 2：Host PeerHost 注册、握手和目标登录态
+
+### 2.1 实现 PeerHost 持久化和敏感会话存储
+
+- 状态：`TODO`
+- 做什么：实现 PeerHostRecord 的增删改查、路由规范化、重复检查、加密目标登录态和删除清理。
+- 做完看到什么：配置和 token 只存当前 Host，Client 只能看到脱敏 DTO。
+- 依赖什么：1.2；现有 Host settings store、认证服务和敏感存储边界。
+- 先看哪些文档：`requirements.md` 需求 2、5；`design.md` §4、§5。
+- 主要改哪些文件：`src/host/modules/peer-host/`、`src/host/settings.ts` 或对应 store、Host 单测。
+- 明确不做什么：不让浏览器直接持有目标 token，不保存短期 relay ticket。
+- 怎么验证：存储 round-trip、权限隔离、删除清理和日志脱敏测试。
+
+### 2.2 实现目标 Host 握手和状态机
+
+- 状态：`TODO`
+- 做什么：实现产品标识、插件版本、DSH 版本、API 兼容标识和 fingerprint 检查，落地状态转换和诊断码。
+- 做完看到什么：未安装插件、版本不兼容、身份变化和网络失败都能显示真实状态并阻止代理。
+- 依赖什么：2.1、1.3；能力矩阵和版本解析工具。
+- 先看哪些文档：`requirements.md` 需求 3、4；`design.md` §5、§11。
+- 主要改哪些文件：`src/host/modules/peer-host/peer-host-service.ts`、握手 adapter、`tests/peer-host-handshake.spec.ts`。
+- 明确不做什么：不在握手阶段加载会话全文，不自动信任 fingerprint 变化。
+- 怎么验证：成功、插件缺失、版本不兼容、fingerprint 变化、超时和重试测试。
+
+### 2.3 接入目标 Host 登录、刷新和退出
+
+- 状态：`TODO`
+- 做什么：提供 Host 侧登录、refresh、logout 和 `session_required` 处理，确保当前 Host 登录态不受影响。
+- 做完看到什么：用户可在管理面板登录 PeerHost，代理前由 Host 自动刷新目标 token。
+- 依赖什么：2.1、2.2；现有认证服务和目标 DSH 登录接口。
+- 先看哪些文档：`requirements.md` 需求 5；`design.md` §5.2。
+- 主要改哪些文件：`src/host/modules/peer-host/peer-host-service.ts`、Host RPC/API、认证测试。
+- 明确不做什么：不把密码、token 或 refresh 结果返回 Client，不复用当前 Host token。
+- 怎么验证：token 刷新成功/失败、目标退出、目标删除和当前 Host 会话隔离测试。
+
+## 阶段 3：HTTP/WS 受控代理
+
+### 3.1 实现 HTTP 代理入口和白名单
+
+- 状态：`TODO`
+- 做什么：按固定 PeerHost ID 和资源类别代理工作区、会话、文件、Git、终端和右侧工具 API。
+- 做完看到什么：合法请求可到达目标 Host，任意 URL、认证和未登记 API 被拒绝。
+- 依赖什么：2.2、2.3；现有 Host HTTP 路由和 `host-api-proxy-service.ts` 参考实现。
+- 先看哪些文档：`requirements.md` 需求 6、10；`design.md` §6。
+- 主要改哪些文件：`src/host/modules/peer-host/host-api-proxy-service.ts`、路由注册、白名单契约、测试。
+- 明确不做什么：不接受客户端 baseUrl，不开放任意 `/api`、插件安装或认证代理。
+- 怎么验证：路径、方法、体积、作用域、认证、响应头和错误码测试。
+
+### 3.2 实现 WebSocket 代理和消息过滤
+
+- 状态：`TODO`
+- 做什么：建立当前 Host 到目标 Host 的双端 WS 连接，过滤客户端/远端消息类型并绑定 HostScope。
+- 做完看到什么：会话、终端、文件树和 Git 实时事件能路由到正确 Host，未知消息不会透传。
+- 依赖什么：3.1、2.3；现有 WS auth guard 和 DSH 工作台消息协议。
+- 先看哪些文档：`requirements.md` 需求 6、9、10；`design.md` §7。
+- 主要改哪些文件：`src/host/modules/peer-host/host-ws-proxy-service.ts`、WS 路由、消息白名单和测试。
+- 明确不做什么：不支持二进制透传、任意 WebSocket 路径或 PeerHost 递归代理。
+- 怎么验证：双端连接、消息白名单、scope mismatch、上游关闭、背压和清理测试。
+
+### 3.3 增加代理安全和诊断测试
+
+- 状态：`TODO`
+- 做什么：把代理路径、消息类型、日志字段和凭据脱敏规则固化为安全契约测试。
+- 做完看到什么：新增代理接口如果漏注册白名单或日志包含敏感字段，测试会失败。
+- 依赖什么：3.1、3.2。
+- 先看哪些文档：`requirements.md` 需求 6、12；`design.md` §11、§12。
+- 主要改哪些文件：`tests/peer-host-proxy.spec.ts`、`tests/peer-host-security.spec.ts`、日志工具。
+- 明确不做什么：不把安全测试变成对具体第三方网络环境的依赖。
+- 怎么验证：`pnpm test` 中的代理/安全测试、敏感字段扫描和失败路径覆盖。
+
+## 阶段 4：HostScope、HostRouter 和聚合摘要
+
+### 4.1 实现 HostRouter 和 generation 清理
+
+- 状态：`TODO`
+- 做什么：统一解析当前 Host/PeerHost、校验作用域、递增 generation、取消旧请求和清理旧订阅。
+- 做完看到什么：切换 Host、工作区或会话后，旧请求和旧 WS 结果不能污染新页面。
+- 依赖什么：1.2、3.2；现有 resource-scope 和 remote-web-runtime 生命周期。
+- 先看哪些文档：`requirements.md` 需求 7、11；`design.md` §8。
+- 主要改哪些文件：`src/features/resource-scope/index.ts`、`src/client/host-router.ts`、`src/host/host-router.ts`、测试。
+- 明确不做什么：不通过全局锁阻塞所有 Host，不删除现有单 Host 作用域行为。
+- 怎么验证：旧 generation 丢弃、取消、WS 关闭、清理失败后新作用域仍能建立的测试。
+
+### 4.2 实现多 Host 工作区/会话摘要聚合
+
+- 状态：`TODO`
+- 做什么：并发获取当前 Host 和 PeerHost 摘要，合并稳定 key，保留不可用 Host 节点和状态。
+- 做完看到什么：导航一次显示所有 Host 的工作区和会话，同名资源不会覆盖。
+- 依赖什么：4.1、2.2；工作区/会话摘要 API。
+- 先看哪些文档：`requirements.md` 需求 8；`design.md` §4.5、§9。
+- 主要改哪些文件：`src/host/modules/peer-host/peer-host-aggregate-service.ts`、Client 聚合 store、DTO 测试。
+- 明确不做什么：不预加载会话全文、文件内容或跨 Host 搜索。
+- 怎么验证：并发、超时、单 Host 失败、同名 workspace/session、远端删除和刷新测试。
+
+### 4.3 接入 Host 标签和导航数据适配器
+
+- 状态：`TODO`
+- 做什么：为当前 Host 和 PeerHost 生成稳定标签、DOM/React key 和导航树模型。
+- 做完看到什么：工作区名称后显示 Host 标签，切换和刷新不会跳到错误资源。
+- 依赖什么：4.2；现有 workspace/session 导航和 host alias 逻辑。
+- 先看哪些文档：`requirements.md` 需求 8；`design.md` §9.2。
+- 主要改哪些文件：`src/client/workspace-session-logo-dom.ts`、导航组件/adapter、相关测试。
+- 明确不做什么：不把标签写入 workspaceId，不改变当前 Host 默认显示语义。
+- 怎么验证：多 Host 同名资源、稳定 key、标签更新和不可用节点保留测试。
+
+## 阶段 5：连接管理入口和设置面板
+
+### 5.1 增加右下角连接管理按钮
+
+- 状态：`TODO`
+- 做什么：PeerHost Feature 启用时在右下角显示按钮，停用时移除并释放订阅。
+- 做完看到什么：用户在当前工作区内打开管理面板，不需要切换页面或 Host。
+- 依赖什么：1.1、4.1；现有 account bar/右下角 UI 注册方式。
+- 先看哪些文档：`requirements.md` 需求 1、2；`design.md` §9.3。
+- 主要改哪些文件：`src/client/account-bar.ts`、PeerHost UI 组件、Feature wiring 和组件测试。
+- 明确不做什么：不复用 HostSwitcher 的 active Host 切换语义，不在停用后保留 DOM 节点。
+- 怎么验证：Feature 启停、按钮显示、面板打开、资源释放和移动视口测试。
+
+### 5.2 实现 PeerHost 管理面板
+
+- 状态：`TODO`
+- 做什么：提供添加、编辑、检查、重连、登录、退出和删除 PeerHost 的表单与状态视图。
+- 做完看到什么：用户能看到名称、路由、版本、fingerprint 脱敏摘要、最近检查和错误原因。
+- 依赖什么：2.1、2.2、2.3、5.1；现有设置表单规范。
+- 先看哪些文档：`requirements.md` 需求 2、3、4、5；`docs/开发规范/20260922-设置选项与表单开发规则.md`。
+- 主要改哪些文件：`src/client/features/peer-host-management.ts`、管理面板 DOM/React、locale 和测试。
+- 明确不做什么：不显示 token、密码、完整 relay ticket 或任意目标 URL 查询串。
+- 怎么验证：表单校验、重复目标、删除确认、登录失败、版本错误和中转不可用状态测试。
+
+### 5.3 接入设置项和模块启停
+
+- 状态：`TODO`
+- 做什么：新增独立设置项、FeatureRegistry 启停回调和已有配置保留策略。
+- 做完看到什么：关闭模块后按钮、轮询、聚合和连接消失，重新开启可恢复配置。
+- 依赖什么：1.1、5.1、5.2；现有 settings store。
+- 先看哪些文档：`requirements.md` 需求 1、12；功能模块开发规则。
+- 主要改哪些文件：`src/shared/contracts/feature.ts`、`src/client/settings-section.ts`、`src/host/settings.ts`、Feature 测试。
+- 明确不做什么：不删除用户保存的 PeerHost，不影响当前 Host 的既有开关。
+- 怎么验证：重复启停、持久配置保留、定时器/WS/iframe 清理和能力缺失降级测试。
+
+## 阶段 6：远端中栏、聊天输入、实时事件和右侧工具
+
+### 6.1 路由远端会话历史和实时事件
+
+- 状态：`TODO`
+- 做什么：打开 PeerHost 会话时加载目标历史、订阅实时事件，并将消息写入正确 HostScope。
+- 做完看到什么：中栏显示目标 Host 的历史和新消息，切回当前 Host 后旧流停止。
+- 依赖什么：3.1、3.2、4.1、4.2；现有 session store 和 remote Web runtime。
+- 先看哪些文档：`requirements.md` 需求 9；`design.md` §10.1。
+- 主要改哪些文件：`src/client/session/`、`src/client/remote-web-context.ts`、WS adapter、测试。
+- 明确不做什么：不把远端消息复制到当前 Host 的持久会话，不用全局 activeHost 推断路由。
+- 怎么验证：历史、增量、错误、权限请求、会话删除、切换和旧消息丢弃测试。
+
+### 6.2 路由聊天发送、停止和权限回复
+
+- 状态：`TODO`
+- 做什么：让发送消息、停止运行、回答问题和权限回复携带目标 HostScope 并通过 PeerHost 代理执行。
+- 做完看到什么：聊天框操作进入目标 Host，当前 Host 会话不会收到误发消息。
+- 依赖什么：6.1；工作台消息协议和 HTTP/WS 白名单。
+- 先看哪些文档：`requirements.md` 需求 9；`design.md` §7、§10。
+- 主要改哪些文件：聊天输入组件、session command adapter、相关契约和测试。
+- 明确不做什么：不允许用户在请求体中覆盖 targetHostId 或目标 URL。
+- 怎么验证：发送、停止、权限、问答、超时和目标登录过期测试。
+
+### 6.3 路由文件、Git、终端和右侧工具
+
+- 状态：`TODO`
+- 做什么：将右侧栏打开/刷新/关闭、文件树、Git、终端和已登记工具绑定到目标 HostScope。
+- 做完看到什么：远端文件、Git 状态、终端输出和右侧结果来自目标 Host 的运行时。
+- 依赖什么：3.1、3.2、6.1；各工具能力和白名单。
+- 先看哪些文档：`requirements.md` 需求 10；`design.md` §6、§7、§10.2。
+- 主要改哪些文件：`src/client/features/` 相关工具模块、右侧栏 adapter、Host proxy 白名单和测试。
+- 明确不做什么：不把远端路径当作当前 Host 本地路径，不对未登记工具静默降级。
+- 怎么验证：作用域隔离、工具切换清理、终端输入/resize、文件读写、Git 刷新和 unsupported 错误测试。
+
+## 阶段 7：中转 PeerHost、断线恢复和运行时治理
+
+### 7.1 验证 Host-to-Host 中转能力
+
+- 状态：`TODO`
+- 做什么：确认当前中转 Transport 是否支持 Host 到目标 Host 的双向连接、认证转发和断线恢复。
+- 做完看到什么：能力矩阵明确 relay PeerHost 是 ready、degraded 还是 unavailable。
+- 依赖什么：阶段 2、3 的局域网路径；中转 Transport 文档和真实 fixture。
+- 先看哪些文档：`requirements.md` 需求 4、11；父仓库对照文档；现有中转调查报告。
+- 主要改哪些文件：`src/dsh-capabilities/` relay route、`src/host/` relay adapter、fixture 和调查文档。
+- 明确不做什么：不把浏览器端短期 ticket 直接转发给目标 Host，不用任意公网 URL 替代中转能力。
+- 怎么验证：真实/模拟中转握手、双向 WS、断线、重连、ticket 脱敏和能力缺失测试。
+
+### 7.2 实现断线、重连和状态刷新
+
+- 状态：`TODO`
+- 做什么：为单个 PeerHost 提供有界重试、手动重连、摘要刷新和可恢复订阅。
+- 做完看到什么：目标不可达显示真实状态，恢复后只刷新该 Host 并恢复允许的会话流。
+- 依赖什么：4.1、4.2、7.1；Host 状态机和 WS 生命周期。
+- 先看哪些文档：`requirements.md` 需求 11；`design.md` §7.3、§11。
+- 主要改哪些文件：PeerHost service、aggregate store、WS reconnect manager、测试。
+- 明确不做什么：不无限创建计时器，不用过期缓存伪装成可用数据。
+- 怎么验证：超时、断线、指数退避上限、恢复 generation、单 Host 隔离和模块停用清理测试。
+
+### 7.3 增加运行时诊断和隐私检查
+
+- 状态：`TODO`
+- 做什么：补充 PeerHost 状态诊断、性能指标和日志敏感字段扫描。
+- 做完看到什么：维护者能定位握手、代理、作用域和中转失败，同时日志不含凭据和内容数据。
+- 依赖什么：全部前置阶段；现有 resource-scope debug log 规范。
+- 先看哪些文档：`requirements.md` 需求 12；`design.md` §11、§12。
+- 主要改哪些文件：诊断 DTO、日志工具、`tests/peer-host-privacy.spec.ts`、文档。
+- 明确不做什么：不采集完整文件、命令、模型消息或 relay ticket。
+- 怎么验证：敏感字段断言、错误码覆盖、诊断接口权限和性能计时测试。
+
+## 阶段 8：完整验证、文档和验收
+
+### 8.1 三版本和多场景集成测试
+
+- 状态：`TODO`
+- 做什么：把当前 Host、局域网 PeerHost、中转 PeerHost、未登录、版本不兼容、fingerprint 变化和断线恢复串成集成 fixture。
+- 做完看到什么：一套可重复测试证明单 Host 行为未被破坏，多 Host 作用域正确。
+- 依赖什么：阶段 1 至 7。
+- 先看哪些文档：`requirements.md` 全部需求；`design.md` §13、§14。
+- 主要改哪些文件：`tests/peer-host-integration.spec.ts`、三版本 fixture、测试脚本。
+- 明确不做什么：不依赖未锁定的公网 Host 或不可重复的人工环境。
+- 怎么验证：`pnpm run typecheck`、`pnpm run version:check`、`pnpm run capability:check`、`pnpm test`。
+
+### 8.2 文档、能力报告和索引同步
+
+- 状态：`TODO`
+- 做什么：更新能力报告、README、AGENTS Spec 索引、调查报告和开发记录，记录已实现能力与降级边界。
+- 做完看到什么：新成员能从 Spec、能力矩阵和验证证据追踪 PeerHost 的完整边界。
+- 依赖什么：8.1 及各阶段完成证据。
+- 先看哪些文档：仓库 `AGENTS.md` 文档规范；本 Spec README、设计和父仓库对照文档。
+- 主要改哪些文件：`AGENTS.md`、`README.md`、`docs/生成报告/`、`docs/开发记录/` 和本 Spec 文档。
+- 明确不做什么：不手工编辑脚本生成产物，不删除已有 Spec 引用。
+- 怎么验证：链接检查、`git diff --check`、能力报告生成和文档路径扫描。
+
+### 8.3 发布前回归与验收签字
+
+- 状态：`TODO`
+- 做什么：逐条对照需求验收标准，记录已知限制、未支持工具和发布阻塞项。
+- 做完看到什么：需求 1 至 12、非功能需求和成功定义都有测试或明确证据。
+- 依赖什么：8.1、8.2；用户确认的 fingerprint 信任策略和中转能力结论。
+- 先看哪些文档：`requirements.md` 验收标准、`design.md` 风险项、所有测试报告。
+- 主要改哪些文件：本 Spec `tasks.md`、验收记录文档、必要的调查报告。
+- 明确不做什么：不在没有证据时把降级能力标记为 ready，不执行提交、推送或发布。
+- 怎么验证：完整四项验证命令、验收清单逐项勾选和 `git diff --check`。
