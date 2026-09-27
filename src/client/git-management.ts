@@ -1,7 +1,8 @@
 import { createElement, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { GitBranchSnapshot, GitChangeItem, GitCommitChangedFile, GitCommitDiff, GitHistoryItem, GitStatus } from '../shared/contracts/git.js'
 import type { CodingNsClientFeatureModule, CodingNsRpcClient, CodingNsRpcResult } from './features/types.js'
 import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
@@ -16,11 +17,13 @@ const HISTORY_PAGE_SIZE = 100
 /** 兼容早期调用方使用的面板标识；实际注册已迁移到右侧 Sidebar。 */
 export const GIT_PANEL_ID = GIT_PROVIDER_ID
 
-type GitTabProps = PropsRuntime<'sidebar.right.pane.tab'> & {
+type GitTabProps = {
+  readonly sessionId: string
+  readonly useTabInfo: UseSidebarRightTabInfo
   readonly rpc: CodingNsRpcClient
   readonly remote?: unknown
 }
-type GitTabTitleProps = PropsRuntime<'sidebar.right.pane.tab.title'>
+type GitTabTitleProps = { readonly useTabInfo: UseSidebarRightTabInfo }
 type GitServices = { readonly rpc: CodingNsRpcClient; readonly remote?: unknown }
 type GitOperation = 'fetch' | 'pull' | 'push' | 'undo' | 'refresh'
 
@@ -50,7 +53,8 @@ interface GitPanelCache {
   readonly branches: GitBranchSnapshot | null
 }
 
-interface GitWorkspaceRecoveryProps extends PropsRuntime<'shell.overlay'> {
+interface GitWorkspaceRecoveryProps {
+  readonly useSessions: UseSessions
   readonly remote?: unknown
   readonly sidebarRight: GitSidebarRuntime
 }

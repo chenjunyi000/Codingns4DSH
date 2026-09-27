@@ -15,7 +15,7 @@ import {
   Menu,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -51,8 +51,14 @@ interface TerminalInjected {
   readonly legacyCloseFallback: boolean
 }
 
-type TerminalTabProps = PropsRuntime<'sidebar.right.pane.tab'> & TerminalInjected
-type TerminalTitleProps = PropsRuntime<'sidebar.right.pane.tab.title'> & Pick<TerminalInjected, 'webTerminals' | 'locale'>
+type TerminalTabProps = {
+  readonly sessionId: string
+  readonly useTabInfo: UseSidebarRightTabInfo
+} & TerminalInjected
+type TerminalTitleProps = {
+  readonly sessionId: string
+  readonly useTabInfo: UseSidebarRightTabInfo
+} & Pick<TerminalInjected, 'webTerminals' | 'locale'>
 /** alpha2 才导出的 guide entry owner 类型；本地重述字段以保持 rc3 源码可编译。 */
 interface TerminalGuideEntryOwnerProps {
   readonly entryId: string
@@ -289,7 +295,7 @@ function shellMenuItems(state: ShellMenuState, t: ReturnType<typeof codingNsTran
   return state.shells.map((shell) => ({ id: shell.path, label: shell.name }))
 }
 
-interface TerminalCleanupProps extends PropsRuntime<'shell.overlay'> {
+interface TerminalCleanupProps {
   readonly webTerminals: CodingNsWebTerminals
   readonly locale: CodingNsLocale
   readonly sidebarRight: TerminalSidebarRecoveryPort

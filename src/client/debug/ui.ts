@@ -1,7 +1,7 @@
 import { createElement, useEffect, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { CodingNsRpcClient, CodingNsRpcResult } from '../features/types.js'
 import { CODINGNS_RPC_CHANNEL } from '../../shared/contracts/transport.js'
 import { debugWarn } from '../../shared/debug.js'
@@ -11,7 +11,9 @@ export const DEBUG_KIND = 'debug'
 export const DEBUG_PROVIDER_ID = 'codingns4dsh/debug'
 const PORT_CHECK_INTERVAL_MS = 5_000
 
-interface DebugTabProps extends PropsRuntime<'sidebar.right.pane.tab'> {
+interface DebugTabProps {
+  readonly sessionId: string
+  readonly useTabInfo: UseSidebarRightTabInfo
   readonly rpc: CodingNsRpcClient
   readonly remote: unknown
   readonly terminalRemote?: () => unknown
