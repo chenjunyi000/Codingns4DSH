@@ -7,6 +7,7 @@ import { createTerminalProcessFeature } from './terminal-process.js'
 import { createDebugFeature } from './debug.js'
 import { createHostStatusFeature } from './host-status.js'
 import { createGitManagementFeature } from './git-management.js'
+import { createFileManagementFeature } from './file-management.js'
 import type { CodingNsHostServices } from './types.js'
 
 export interface HostFeatureOptions {
@@ -24,6 +25,7 @@ export function createHostFeatures(options: HostFeatureOptions = {}): readonly F
     createDebugFeature(),
     createHostStatusFeature(),
     createGitManagementFeature(),
+    createFileManagementFeature(),
   ]
 }
 
@@ -38,4 +40,5 @@ export { createTerminalProcessFeature } from './terminal-process.js'
 export { createDebugFeature } from './debug.js'
 export { createHostStatusFeature } from './host-status.js'
 export { createGitManagementFeature } from './git-management.js'
+export { createFileManagementFeature } from './file-management.js'
 export type { CodingNsHostServices } from './types.js'

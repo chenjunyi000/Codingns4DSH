@@ -45,7 +45,7 @@ declare module 'node:fs/promises' {
     read(buffer: Uint8Array, offset: number, length: number, position: number): Promise<{ bytesRead: number; buffer: Uint8Array }>
     close(): Promise<void>
   }
-  export interface Stats { isDirectory(): boolean; isFile(): boolean }
+  export interface Stats { readonly mode?: number; readonly size?: number; isDirectory(): boolean; isFile(): boolean }
   export function open(path: string, flags: string): Promise<FileHandle>
   export function readdir(path: string, options: { withFileTypes: true }): Promise<Dirent[]>
   export function stat(path: string): Promise<Stats>
@@ -59,6 +59,7 @@ declare module 'node:fs/promises' {
   export function mkdir(path: string, options?: { recursive?: boolean; mode?: number }): Promise<void>
   export function rename(oldPath: string, newPath: string): Promise<void>
   export function rm(path: string, options?: { force?: boolean; recursive?: boolean }): Promise<void>
+  export function copyFile(source: string, destination: string, mode?: number): Promise<void>
 }
 
 declare module 'node:os' {

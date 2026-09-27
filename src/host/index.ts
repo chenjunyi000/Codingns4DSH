@@ -97,6 +97,7 @@ export function apply(ctx?: Context): void {
       nativeSessions: createCodingNsNativeSessionBridge(hostCtx, dshVersion),
       terminalProcesses: terminal.processService,
       resolveWorkspaceRoot: (workspaceId) => workspaceRoots.get(workspaceId) ?? resolveWorkspaceRoot(hostCtx, workspaceId),
+      listWorkspaceRoots: () => [...workspaceRoots.values(), ...readWorkspaceRoots(hostCtx)],
       registerDebugProxyRoute: (handler) => hostCtx.connection.fetch.register({
         path: '/api/codingns/debug-proxy',
         methods: ['GET', 'HEAD', 'POST'],
@@ -171,6 +172,21 @@ function resolveWorkspaceRoot(ctx: Context, workspaceId: string): string | null 
   return null
 }
 
+function readWorkspaceRoots(ctx: Context): readonly string[] {
+  try {
+    const registry = ctx.get('workspaceRegistry') as { readonly list?: () => readonly Record<string, unknown>[] } | undefined
+    return (registry?.list?.() ?? []).flatMap((entry) => {
+      for (const key of ['rootPath', 'path', 'cwd', 'directory']) {
+        const value = entry[key]
+        if (typeof value === 'string' && value.trim() !== '') return [value.trim()]
+      }
+      return []
+    })
+  } catch {
+    return []
+  }
+}
+
 export {
   HOST_FEATURES,
   createAuthFeature,
@@ -180,6 +196,7 @@ export {
   createCliAdaptersFeature,
   createTerminalProcessFeature,
   createGitManagementFeature,
+  createFileManagementFeature,
 } from './features/index.js'
 export type { CodingNsHostServices } from './features/index.js'
 export { CodingNsSettingsSchema, registerCodingNsSettings } from './settings.js'
