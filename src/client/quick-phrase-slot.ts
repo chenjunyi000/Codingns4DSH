@@ -1,7 +1,7 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { InputActions, InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { DEFAULT_QUICK_PHRASES, type CodingNsSettings, type QuickPhrase } from '../shared/contracts/config.js'
 import type { CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
@@ -12,7 +12,9 @@ import { dshPopupSurfaceStyle, dshThemeColor } from './theme.js'
 const QUICK_PHRASE_FALLBACK_SIZE = 28
 const QUICK_PHRASE_FALLBACK_ICON_SIZE = 14
 
-type QuickPhraseSlotProps = PropsRuntime<'conversation.input.left'> & {
+type QuickPhraseSlotProps = {
+  readonly useInput: SnapshotSelectorHook<InputState>
+  readonly inputActions: InputActions
   readonly settings: CodingNsSettingsStore<CodingNsSettings>
   readonly locale: CodingNsLocale
 }
