@@ -125,6 +125,9 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           }
           const messages = Array.isArray(value?.messages) ? value.messages.filter(isMessage) : []
           const cwd = resolveSessionCwd(context.services.nativeSessions, sessionId, value)
+          // 只有 Provider 驱动明确维护了稳定的 turn 分段，才把工具边界映射为 DSH step。
+          // OpenCode、Command Code 会在同一轮连续产出工具和 usage，强行切 step 会让
+          // token-meter 在下一条 usage 到达前失去投影，表现为上下文组件反复卸载。
           const input = {
             sessionId,
             messages,
@@ -135,7 +138,7 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             ...(config.rawStoreRef ? { rawStoreRef: config.rawStoreRef } : {}),
             ...(cwd === undefined ? {} : { cwd }),
             ...(isAbortSignal(value?.signal) ? { signal: value.signal } : {}),
-            ...(config.adapterId !== 'pi'
+            ...(registry.supportsSegmentedTurns(config.adapterId)
               && nativeSessions?.available === true
               && nativeSessions.injectNextStep !== undefined
               ? { splitToolSteps: true }

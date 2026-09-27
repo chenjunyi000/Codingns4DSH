@@ -281,6 +281,11 @@ export class CodingNsCliAdapterRegistry {
     }, this.nativeSessions?.get(sessionId))
   }
 
+  /** 只有驱动自己维护 Provider turn 边界时，Host 才能把它映射到 DSH step。 */
+  supportsSegmentedTurns(adapterId: CodingNsCliAdapterId): boolean {
+    return this.drivers.get(adapterId)?.supportsSegmentedTurns === true
+  }
+
   async *execute(input: CodingNsCliTurnInput & { readonly adapterId: CodingNsCliAdapterId }): AsyncIterable<CodingNsAgentEvent> {
     const driver = this.requireEnabledDriver(input.adapterId)
     if (this.archivingSessions.has(input.sessionId)) {

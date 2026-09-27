@@ -702,6 +702,7 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
   const order: string[] = []
   const registry = new CodingNsCliAdapterRegistry([{
     descriptor: { id: 'codex', name: 'Codex' },
+    supportsSegmentedTurns: true,
     async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
     async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
     async *executeTurn(input) {
@@ -749,6 +750,64 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
     { type: 'block-end', index: 1, block: { type: 'text', text: '\n\n[//]: # (codingns-step-boundary)' } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
+  await features.disable('cliAdapters')
+})
+
+test('OpenCode 和 Command Code 不按工具完成切分 DSH step', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const splitToolSteps = new Map<string, boolean | undefined>()
+  const injected: string[] = []
+  const drivers = ['opencode', 'command-code'].map((adapterId) => ({
+    descriptor: { id: adapterId, name: adapterId },
+    async detect() { return { installed: true, version: '1.0.0', command: adapterId } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input: { readonly splitToolSteps?: boolean }) {
+      splitToolSteps.set(adapterId, input.splitToolSteps)
+      yield { type: 'tool-event', toolName: 'shell', callId: `${adapterId}-call`, status: 'completed' } as const
+      yield { type: 'text-delta', text: '后续正文' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }))
+  const registry = new CodingNsCliAdapterRegistry(drivers)
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      appendRequestContext() { return true },
+      injectNextStep(sessionId) {
+        injected.push(sessionId)
+        return true
+      },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+
+  for (const adapterId of ['opencode', 'command-code']) {
+    const sessionId = `${adapterId}-stable-step`
+    await table.resolve('cli/session/set')?.handler('session/set', { sessionId, adapterId })
+    const chunks = []
+    for await (const chunk of listener!({ sessionId, messages: [{ role: 'user', content: '执行工具' }] }, async function* () {})) chunks.push(chunk)
+    assert.equal(chunks.at(-1)?.type, 'finish')
+  }
+
+  assert.deepEqual([...splitToolSteps.entries()], [['opencode', undefined], ['command-code', undefined]])
+  assert.deepEqual(injected, [])
   await features.disable('cliAdapters')
 })
 
