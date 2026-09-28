@@ -1,28 +1,48 @@
 import type { CodingNsRpcClient } from './features/types.js'
 import { callCodingNsRpc } from './settings-bridge.js'
+import { basicSetup, EditorView } from 'codemirror'
+import { css } from '@codemirror/lang-css'
+import { html } from '@codemirror/lang-html'
+import { javascript } from '@codemirror/lang-javascript'
+import { json } from '@codemirror/lang-json'
+import { markdown } from '@codemirror/lang-markdown'
+import { python } from '@codemirror/lang-python'
+import { sql } from '@codemirror/lang-sql'
 
 type FileEntryElement = HTMLElement & { dataset: DOMStringMap }
 type ClipboardState = { mode: 'copy' | 'cut'; paths: string[] }
-type EditorState = { root: HTMLElement; body: HTMLElement; textarea: HTMLTextAreaElement; path: FileTarget; buttons: HTMLElement }
+type FileEditorState = { root: HTMLElement; body: HTMLElement; host: HTMLElement; view: EditorView; path: FileTarget; buttons: HTMLElement }
 type FileTarget = { path: string; sessionId?: string }
 
 const TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.ini', '.json', '.yaml', '.yml', '.toml', '.xml', '.csv', '.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.htm', '.env', '.gitignore', '.conf', '.properties', '.sh', '.py', '.sql'])
 
+export interface FileManagementDomOptions {
+  readonly menuEnhancement: boolean
+  readonly fileEditor: boolean
+}
+
+export interface FileManagementDomController {
+  setOptions(options: FileManagementDomOptions): void
+  dispose(): void
+}
+
 /** 给 DSH 原生文件树和文本查看器补充文件操作，不接管 DSH 自己的渲染状态。 */
-export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
+export function startFileManagementDom(rpc: CodingNsRpcClient, initialOptions: FileManagementDomOptions): FileManagementDomController {
   // Client 功能也会在 H5/非浏览器测试环境被装配；没有 DOM 时保持惰性空实现。
-  if (typeof document === 'undefined') return () => {}
+  if (typeof document === 'undefined') return { setOptions: () => undefined, dispose: () => undefined }
 
   let menu: HTMLElement | undefined
   let clipboard: ClipboardState | undefined
-  let editor: EditorState | undefined
+  let editor: FileEditorState | undefined
+  let options = { ...initialOptions }
   let disposed = false
   const observer = typeof MutationObserver === 'undefined'
     ? undefined
-    : new MutationObserver(() => { if (!disposed) enhanceEditors() })
+    : new MutationObserver(() => { if (!disposed && options.fileEditor) enhanceEditors() })
 
   const closeMenu = (): void => { menu?.remove(); menu = undefined }
   const onContextMenu = (event: MouseEvent): void => {
+    if (!options.menuEnhancement) return
     const target = (event.target as Element | null)?.closest<HTMLElement>('[data-files-entry][data-files-path]')
     if (target == null) return
     event.preventDefault()
@@ -37,19 +57,28 @@ export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
   document.addEventListener('click', onDocumentClick, true)
   document.addEventListener('keydown', onKeyDown, true)
   observer?.observe(document.body, { childList: true, subtree: true })
-  enhanceEditors()
+  if (options.fileEditor) enhanceEditors()
 
-  return () => {
+  const dispose = (): void => {
     disposed = true
     closeMenu()
-    if (editor !== undefined) editor.body.style.display = ''
-    editor?.buttons.remove()
-    editor?.textarea.remove()
+    clearEditorEnhancements()
     editor = undefined
     observer?.disconnect()
     document.removeEventListener('contextmenu', onContextMenu, true)
     document.removeEventListener('click', onDocumentClick, true)
     document.removeEventListener('keydown', onKeyDown, true)
+  }
+
+  return {
+    setOptions(nextOptions) {
+      const previous = options
+      options = { ...nextOptions }
+      if (!options.menuEnhancement) closeMenu()
+      if (!options.fileEditor) clearEditorEnhancements()
+      else if (!previous.fileEditor) enhanceEditors()
+    },
+    dispose,
   }
 
   function openMenu(item: FileEntryElement, x: number, y: number): void {
@@ -164,57 +193,58 @@ export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
   }
 
   function enhanceEditors(): void {
+    if (!options.fileEditor) return
     for (const root of document.querySelectorAll<HTMLElement>('[data-document-preview]')) {
       if (root.dataset.fileManagementEditor === 'true') continue
       const url = root.getAttribute('data-textpreview-url') ?? ''
       if (root.getAttribute('data-textpreview-state') !== 'text' || !isEditableFile(url)) continue
       const header = root.querySelector<HTMLElement>('[data-textpreview-path]')?.parentElement
       if (header === null || header === undefined) continue
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.textContent = '编辑'
-      button.title = '编辑文件'
+      const button = createEditorButton(root, 'edit', '编辑文件')
       button.setAttribute('data-file-management-edit', 'true')
-      button.style.cssText = 'margin-left:auto;padding:4px 10px;border:1px solid var(--dsw-alias-border-l2,#666);border-radius:4px;background:transparent;color:inherit;cursor:pointer;font:inherit'
-      button.addEventListener('click', () => void beginEdit(root, url, header, button))
-      header.append(button)
+      button.addEventListener('click', () => void beginEdit(root, url, button))
+      placeEditorButton(root, header, button)
       root.dataset.fileManagementEditor = 'true'
     }
   }
 
-  async function beginEdit(root: HTMLElement, url: string, header: HTMLElement, editButton: HTMLButtonElement): Promise<void> {
-    if (editor !== undefined) editor.buttons.remove()
+  async function beginEdit(root: HTMLElement, url: string, editButton: HTMLButtonElement): Promise<void> {
+    if (!options.fileEditor) return
+    if (editor !== undefined) cancelEdit()
     const target = parseFileTarget(url, root)
     if (target === undefined) { showNotice('无法解析当前文件路径'); return }
     try {
       const result = await call('read', target) as { content: string }
       const body = root.querySelector<HTMLElement>('[data-textpreview-body]')
       if (body === null) return
-      const textarea = document.createElement('textarea')
-      textarea.value = result.content
-      textarea.setAttribute('aria-label', '文件内容编辑器')
-      textarea.style.cssText = 'box-sizing:border-box;width:100%;height:100%;min-height:360px;resize:none;padding:16px;background:transparent;color:inherit;border:0;outline:0;font:inherit;line-height:1.55'
+      const host = document.createElement('div')
+      host.setAttribute('data-file-management-editor', 'true')
+      host.setAttribute('aria-label', '文件内容编辑器')
+      host.style.cssText = 'box-sizing:border-box;width:100%;height:100%;min-height:360px;border:1px solid var(--dsw-alias-border-l2,#666);border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,transparent)'
       body.style.display = 'none'
-      body.parentElement?.append(textarea)
+      body.parentElement?.append(host)
+      const language = editorLanguageForPath(target.path)
+      const extensions = [basicSetup, editorTheme]
+      if (language !== undefined) extensions.push(language)
+      extensions.push(EditorView.lineWrapping)
+      const view = new EditorView({ doc: result.content, extensions, parent: host })
+      view.focus()
       const buttons = document.createElement('span')
-      buttons.style.cssText = 'display:inline-flex;gap:6px;margin-left:auto'
-      const save = document.createElement('button')
-      save.type = 'button'; save.textContent = '保存'; save.style.cssText = editButton.style.cssText
-      const cancel = document.createElement('button')
-      cancel.type = 'button'; cancel.textContent = '取消'; cancel.style.cssText = editButton.style.cssText
+      buttons.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin-left:auto'
+      const save = createEditorButton(root, 'save', '保存文件')
+      const cancel = createEditorButton(root, 'cancel', '取消编辑')
       buttons.append(save, cancel)
-      editButton.remove()
-      header.append(buttons)
-      editor = { root, body, textarea, path: target, buttons }
+      editButton.replaceWith(buttons)
+      editor = { root, body, host, view, path: target, buttons }
       save.addEventListener('click', () => void saveEdit())
-      cancel.addEventListener('click', cancelEdit)
+      cancel.addEventListener('click', () => cancelEdit())
     } catch (error) { showNotice(errorMessage(error)) }
   }
 
   async function saveEdit(): Promise<void> {
     if (editor === undefined) return
     try {
-      await call('write', { ...editor.path, content: editor.textarea.value })
+      await call('write', { ...editor.path, content: editor.view.state.doc.toString() })
       const reload = editor.root.querySelector<HTMLButtonElement>('[data-textpreview-tool="reload"]')
         ?? findButton(editor.root.parentElement, ['重新读取文件', '重新读取'])
         ?? findButton(document, ['重新读取文件', '重新读取'])
@@ -224,19 +254,165 @@ export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
     } catch (error) { showNotice(errorMessage(error)) }
   }
 
-  function cancelEdit(): void {
+  function cancelEdit(reenhance = true): void {
     if (editor === undefined) return
-    editor.textarea.remove()
+    editor.view.destroy()
+    editor.host.remove()
     editor.body.style.display = ''
     editor.buttons.remove()
     editor.root.dataset.fileManagementEditor = ''
     editor = undefined
-    enhanceEditors()
+    if (reenhance && options.fileEditor) enhanceEditors()
+  }
+
+  function clearEditorEnhancements(): void {
+    cancelEdit(false)
+    for (const root of document.querySelectorAll<HTMLElement>('[data-document-preview]')) {
+      root.querySelector('[data-file-management-edit]')?.remove()
+      root.dataset.fileManagementEditor = ''
+    }
   }
 
   async function call(action: string, payload: unknown): Promise<unknown> {
     return callCodingNsRpc(rpc, `fileManagement/${action}`, payload)
   }
+}
+
+function placeEditorButton(root: HTMLElement, header: HTMLElement, button: HTMLButtonElement): void {
+  const openTarget = root.querySelector<HTMLElement>('[data-open-target="file"]')
+  const actionRow = openTarget?.parentElement
+  if (openTarget !== null && openTarget !== undefined && actionRow !== null && actionRow !== undefined && root.contains(openTarget)) {
+    actionRow.style.display = 'flex'
+    actionRow.style.alignItems = 'center'
+    actionRow.style.flexShrink = '0'
+    openTarget.style.marginLeft = 'auto'
+    openTarget.style.flex = '0 0 auto'
+    button.style.marginLeft = '8px'
+    button.style.flex = '0 0 32px'
+    actionRow.insertBefore(button, openTarget)
+    return
+  }
+  header.append(button)
+}
+
+// 编辑器只覆盖文件预览区域，颜色使用 DSH 主题变量，避免切换深浅色时残留固定配色。
+const editorTheme = EditorView.theme({
+  '&': {
+    height: '100%',
+    minHeight: '360px',
+    color: 'var(--dsw-alias-label-primary, inherit)',
+    backgroundColor: 'var(--dsw-alias-bg-layer-1, transparent)',
+    fontSize: '13px',
+  },
+  '.cm-scroller': {
+    overflow: 'auto',
+    fontFamily: 'var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+    lineHeight: '1.55',
+  },
+  '.cm-content': { padding: '16px 0' },
+  '.cm-line': { padding: '0 16px' },
+  '.cm-gutters': {
+    padding: '16px 0',
+    backgroundColor: 'var(--dsw-alias-bg-layer-2, transparent)',
+    color: 'var(--dsw-alias-label-tertiary, #8a8f98)',
+    borderRight: '1px solid var(--dsw-alias-border-l2, #666)',
+  },
+  '.cm-gutterElement': { minWidth: '2.5em', padding: '0 10px 0 8px' },
+  '.cm-activeLine': { backgroundColor: 'var(--dsw-alias-interactive-bg-hover, rgba(127,127,127,.12))' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--dsw-alias-interactive-bg-hover, rgba(127,127,127,.12))' },
+  '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--dsw-alias-interactive-bg-selected, rgba(80,120,200,.28)) !important' },
+  '.cm-cursor': { borderLeftColor: 'var(--dsw-alias-label-primary, currentColor)' },
+})
+
+function editorLanguageForPath(path: string) {
+  const extension = path.toLowerCase().split(/[\\/.]/u).pop() ?? ''
+  if (extension === 'md' || extension === 'markdown') return markdown()
+  if (extension === 'json') return json()
+  if (extension === 'js' || extension === 'jsx' || extension === 'mjs' || extension === 'cjs') return javascript({ jsx: extension === 'jsx' })
+  if (extension === 'ts' || extension === 'tsx' || extension === 'mts' || extension === 'cts') return javascript({ jsx: extension === 'tsx', typescript: true })
+  if (extension === 'html' || extension === 'htm' || extension === 'xml') return html()
+  if (extension === 'css') return css()
+  if (extension === 'py') return python()
+  if (extension === 'sql') return sql()
+  return undefined
+}
+
+type EditorButtonIcon = 'edit' | 'save' | 'cancel'
+
+function createEditorButton(root: HTMLElement, iconName: EditorButtonIcon, title: string): HTMLButtonElement {
+  const reference = root.querySelector<HTMLButtonElement>('[data-textpreview-tool]')
+  const button = reference === null
+    ? document.createElement('button')
+    : reference.cloneNode(false) as HTMLButtonElement
+  button.type = 'button'
+  button.textContent = ''
+  button.title = title
+  button.setAttribute('aria-label', title)
+  button.removeAttribute('data-textpreview-tool')
+  button.removeAttribute('disabled')
+  button.setAttribute('data-file-management-toolbar-button', 'true')
+  button.style.display = 'inline-flex'
+  button.style.alignItems = 'center'
+  button.style.justifyContent = 'center'
+  button.style.boxSizing = 'border-box'
+  button.style.width = '32px'
+  button.style.minWidth = '32px'
+  button.style.height = '32px'
+  button.style.marginLeft = '0'
+  button.style.padding = '0'
+  button.append(createEditorIcon(iconName))
+  if (reference === null) {
+    button.style.border = '1px solid var(--dsw-alias-border-l2,#d1d5db)'
+    button.style.borderRadius = '6px'
+    button.style.background = 'var(--dsw-alias-bg-layer-1,transparent)'
+    button.style.color = 'var(--dsw-alias-label-primary,inherit)'
+    button.style.cursor = 'pointer'
+    button.style.transition = 'background-color 120ms ease,border-color 120ms ease,color 120ms ease'
+    button.addEventListener('mouseenter', () => {
+      button.style.background = 'var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12))'
+      button.style.borderColor = 'var(--dsw-alias-border-l1,#9ca3af)'
+    })
+    button.addEventListener('mouseleave', () => {
+      button.style.background = 'var(--dsw-alias-bg-layer-1,transparent)'
+      button.style.borderColor = 'var(--dsw-alias-border-l2,#d1d5db)'
+    })
+  }
+  return button
+}
+
+function createEditorIcon(iconName: EditorButtonIcon): Element {
+  const paths: Record<EditorButtonIcon, readonly string[]> = {
+    edit: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z', 'm15 5 4 4'],
+    save: ['M15.2 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.8z', 'M14 3v4a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3', 'M6 21v-4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4'],
+    cancel: ['M18 6 6 18', 'm6 6 12 12'],
+  }
+  const createElementNS = typeof document.createElementNS === 'function'
+    ? document.createElementNS.bind(document)
+    : undefined
+  if (createElementNS !== undefined) {
+    const icon = createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement
+    icon.setAttribute('width', '16')
+    icon.setAttribute('height', '16')
+    icon.setAttribute('viewBox', '0 0 24 24')
+    icon.setAttribute('fill', 'none')
+    icon.setAttribute('stroke', 'currentColor')
+    icon.setAttribute('stroke-width', '1.8')
+    icon.setAttribute('stroke-linecap', 'round')
+    icon.setAttribute('stroke-linejoin', 'round')
+    icon.setAttribute('aria-hidden', 'true')
+    for (const pathData of paths[iconName]) {
+      const path = createElementNS('http://www.w3.org/2000/svg', 'path')
+      path.setAttribute('d', pathData)
+      icon.append(path)
+    }
+    return icon
+  }
+  const fallback = document.createElement('span')
+  fallback.textContent = iconName === 'edit' ? '✎' : iconName === 'save' ? '▣' : '×'
+  fallback.setAttribute('aria-hidden', 'true')
+  fallback.style.fontSize = '16px'
+  fallback.style.lineHeight = '1'
+  return fallback
 }
 
 function findButton(root: ParentNode | null | undefined, labels: readonly string[]): HTMLButtonElement | undefined {
