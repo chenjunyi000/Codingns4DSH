@@ -80,6 +80,7 @@ export const CodingNsSettingsSchema: z<CodingNsSettings> = z.object({
   fileManagement: z.object({
     menuEnhancement: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.menuEnhancement),
     fileEditor: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.fileEditor),
+    sessionChangedFiles: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.sessionChangedFiles),
   }).default(DEFAULT_CODINGNS_SETTINGS.fileManagement),
 })
 

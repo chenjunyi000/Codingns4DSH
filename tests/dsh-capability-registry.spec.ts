@@ -73,6 +73,28 @@ test('能力矩阵覆盖插件当前测试的三个 DSH 版本', () => {
   assert.ok(settingsRoutes.every((route) => route.consumers.length > 0))
 })
 
+test('PeerHost 八项能力已进入矩阵并覆盖支持版本', () => {
+  const capabilities = [
+    'peer-host.store', 'peer-host.handshake', 'peer-host.http-proxy', 'peer-host.ws-proxy',
+    'peer-host.aggregate', 'peer-host.relay-route', 'peer-host.native-navigation',
+    'peer-host.remote-web-context-fallback',
+  ]
+  for (const capability of capabilities) {
+    const routes = DSH_CAPABILITY_MATRIX.filter((route) => route.capability === capability)
+    assert.ok(routes.length > 0)
+    assert.ok(routes.every((route) => route.consumers.length > 0))
+    assert.ok(routes.some((route) => route.supportedDsh.includes('0.1.5-rc.3')))
+    assert.ok(routes.some((route) => route.supportedDsh.includes('0.1.7-rc.2')))
+  }
+})
+
+test('PeerHost 未注入适配器时生成不可用诊断', () => {
+  const host = createDshCapabilityRegistry('0.1.6-alpha.2', 'host', {}).getProfile({})
+  const client = createDshCapabilityRegistry('0.1.6-alpha.2', 'client', {}).getProfile({})
+  assert.equal(host.capabilities.get('peer-host.store')?.status, 'unavailable')
+  assert.equal(client.capabilities.get('peer-host.native-navigation')?.status, 'unavailable')
+})
+
 test('三个 DSH fixture 都能解析到集中式设置路由', () => {
   const fixtures = [
     ['0.1.5-rc.3', { settings: { register: () => undefined }, connection: {} }, 'settings-scope'],
@@ -83,5 +105,28 @@ test('三个 DSH fixture 都能解析到集中式设置路由', () => {
     const profile = createDshCapabilityRegistry(version, 'host', context).resolve(context)
     assert.equal(profile.capabilities.get('settings.store')?.routeId, routeId)
     assert.notEqual(profile.capabilities.get('connection.rpc')?.status, 'unavailable')
+  }
+})
+
+test('PeerHost 三版本 fixture 明确区分原生导航、Remote Web Context 和 Relay', () => {
+  const versions = ['0.1.5-rc.3', '0.1.6-alpha.2', '0.1.7-rc.2'] as const
+  for (const version of versions) {
+    const hostContext = {
+      peerHostStore: {},
+      peerHostHandshake: {},
+      peerHostHttpProxy: {},
+      peerHostWsProxy: {},
+      peerHostAggregate: {},
+    }
+    const hostProfile = createDshCapabilityRegistry(version, 'host', hostContext).getProfile(hostContext)
+    assert.equal(hostProfile.capabilities.get('peer-host.store')?.status, 'ready')
+    assert.equal(hostProfile.capabilities.get('peer-host.relay-route')?.status, 'unavailable')
+
+    const clientContext = version === '0.1.7-rc.2'
+      ? { peerHostNativeNavigation: {} }
+      : { peerHostRemoteWebContextFallback: {} }
+    const clientProfile = createDshCapabilityRegistry(version, 'client', clientContext).getProfile(clientContext)
+    assert.equal(clientProfile.capabilities.get('peer-host.remote-web-context-fallback')?.status, version === '0.1.7-rc.2' ? 'unavailable' : 'ready')
+    assert.equal(clientProfile.capabilities.get('peer-host.native-navigation')?.status, version === '0.1.7-rc.2' ? 'ready' : 'unavailable')
   }
 })

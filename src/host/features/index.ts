@@ -8,6 +8,7 @@ import { createDebugFeature } from './debug.js'
 import { createHostStatusFeature } from './host-status.js'
 import { createGitManagementFeature } from './git-management.js'
 import { createFileManagementFeature } from './file-management.js'
+import { createPeerHostFeature } from './peer-host.js'
 import type { CodingNsHostServices } from './types.js'
 
 export interface HostFeatureOptions {
@@ -26,6 +27,7 @@ export function createHostFeatures(options: HostFeatureOptions = {}): readonly F
     createHostStatusFeature(),
     createGitManagementFeature(),
     createFileManagementFeature(),
+    createPeerHostFeature(),
   ]
 }
 
@@ -41,4 +43,5 @@ export { createDebugFeature } from './debug.js'
 export { createHostStatusFeature } from './host-status.js'
 export { createGitManagementFeature } from './git-management.js'
 export { createFileManagementFeature } from './file-management.js'
+export { createPeerHostFeature, toPeerHostClientRecord } from './peer-host.js'
 export type { CodingNsHostServices } from './types.js'

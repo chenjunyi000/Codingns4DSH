@@ -120,11 +120,30 @@ async function readDiff(workspaceId: string, root: string, target: string, stage
   const path = safeTarget(root, target)
   try {
     const result = await runGit(root, [...(staged ? ['diff', '--cached'] : ['diff']), '--binary', '--', path])
+    if (!staged && result.stdout === '' && await isUntracked(root, path)) {
+      try {
+        await runGit(root, ['diff', '--no-index', '--binary', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', path])
+      } catch (error) {
+        if (error instanceof GitCommandError && error.stdout !== '') {
+          const content = error.stdout.slice(0, MAX_DIFF_BYTES)
+          return { workspaceId, path: normalizeGitPath(target), staged, binary: /Binary files /u.test(error.stdout), truncated: error.stdout.length > content.length, content }
+        }
+      }
+    }
     const content = result.stdout.slice(0, MAX_DIFF_BYTES)
     return { workspaceId, path: normalizeGitPath(target), staged, binary: /Binary files /u.test(result.stdout), truncated: result.stdout.length > content.length, content }
   } catch (error) {
     if (error instanceof GitCommandError && error.stderr.includes('unknown revision')) throw error
     return { workspaceId, path: normalizeGitPath(target), staged, binary: false, truncated: false, content: '' }
+  }
+}
+
+async function isUntracked(root: string, path: string): Promise<boolean> {
+  try {
+    await runGit(root, ['ls-files', '--error-unmatch', '--', path])
+    return false
+  } catch {
+    return true
   }
 }
 
@@ -249,12 +268,12 @@ async function runGit(cwd: string, args: readonly string[]): Promise<{ stdout: s
     return await execFile('git', [...args], { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES, timeout: 30_000 }) as { stdout: string; stderr: string }
   } catch (error) {
     const detail = error as { stdout?: string; stderr?: string; code?: string | number }
-    throw new GitCommandError(`git ${args.join(' ')} 执行失败`, detail.stderr ?? detail.stdout ?? String(error), detail.code)
+    throw new GitCommandError(`git ${args.join(' ')} 执行失败`, detail.stderr ?? detail.stdout ?? String(error), detail.code, detail.stdout ?? '')
   }
 }
 
 class GitCommandError extends Error {
-  constructor(message: string, readonly stderr: string, readonly commandCode?: string | number) { super(message) }
+  constructor(message: string, readonly stderr: string, readonly commandCode?: string | number, readonly stdout = '') { super(message) }
 }
 
 function safeTargets(root: string, value: unknown): string[] {

@@ -37,6 +37,8 @@ export interface CodingNsHostServices {
   readonly debug?: DebugWorkspaceService
   /** Debug 模块启用时注册其专属 Fetch 路由，停用时由模块资源注销。 */
   readonly registerDebugProxyRoute?: (handler: (request: Request) => Promise<Response>) => () => Promise<void>
+  /** PeerHost 固定握手入口；只允许模块返回脱敏能力摘要。 */
+  readonly registerPeerHostHandshakeRoute?: (handler: (request: Request) => Promise<Response>) => () => Promise<void>
   /** 由 Host 权威解析 Workspace ID，Client 不可覆盖。 */
   readonly resolveWorkspaceRoot?: (workspaceId: string) => string | null
   /** 返回 Host 当前已知的工作区根目录，用于文件管理路径校验。 */

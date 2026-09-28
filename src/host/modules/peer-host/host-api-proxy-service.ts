@@ -1,0 +1,162 @@
+import type { HostScope, PeerHostErrorCode, PeerHostRecord } from '../../../shared/contracts/peer-host.js'
+import { PEER_HOST_ERROR_CODES } from '../../../shared/contracts/peer-host.js'
+import { PeerHostSessionService } from './peer-host-session.js'
+import { PeerHostStore } from './peer-host-store.js'
+
+const MAX_PROXY_BODY_BYTES = 4 * 1024 * 1024
+const ALLOWED_QUERY = new Set(['workspaceId', 'sessionId', 'scopeGeneration', 'cursor', 'path', 'toolId'])
+const HOP_BY_HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host', 'authorization'])
+
+export const PEER_HOST_HTTP_PROXY_RULES = [
+  { prefix: '/api/workspaces', methods: ['GET'] },
+  { prefix: '/api/sessions', methods: ['GET', 'POST'] },
+  { prefix: '/api/file-tree', methods: ['GET'] },
+  { prefix: '/api/files', methods: ['GET', 'PUT', 'POST'] },
+  { prefix: '/api/git', methods: ['GET', 'POST'] },
+  { prefix: '/api/terminal', methods: ['GET', 'POST'] },
+  { prefix: '/api/right-tools', methods: ['GET', 'POST'] },
+] as const
+
+export class PeerHostProxyError extends Error {
+  constructor(readonly code: PeerHostErrorCode, message: string) {
+    super(message)
+    this.name = 'PeerHostProxyError'
+  }
+}
+
+/** 当前 Host 到目标 Host 的 HTTP 正向代理。 */
+export class PeerHostHttpProxyService {
+  private readonly fetchImpl: typeof fetch
+
+  constructor(
+    private readonly store: PeerHostStore,
+    private readonly sessions: PeerHostSessionService,
+    options: { readonly fetchImpl?: typeof fetch } = {},
+  ) {
+    this.fetchImpl = options.fetchImpl ?? fetch
+  }
+
+  async handle(peerHostId: string, request: Request): Promise<Response> {
+    try {
+      const record = await this.requireReady(peerHostId)
+      const scope = readScope(request.headers, peerHostId)
+      const targetPath = parseProxyPath(request.url)
+      validateQuery(targetPath)
+      validateRule(request.method, targetPath.pathname)
+      const body = await readBody(request)
+      const accessToken = await this.sessions.getAccessToken(peerHostId)
+      const targetUrl = buildTargetUrl(record, targetPath)
+      const response = await this.fetchImpl(targetUrl, {
+        method: request.method,
+        headers: buildForwardHeaders(request.headers, accessToken),
+        ...(body === undefined ? {} : { body }),
+      })
+      return await forwardResponse(response, scope)
+    } catch (error) {
+      return errorResponse(error)
+    }
+  }
+
+  /** 将 RPC 的结构化请求转换为同一条 HTTP 白名单代理；不接受绝对 URL。 */
+  async request(peerHostId: string, input: {
+    readonly scope: HostScope
+    readonly path: string
+    readonly method?: string
+    readonly body?: string
+  }): Promise<{ readonly status: number; readonly headers: readonly [string, string][]; readonly body: string }> {
+    const path = typeof input.path === 'string' ? input.path : ''
+    if (!path.startsWith('/api/') || path.includes('://')) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理路径必须是固定 API 路径')
+    const method = (input.method ?? 'GET').toUpperCase()
+    const body = input.body === undefined ? undefined : String(input.body)
+    if (body !== undefined && new TextEncoder().encode(body).byteLength > MAX_PROXY_BODY_BYTES) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理请求体过大')
+    const headers = new Headers({
+      'x-codingns-host-id': input.scope.hostId,
+      'x-codingns-target-host-id': input.scope.targetHostId ?? '',
+      'x-codingns-workspace-id': input.scope.workspaceId,
+      'x-codingns-scope-generation': String(input.scope.scopeGeneration),
+      ...(input.scope.sessionId === null ? {} : { 'x-codingns-session-id': input.scope.sessionId }),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    })
+    const response = await this.handle(peerHostId, new Request(new URL(path, 'http://peer-host.invalid'), { method, headers, ...(body === undefined ? {} : { body }) }))
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+    if (response.body !== null && !contentType.includes('json') && !contentType.startsWith('text/')) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.RESPONSE_INVALID, '目标 Host 返回了不支持的响应类型')
+    return { status: response.status, headers: [...response.headers.entries()], body: await response.text() }
+  }
+
+  private async requireReady(peerHostId: string): Promise<PeerHostRecord> {
+    const record = await this.store.get(peerHostId)
+    if (record === null) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.NOT_FOUND, 'PeerHost 不存在')
+    if (record.status !== 'ready') throw new PeerHostProxyError(record.status === 'session_required' ? PEER_HOST_ERROR_CODES.SESSION_REQUIRED : PEER_HOST_ERROR_CODES.NOT_READY, 'PeerHost 尚未准备好代理')
+    if (record.route.kind !== 'lan') throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.RELAY_UNAVAILABLE, '中转 PeerHost 暂不可用')
+    return record
+  }
+}
+
+function readScope(headers: Headers, peerHostId: string): HostScope {
+  const hostId = headers.get('x-codingns-host-id')?.trim() ?? ''
+  const targetHostId = headers.get('x-codingns-target-host-id')?.trim() ?? ''
+  const workspaceId = headers.get('x-codingns-workspace-id')?.trim() ?? ''
+  const sessionHeader = headers.get('x-codingns-session-id')
+  const generation = Number(headers.get('x-codingns-scope-generation'))
+  if (!hostId || targetHostId !== peerHostId || !workspaceId || !Number.isSafeInteger(generation) || generation < 0) {
+    throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost 请求作用域不匹配')
+  }
+  return { hostId, targetHostId, workspaceId, sessionId: sessionHeader?.trim() || null, scopeGeneration: generation }
+}
+
+function parseProxyPath(rawUrl: string): URL {
+  const url = new URL(rawUrl)
+  if (!url.pathname.startsWith('/api/')) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理路径不在 API 范围内')
+  return url
+}
+
+function validateQuery(url: URL): void {
+  for (const key of url.searchParams.keys()) if (!ALLOWED_QUERY.has(key)) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理查询参数未加入白名单')
+}
+
+function validateRule(method: string, pathname: string): void {
+  const rule = PEER_HOST_HTTP_PROXY_RULES.find((candidate) => pathname === candidate.prefix || pathname.startsWith(`${candidate.prefix}/`))
+  if (rule === undefined || !(rule.methods as readonly string[]).includes(method.toUpperCase())) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理路径或方法未加入白名单')
+}
+
+async function readBody(request: Request): Promise<string | undefined> {
+  if (request.method === 'GET' || request.method === 'HEAD') return undefined
+  const contentLength = Number(request.headers.get('content-length') ?? '0')
+  if (Number.isFinite(contentLength) && contentLength > MAX_PROXY_BODY_BYTES) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理请求体过大')
+  const body = await request.text()
+  if (new TextEncoder().encode(body).byteLength > MAX_PROXY_BODY_BYTES) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED, 'PeerHost 代理请求体过大')
+  return body
+}
+
+function buildTargetUrl(record: PeerHostRecord, source: URL): string {
+  if (record.route.kind !== 'lan') throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.RELAY_UNAVAILABLE, '中转 PeerHost 暂不可用')
+  return new URL(`${source.pathname}${source.search}`, record.route.normalizedOrigin).toString()
+}
+
+function buildForwardHeaders(source: Headers, accessToken: string): Headers {
+  const headers = new Headers()
+  source.forEach((value, name) => {
+    const normalized = name.toLowerCase()
+    if (HOP_BY_HOP_HEADERS.has(normalized) || normalized.startsWith('x-codingns-')) return
+    if (normalized === 'content-length') return
+    headers.set(name, value)
+  })
+  headers.set('authorization', `Bearer ${accessToken}`)
+  return headers
+}
+
+async function forwardResponse(response: Response, scope: HostScope): Promise<Response> {
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  if (response.body !== null && !contentType.includes('json') && !contentType.startsWith('text/')) throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.RESPONSE_INVALID, '目标 Host 返回了不支持的响应类型')
+  const headers = new Headers()
+  response.headers.forEach((value, name) => { if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) headers.set(name, value) })
+  headers.set('x-codingns-scope-generation', String(scope.scopeGeneration))
+  return new Response(response.body, { status: response.status, headers })
+}
+
+function errorResponse(error: unknown): Response {
+  const code = error instanceof PeerHostProxyError ? error.code : PEER_HOST_ERROR_CODES.PROXY_UNREACHABLE
+  const message = error instanceof PeerHostProxyError ? error.message : '目标 Host 代理请求失败'
+  const status = code === PEER_HOST_ERROR_CODES.SCOPE_MISMATCH || code === PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED ? 400 : code === PEER_HOST_ERROR_CODES.NOT_FOUND ? 404 : code === PEER_HOST_ERROR_CODES.SESSION_REQUIRED ? 401 : 502
+  return Response.json({ error: { code, message } }, { status })
+}

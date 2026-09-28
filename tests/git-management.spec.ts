@@ -120,7 +120,7 @@ test('Git Client 与 Host 接线包含侧栏面板和所有版本 RPC', async ()
   assert.ok(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-workspace'))
   const source = await readFile(new URL('../src/client/git-management.ts', import.meta.url), 'utf8')
   const hostRpc = await readFile(new URL('../src/host/rpc.ts', import.meta.url), 'utf8')
-  for (const marker of ['sidebarRightTabs.register', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'git/status', 'git/commit', 'git/commit-diff', 'git/history', 'git/branches', 'git/${action}', 'buildChangeTree', 'collectTreeTargets', 'onBatchAction', '撤销目录暂存', '撤销目录变更', 'hoveredPath', 'contentGridStyle', 'commitSectionStyle', 'commitEditorRowStyle', '在这里输入提交信息', '生成提交信息', 'commitActionsStyle', '暂存全部', '查看所有版本', "onOperation('refresh')"]) {
+  for (const marker of ['sidebarRightTabs.register', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'git/status', 'git/commit', 'git/commit-diff', 'git/history', 'git/branches', 'git/${action}', 'buildChangeTree', 'collectTreeTargets', 'onBatchAction', '撤销目录暂存', '撤销目录变更', 'hoveredPath', 'contentGridStyle', 'commitSectionStyle', 'commitEditorRowStyle', '在这里输入提交信息', '生成提交信息', 'commitActionsStyle', '暂存全部', '查看所有版本', "onOperation('refresh')", 'groupHistoryByDate', 'historyDateHeaderStyle', 'historyTimeStyle', 'formatHistoryTimestamp']) {
     assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
   }
   assert.match(source, /cached !== null && !historyExpanded\.current/u)

@@ -1,6 +1,6 @@
 # 任务清单 - PeerHost 管理与多 Host 工作区会话聚合
 
-状态：待实施。
+状态：阶段 6 进行中；阶段 1 至阶段 5 已完成，阶段 6 的 HTTP 作用域适配已完成，原生 WebSocket/UI 接入受 DSH WebServer 扩展点限制。
 
 ## 使用规则
 
@@ -16,7 +16,11 @@
 
 ### 1.1 注册 PeerHost 能力 ID 与 Feature descriptor
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/dsh-capabilities/types.ts`、`src/dsh-capabilities/matrix.ts`、`src/dsh-capabilities/routes.ts`、`src/client/features/peer-host.ts`、`src/client/features/index.ts`、`src/host/features/peer-host.ts`、`src/host/features/index.ts`、`tests/dsh-capability-registry.spec.ts`、`tests/feature-wiring.spec.ts`
+- 验证命令：`pnpm run typecheck`；`pnpm run build && node --test tests/dsh-capability-registry.spec.ts tests/feature-wiring.spec.ts`（28 项通过）
+- 已知限制：PeerHost 适配器尚未装配，当前仅提供显式结构探测和默认关闭的 Feature；真实配置、握手、代理和聚合留在后续任务。中转能力未宣称可用。
+- 对应需求和设计章节：需求 1、12；设计 §1、§2、§3
 - 做什么：在能力注册表中增加 PeerHost store、握手、HTTP/WS 代理、聚合、Relay 和导航降级能力，注册独立 `peer-host` Feature。
 - 做完看到什么：能力画像能解释 PeerHost 是否可用，模块启停不影响现有 Feature。
 - 依赖什么：spec005 能力注册与 FeatureRegistry；无业务代码依赖。
@@ -27,7 +31,11 @@
 
 ### 1.2 定义 PeerHost、HostScope 和聚合 DTO
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/shared/contracts/peer-host.ts`、`src/shared/contracts/errors.ts`、`src/shared/index.ts`、`tests/peer-host-contracts.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-contracts.spec.ts tests/resource-scope.spec.ts`（9 项通过）
+- 已知限制：契约已定义但尚未接入持久化、握手、代理和聚合运行时；`ResourceScopeManager` 保留旧输入形状，完整 `sessionId` 生命周期由阶段 4 接入。
+- 对应需求和设计章节：需求 2、5、6、7、8、12；设计 §4、§6、§7、§11
 - 做什么：新增 `PeerHostRecord`、`PeerHostRoute`、`PeerHostStatus`、`HostScope`、工作区/会话摘要和结构化错误码。
 - 做完看到什么：Host、Client、代理和导航共享同一套内部契约，不再用裸 workspace/session ID。
 - 依赖什么：1.1；现有 `src/shared/contracts/peer-host.ts` 和 `src/features/resource-scope/index.ts`。
@@ -38,7 +46,11 @@
 
 ### 1.3 建立版本和能力 fixture
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/dsh-capabilities/matrix.ts`、`src/dsh-capabilities/routes.ts`、`tests/dsh-capability-registry.spec.ts`、`docs/生成报告/20260925-能力路由报告.md`（脚本生成）
+- 验证命令：`pnpm run typecheck`；`pnpm run build && node --test tests/dsh-capability-registry.spec.ts`（8 项通过）；`pnpm run version:check`；`pnpm run capability:check`；`pnpm run capability:report`
+- 已知限制：0.1.5-rc.3/0.1.6-alpha.2 仅在显式注入时使用 Remote Web Context；0.1.7 原生导航仍需真实 adapter。Relay 三版本均保持 unavailable，尚未验证 Host-to-Host 中转。
+- 对应需求和设计章节：需求 1、4、12；设计 §3、§5、§9、§14、§15
 - 做什么：为 DSH 0.1.5-rc.3、0.1.6-alpha.2、0.1.7-rc.2 建立 PeerHost 能力 fixture，记录原生导航、WS 和 Remote Web Context 能力差异。
 - 做完看到什么：每个版本都有明确的 ready/degraded/unavailable 结果。
 - 依赖什么：1.1、1.2；现有 spec005 版本矩阵。
@@ -51,7 +63,11 @@
 
 ### 2.1 实现 PeerHost 持久化和敏感会话存储
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/modules/peer-host/peer-host-store.ts`、`tests/peer-host-store.spec.ts`
+- 验证命令：`pnpm run typecheck`；`pnpm run build && node --test tests/peer-host-store.spec.ts`（3 项通过）
+- 已知限制：服务尚未接入 Host Feature/RPC；加密文件密钥由 Host 启动边界注入，密钥生命周期和系统密钥链集成留在 Host 装配任务。
+- 对应需求和设计章节：需求 2、4、5、12；设计 §4、§5、§11
 - 做什么：实现 PeerHostRecord 的增删改查、路由规范化、重复检查、加密目标登录态和删除清理。
 - 做完看到什么：配置和 token 只存当前 Host，Client 只能看到脱敏 DTO。
 - 依赖什么：1.2；现有 Host settings store、认证服务和敏感存储边界。
@@ -62,7 +78,11 @@
 
 ### 2.2 实现目标 Host 握手和状态机
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/modules/peer-host/peer-host-store.ts`、`src/host/modules/peer-host/peer-host-handshake.ts`、`tests/peer-host-handshake.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-handshake.spec.ts`（4 项通过）
+- 已知限制：当前只实现固定 LAN 握手路径；Relay 明确返回 `PEER_HOST_RELAY_UNAVAILABLE`。握手服务尚未接入 Feature/RPC，目标 Host 真实握手端点装配留在后续任务。
+- 对应需求和设计章节：需求 3、4、5、11、12；设计 §5、§11、§15
 - 做什么：实现产品标识、插件版本、DSH 版本、API 兼容标识和 fingerprint 检查，落地状态转换和诊断码。
 - 做完看到什么：未安装插件、版本不兼容、身份变化和网络失败都能显示真实状态并阻止代理。
 - 依赖什么：2.1、1.3；能力矩阵和版本解析工具。
@@ -73,7 +93,11 @@
 
 ### 2.3 接入目标 Host 登录、刷新和退出
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/modules/peer-host/peer-host-store.ts`、`src/host/modules/peer-host/peer-host-session.ts`、`tests/peer-host-session.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-session.spec.ts`（3 项通过）
+- 已知限制：登录服务已完成 Host 侧 token 隔离和自动刷新，但尚未接入生产 Host Feature/RPC；RPC 装配与代理生命周期在阶段 3 统一完成。Relay 登录仍不可用。
+- 对应需求和设计章节：需求 5、6、11、12；设计 §5.2、§6、§11
 - 做什么：提供 Host 侧登录、refresh、logout 和 `session_required` 处理，确保当前 Host 登录态不受影响。
 - 做完看到什么：用户可在管理面板登录 PeerHost，代理前由 Host 自动刷新目标 token。
 - 依赖什么：2.1、2.2；现有认证服务和目标 DSH 登录接口。
@@ -86,7 +110,11 @@
 
 ### 3.1 实现 HTTP 代理入口和白名单
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/modules/peer-host/host-api-proxy-service.ts`、`tests/peer-host-http-proxy.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-http-proxy.spec.ts`（3 项通过）
+- 已知限制：代理服务尚未注册到生产 WebServer/RPC；当前白名单覆盖工作区、会话、文件树、文件、Git、终端和右侧工具的固定 API 前缀，具体 DSH 版本路径适配仍需能力矩阵扩展。
+- 对应需求和设计章节：需求 5、6、7、10、12；设计 §6、§11
 - 做什么：按固定 PeerHost ID 和资源类别代理工作区、会话、文件、Git、终端和右侧工具 API。
 - 做完看到什么：合法请求可到达目标 Host，任意 URL、认证和未登记 API 被拒绝。
 - 依赖什么：2.2、2.3；现有 Host HTTP 路由和 `host-api-proxy-service.ts` 参考实现。
@@ -97,7 +125,11 @@
 
 ### 3.2 实现 WebSocket 代理和消息过滤
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/modules/peer-host/host-ws-proxy-service.ts`、`tests/peer-host-ws-proxy.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-ws-proxy.spec.ts`（3 项通过）
+- 已知限制：服务已完成双端过滤和有界队列，但尚未注册现有 DSH upgrade 入口；目标 WS URL 的具体握手 adapter 和断线重连留在后续 Host 装配/阶段 7。
+- 对应需求和设计章节：需求 6、7、9、10、11、12；设计 §7、§8、§11
 - 做什么：建立当前 Host 到目标 Host 的双端 WS 连接，过滤客户端/远端消息类型并绑定 HostScope。
 - 做完看到什么：会话、终端、文件树和 Git 实时事件能路由到正确 Host，未知消息不会透传。
 - 依赖什么：3.1、2.3；现有 WS auth guard 和 DSH 工作台消息协议。
@@ -108,7 +140,11 @@
 
 ### 3.3 增加代理安全和诊断测试
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`tests/peer-host-security.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-http-proxy.spec.ts tests/peer-host-ws-proxy.spec.ts tests/peer-host-security.spec.ts`（8 项通过）
+- 已知限制：安全测试覆盖当前代理实现和错误脱敏；生产日志扫描、实际 WebServer/upgrade 注册以及新增 DSH API 的持续白名单门禁仍需后续任务。
+- 对应需求和设计章节：需求 6、12；设计 §6、§7、§11、§12
 - 做什么：把代理路径、消息类型、日志字段和凭据脱敏规则固化为安全契约测试。
 - 做完看到什么：新增代理接口如果漏注册白名单或日志包含敏感字段，测试会失败。
 - 依赖什么：3.1、3.2。
@@ -121,7 +157,11 @@
 
 ### 4.1 实现 HostRouter 和 generation 清理
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/features/host-router.ts`、`src/client/host-router.ts`、`src/host/host-router.ts`、`tests/host-router.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/host-router.spec.ts`（3 项通过）
+- 已知限制：路由器已提供作用域、generation、清理和稳定 key，但尚未替换现有会话/工具模块的请求入口；接入在阶段 6 完成。
+- 对应需求和设计章节：需求 7、9、10、11；设计 §8、§10、§11
 - 做什么：统一解析当前 Host/PeerHost、校验作用域、递增 generation、取消旧请求和清理旧订阅。
 - 做完看到什么：切换 Host、工作区或会话后，旧请求和旧 WS 结果不能污染新页面。
 - 依赖什么：1.2、3.2；现有 resource-scope 和 remote-web-runtime 生命周期。
@@ -132,7 +172,11 @@
 
 ### 4.2 实现多 Host 工作区/会话摘要聚合
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/shared/contracts/peer-host.ts`、`src/shared/index.ts`、`src/host/modules/peer-host/peer-host-aggregate-service.ts`、`tests/peer-host-aggregate.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-aggregate.spec.ts`（3 项通过）
+- 已知限制：聚合服务只加载摘要，尚未连接真实 workspace/session API 或 Client 导航 store；错误节点暂以 `AggregateHostResult` 状态承载。
+- 对应需求和设计章节：需求 7、8、11；设计 §4.5、§8、§9、§11
 - 做什么：并发获取当前 Host 和 PeerHost 摘要，合并稳定 key，保留不可用 Host 节点和状态。
 - 做完看到什么：导航一次显示所有 Host 的工作区和会话，同名资源不会覆盖。
 - 依赖什么：4.1、2.2；工作区/会话摘要 API。
@@ -143,7 +187,11 @@
 
 ### 4.3 接入 Host 标签和导航数据适配器
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/client/host-navigation.ts`、`tests/host-navigation.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/host-navigation.spec.ts`（2 项通过）
+- 已知限制：当前提供纯数据适配器，尚未挂接 DSH 原生导航 DOM/React Slot；Remote Web Context 降级提示和真实导航装配留在阶段 5/6。
+- 对应需求和设计章节：需求 8、11、12；设计 §9.2、§9.3、§14
 - 做什么：为当前 Host 和 PeerHost 生成稳定标签、DOM/React key 和导航树模型。
 - 做完看到什么：工作区名称后显示 Host 标签，切换和刷新不会跳到错误资源。
 - 依赖什么：4.2；现有 workspace/session 导航和 host alias 逻辑。
@@ -156,7 +204,11 @@
 
 ### 5.1 增加右下角连接管理按钮
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/client/peer-host-connection-button.ts`、`src/client/features/peer-host.ts`、`src/client/features/index.ts`、`tests/peer-host-connection-button.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-connection-button.spec.ts`（1 项通过）
+- 已知限制：按钮已由 Feature 生命周期创建/销毁并派发打开事件，管理面板、真实 RPC 以及 DOM 集成回放留在 `5.2`；未复用 active Host 切换器。
+- 对应需求和设计章节：需求 1、2、12；设计 §2.1、§9.3
 - 做什么：PeerHost Feature 启用时在右下角显示按钮，停用时移除并释放订阅。
 - 做完看到什么：用户在当前工作区内打开管理面板，不需要切换页面或 Host。
 - 依赖什么：1.1、4.1；现有 account bar/右下角 UI 注册方式。
@@ -167,7 +219,11 @@
 
 ### 5.2 实现 PeerHost 管理面板
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/client/peer-host-management-api.ts`、`src/client/peer-host-management-panel.ts`、`src/host/features/peer-host.ts`、`src/host/features/types.ts`、`src/host/index.ts`、`src/host/rpc.ts`、`src/shared/contracts/peer-host.ts`、`src/shared/index.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（5 项通过）；`pnpm run typecheck`；`pnpm run build`；`git diff --check`
+- 已知限制：管理面板和 Host RPC 已接入，LAN 握手使用固定 `/api/public/host-handshake`；relay 路由仍明确显示不可用。当前工作区缺少该独立包的 `node_modules` 链接，类型检查无法完整解析依赖；另有并行 `codex-driver.ts` 改动的既有类型错误。
+- 对应需求和设计章节：需求 2、3、4、5、12；设计 §2.1、§5、§9.3、§11
 - 做什么：提供添加、编辑、检查、重连、登录、退出和删除 PeerHost 的表单与状态视图。
 - 做完看到什么：用户能看到名称、路由、版本、fingerprint 脱敏摘要、最近检查和错误原因。
 - 依赖什么：2.1、2.2、2.3、5.1；现有设置表单规范。
@@ -178,7 +234,11 @@
 
 ### 5.3 接入设置项和模块启停
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 改动文件：`src/host/rpc.ts`、`src/client/features/peer-host.ts`、`src/host/features/peer-host.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（5 项通过）；`pnpm run typecheck`；`pnpm run build`；`git diff --check`
+- 已知限制：设置使用现有 `modules` 字典，不新增独立顶层字段；停用时不会删除持久 PeerHost 配置和 Host 加密凭据。完整 DSH 设置页视觉回放留在阶段 8。
+- 对应需求和设计章节：需求 1、12；设计 §2.1、§11
 - 做什么：新增独立设置项、FeatureRegistry 启停回调和已有配置保留策略。
 - 做完看到什么：关闭模块后按钮、轮询、聚合和连接消失，重新开启可恢复配置。
 - 依赖什么：1.1、5.1、5.2；现有 settings store。
@@ -191,7 +251,11 @@
 
 ### 6.1 路由远端会话历史和实时事件
 
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
+- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/host-router.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`；`node --experimental-strip-types --check src/client/peer-host-scoped-client.ts src/client/peer-host-session-controller.ts src/host/modules/peer-host/host-api-proxy-service.ts`
+- 已知限制：已建立带 HostScope 的 HTTP 会话请求适配器和会话控制器，可加载历史并在 generation 失效时拒绝旧结果；现有 DSH WebServer 未暴露插件可用的 WebSocket upgrade 注册契约，因此实时事件订阅仅提供严格白名单/作用域适配器，实际升级入口保持显式 unsupported，不伪装成原生三栏聚合；尚未接入现有 DSH 会话导航 store。
+- 对应需求和设计章节：需求 7、9、10、11；设计 §6、§7、§8、§10.1
 - 做什么：打开 PeerHost 会话时加载目标历史、订阅实时事件，并将消息写入正确 HostScope。
 - 做完看到什么：中栏显示目标 Host 的历史和新消息，切回当前 Host 后旧流停止。
 - 依赖什么：3.1、3.2、4.1、4.2；现有 session store 和 remote Web runtime。
@@ -202,7 +266,11 @@
 
 ### 6.2 路由聊天发送、停止和权限回复
 
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
+- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/features/peer-host.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`
+- 已知限制：已提供发送、停止、权限回复和问题回答的 HostScope HTTP 薄封装，并由会话控制器统一校验当前作用域；聊天 UI 事件绑定、运行中消息和权限回写尚未替换现有单 Host 入口；实时事件必须等待显式 WebSocket upgrade 契约。
+- 对应需求和设计章节：需求 9、10、11；设计 §5.2、§6、§7、§10
 - 做什么：让发送消息、停止运行、回答问题和权限回复携带目标 HostScope 并通过 PeerHost 代理执行。
 - 做完看到什么：聊天框操作进入目标 Host，当前 Host 会话不会收到误发消息。
 - 依赖什么：6.1；工作台消息协议和 HTTP/WS 白名单。
@@ -213,7 +281,11 @@
 
 ### 6.3 路由文件、Git、终端和右侧工具
 
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
+- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`；`node --experimental-strip-types --check src/client/peer-host-scoped-client.ts`
+- 已知限制：适配器已覆盖文件读写、Git 状态、终端和右侧工具固定路径，并统一绑定 HostScope；尚未接入现有工具 UI 的状态 store、终端 WebSocket 和右侧栏订阅清理；未登记实时工具不会静默降级，返回稳定 unsupported 错误。
+- 对应需求和设计章节：需求 10、11；设计 §6、§7、§8、§10.2
 - 做什么：将右侧栏打开/刷新/关闭、文件树、Git、终端和已登记工具绑定到目标 HostScope。
 - 做完看到什么：远端文件、Git 状态、终端输出和右侧结果来自目标 Host 的运行时。
 - 依赖什么：3.1、3.2、6.1；各工具能力和白名单。

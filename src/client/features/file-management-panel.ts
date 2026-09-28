@@ -16,7 +16,7 @@ import { useCodingNsTranslator } from '../locale.js'
 /** 文件管理增强的独立能力开关面板。 */
 export function FileManagementPanel({ services, enabled, snapshot, notify }: FeaturePanelProps): ReactElement {
   const t = useCodingNsTranslator(services.locale)
-  const value = snapshot.value?.fileManagement ?? DEFAULT_FILE_MANAGEMENT_SETTINGS
+  const value = { ...DEFAULT_FILE_MANAGEMENT_SETTINGS, ...snapshot.value?.fileManagement }
   const disabled = !enabled || snapshot.status === 'loading' || !snapshot.writable
 
   const updateSetting = (field: keyof typeof DEFAULT_FILE_MANAGEMENT_SETTINGS, nextValue: boolean): void => {
@@ -59,6 +59,13 @@ export function FileManagementPanel({ services, enabled, snapshot, notify }: Fea
       value.fileEditor,
       disabled,
       (next) => updateSetting('fileEditor', next),
+    ),
+    createSwitchRow(
+      t('fileManagement.sessionChangedFiles'),
+      t('fileManagement.sessionChangedFilesDescription'),
+      value.sessionChangedFiles,
+      disabled,
+      (next) => updateSetting('sessionChangedFiles', next),
     ),
   )
 }

@@ -111,6 +111,12 @@ export function apply(ctx?: Context): void {
         requestBody: 'streaming',
         fetch: handler,
       }),
+      registerPeerHostHandshakeRoute: (handler) => hostCtx.connection.fetch.register({
+        path: '/api/public/host-handshake',
+        methods: ['GET'],
+        requestBody: 'buffered',
+        fetch: handler,
+      }),
     }
     const debug = new DebugWorkspaceService({
       resolveWorkspaceRoot: (workspaceId) => workspaceRoots.get(workspaceId) ?? resolveWorkspaceRoot(hostCtx, workspaceId),
@@ -204,6 +210,7 @@ export {
   createTerminalProcessFeature,
   createGitManagementFeature,
   createFileManagementFeature,
+  createPeerHostFeature,
 } from './features/index.js'
 export type { CodingNsHostServices } from './features/index.js'
 export { CodingNsSettingsSchema, registerCodingNsSettings } from './settings.js'

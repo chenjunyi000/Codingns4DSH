@@ -140,6 +140,7 @@ export type {
   GitRepoSnapshot,
   GitStatus,
 } from './contracts/git.js'
+export type { SessionChangedFiles } from './contracts/file-management.js'
 export type {
   CliSubscriptionProvider,
   CliSubscriptionUsage,
@@ -153,14 +154,23 @@ export type {
   Sub2ApiUsagePoint,
 } from './contracts/subscription.js'
 export type {
+  AggregateWorkspaceSummary,
+  AggregateHostResult,
+  HostScope,
+  PeerHostErrorCode,
+  PeerHostErrorShape,
+  PeerHostRoute,
   PeerHostRecord,
+  PeerHostClientRoute,
+  PeerHostClientRecord,
+  PeerHostSessionRecord,
   PeerHostStatus,
   ResourceScopeDisposer,
   ResourceScopeInput,
   ResourceScopeRef,
   ResourceScopeSnapshot,
 } from './contracts/peer-host.js'
-export { ResourceScopeStaleError } from './contracts/peer-host.js'
+export { PEER_HOST_ERROR_CODES, ResourceScopeStaleError } from './contracts/peer-host.js'
 export {
   DEBUG_ERROR_CODES,
   DEBUG_RPC_ENDPOINTS,

@@ -5,6 +5,8 @@ import type { FeatureModule } from '../../shared/contracts/feature.js'
 import type { CodingNsSettings } from '../../shared/contracts/config.js'
 import type { CodingNsLocale } from '../locale.js'
 import type { CodingNsSettingsSnapshot, CodingNsSettingsStore } from '../../dsh-capabilities/settings-store.js'
+import type { PeerHostScopedClient } from '../peer-host-scoped-client.js'
+import type { HostRouter } from '../host-router.js'
 
 /** 一次 Codingns4DSH RPC 的结果，与 DSH Connection 的结果形状一致。 */
 export type CodingNsRpcResult =
@@ -22,6 +24,10 @@ export interface CodingNsClientServices {
   readonly dshVersion: string
   readonly settings: CodingNsSettingsStore<CodingNsSettings>
   readonly rpc: CodingNsRpcClient
+  /** PeerHost 远端资源适配器；请求始终绑定 HostScope。 */
+  readonly peerHost: PeerHostScopedClient
+  /** 所有跨 Host 资源共用的 generation 路由器。 */
+  readonly hostRouter: HostRouter
   /** DSH Typert Remote；归档会话模块只通过运行时探测调用可选方法。 */
   readonly remote?: unknown
   /** Codingns4DSH 自有终端 Remote；调试页不能依赖已停用的 DSH 官方 terminal。 */

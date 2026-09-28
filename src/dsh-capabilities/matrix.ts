@@ -29,6 +29,15 @@ export const DSH_CAPABILITY_MATRIX: readonly DshCapabilityMatrixRoute[] = [
   route('conversation.tool-call', 'conversation-events', 'client', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['client/external-tool-stream.ts']),
   route('sidebar.right', 'sidebar-right-tabs', 'client', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['client/terminal/ui.ts']),
   route('typert.remote', 'remote-result', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/terminal/terminal-controller.ts', 'client/terminal/model.ts']),
+  route('peer-host.store', 'peer-host-store', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.handshake', 'peer-host-handshake', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.http-proxy', 'peer-host-http-proxy', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.ws-proxy', 'peer-host-ws-proxy', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.aggregate', 'peer-host-aggregate', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.relay-route', 'peer-host-relay-route', 'host', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['host/features/peer-host.ts']),
+  route('peer-host.native-navigation', 'peer-host-native-navigation-legacy', 'client', '>=0.1.5-rc.3 <=0.1.6', 'deprecated', ['client/features/peer-host.ts']),
+  route('peer-host.native-navigation', 'peer-host-native-navigation-modern', 'client', '>=0.1.7-rc.2 <=0.1.7-rc.2', 'supported', ['client/features/peer-host.ts']),
+  route('peer-host.remote-web-context-fallback', 'peer-host-remote-web-context-fallback', 'client', '>=0.1.5-rc.3 <=0.1.7-rc.2', 'supported', ['client/features/peer-host.ts']),
 ]
 
 function route(

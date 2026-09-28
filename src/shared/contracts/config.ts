@@ -94,17 +94,20 @@ export interface WorkspaceSessionEnhancementSettings {
   quickPhrasesSeeded: boolean
 }
 
-/** 文件管理增强的两个独立能力开关。 */
+/** 文件管理增强的独立能力开关。 */
 export interface FileManagementSettings {
   /** 是否为文件和目录显示右键操作菜单。 */
   menuEnhancement: boolean
   /** 是否为可编辑文本文件显示编辑器入口。 */
   fileEditor: boolean
+  /** 是否在当前会话顶部显示“修改文件”视图。 */
+  sessionChangedFiles: boolean
 }
 
 export const DEFAULT_FILE_MANAGEMENT_SETTINGS: FileManagementSettings = {
   menuEnhancement: true,
   fileEditor: true,
+  sessionChangedFiles: true,
 }
 
 /** 可复用的快捷会话文本。 */

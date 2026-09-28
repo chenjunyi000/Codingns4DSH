@@ -9,6 +9,7 @@ import { workspaceSessionEnhancementFeature } from './workspace-session-enhancem
 import { debugFeature } from './debug.js'
 import { gitManagementFeature } from '../git-management.js'
 import { fileManagementFeature } from './file-management.js'
+import { peerHostFeature } from './peer-host.js'
 import type { CodingNsClientFeatureModule, CodingNsClientServices } from './types.js'
 
 /** Client 侧功能模块清单：新增模块在这里登记一行，不需要改动设置页和入口。 */
@@ -22,6 +23,7 @@ export const CLIENT_FEATURES: readonly CodingNsClientFeatureModule[] = [
   debugFeature,
   gitManagementFeature,
   fileManagementFeature,
+  peerHostFeature,
 ]
 
 /** 设置页要显示的一个模块及其界面描述。 */
@@ -49,9 +51,14 @@ export function settingsModules(
   return entries
 }
 
-export { lanAccessFeature, loginProtectionFeature, reverseProxyFeature, cliAdaptersFeature, workspaceSessionEnhancementFeature, terminalEnhancementFeature, debugFeature, gitManagementFeature, fileManagementFeature }
+export { lanAccessFeature, loginProtectionFeature, reverseProxyFeature, cliAdaptersFeature, workspaceSessionEnhancementFeature, terminalEnhancementFeature, debugFeature, gitManagementFeature, fileManagementFeature, peerHostFeature }
 export { startBrowserRelayConnection } from './reverse-proxy.js'
 export { LanAccessPanel } from './lan-access-panel.js'
+export { startPeerHostConnectionButton, PEER_HOST_BUTTON_ATTRIBUTE, PEER_HOST_OPEN_EVENT } from '../peer-host-connection-button.js'
+export { startPeerHostManagementPanel } from '../peer-host-management-panel.js'
+export { createPeerHostManagementApi } from '../peer-host-management-api.js'
+export { createPeerHostScopedClient } from '../peer-host-scoped-client.js'
+export { PeerHostSessionController } from '../peer-host-session-controller.js'
 export { LoginProtectionPanel } from './login-protection-panel.js'
 export { ReverseProxyPanel } from './reverse-proxy-panel.js'
 export { CliAdaptersPanel } from './cli-adapters.js'

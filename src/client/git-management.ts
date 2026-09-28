@@ -454,21 +454,24 @@ function diffLineStyle(kind: ParsedDiffLine['kind']): CSSProperties {
 }
 
 function HistorySection({ history, totalCount, hasMore, loadingMore, onLoadMore, branches, busy, onSwitch, onCopy, onCopyMessage, onViewDiff, onUndo }: { readonly history: readonly GitHistoryItem[]; readonly totalCount: number; readonly hasMore: boolean; readonly loadingMore: boolean; readonly onLoadMore: () => void; readonly branches: GitBranchSnapshot | null; readonly busy: boolean; readonly onSwitch: (branchName: string) => void; readonly onCopy: (commitHash: string) => void; readonly onCopyMessage: (message: string) => void; readonly onViewDiff: (commitHash: string) => void; readonly onUndo: () => void }): ReactElement {
-  const rows = history.map((item, index) => createElement('div', { key: item.commitHash, style: historyRowStyle },
-    createElement('code', { style: hashStyle }, item.commitHash.slice(0, 8)),
-    createElement('span', { style: fileNameStyle, title: item.subject }, item.subject),
-    createElement('time', { style: mutedStyle }, formatDate(item.authoredAt)),
-    createElement('details', { style: menuStyle },
-      createElement('summary', { style: menuSummaryStyle, title: '版本操作菜单', 'aria-label': '版本操作菜单' }, '⋯'),
-      createElement('div', { style: menuPopupStyle },
-        createElement('button', { type: 'button', onClick: () => onViewDiff(item.commitHash), style: menuButtonStyle }, '查看更改文件与 Diff'),
-        createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Commit Hash'),
-        createElement('button', { type: 'button', onClick: () => onCopyMessage(buildCommitMessageText(item.subject, item.body)), style: menuButtonStyle }, '复制提交信息'),
-        createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Git 版本号'),
-        index === 0 ? createElement('button', { type: 'button', disabled: busy, onClick: onUndo, style: dangerMenuButtonStyle }, '撤销上次提交') : null,
+  const rows = groupHistoryByDate(history).flatMap((group) => [
+    createElement('div', { key: `date:${group.key}`, style: historyDateHeaderStyle }, createElement('time', { dateTime: group.key, style: historyDateHeaderTextStyle }, group.label)),
+    ...group.items.map(({ item, index, timeLabel }) => createElement('div', { key: item.commitHash, style: historyRowStyle },
+      createElement('code', { style: hashStyle }, item.commitHash.slice(0, 8)),
+      createElement('span', { style: fileNameStyle, title: item.subject }, item.subject),
+      createElement('time', { style: historyTimeStyle, dateTime: item.authoredAt }, timeLabel),
+      createElement('details', { style: menuStyle },
+        createElement('summary', { style: menuSummaryStyle, title: '版本操作菜单', 'aria-label': '版本操作菜单' }, '⋯'),
+        createElement('div', { style: menuPopupStyle },
+          createElement('button', { type: 'button', onClick: () => onViewDiff(item.commitHash), style: menuButtonStyle }, '查看更改文件与 Diff'),
+          createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Commit Hash'),
+          createElement('button', { type: 'button', onClick: () => onCopyMessage(buildCommitMessageText(item.subject, item.body)), style: menuButtonStyle }, '复制提交信息'),
+          createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Git 版本号'),
+          index === 0 ? createElement('button', { type: 'button', disabled: busy, onClick: onUndo, style: dangerMenuButtonStyle }, '撤销上次提交') : null,
+        ),
       ),
-    ),
-  ))
+    )),
+  ])
   return createElement('section', { style: sectionStyle },
     createElement('div', { style: sectionHeaderStyle }, createElement('strong', undefined, `Git 版本 (${totalCount})`), branches === null ? null : createElement('select', { value: branches.currentBranch, disabled: busy, onChange: (event: { currentTarget: { value: string } }) => onSwitch(event.currentTarget.value), style: branchSelectStyle }, ...branches.local.map((branch) => createElement('option', { key: branch.name, value: branch.name }, branch.name)))),
     history.length === 0 ? createElement('div', { style: mutedStyle }, '暂无提交') : rows,
@@ -748,12 +751,32 @@ function normalizeBranchSnapshot(value: GitBranchSnapshot | null): GitBranchSnap
 }
 async function call<T = unknown>(rpc: CodingNsRpcClient, endpoint: string, payload: unknown): Promise<T> { let result: CodingNsRpcResult; try { result = await rpc.call(CODINGNS_RPC_CHANNEL, endpoint, payload) } catch (error) { if (!/HTTP (?:404|405)\b/u.test(error instanceof Error ? error.message : String(error))) throw error; result = await rpc.call('/api', `codingns/${endpoint}`, payload) } if (!result.ok) throw new Error(result.error.message); return result.value as T }
 async function copyText(value: string): Promise<boolean> { try { if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return false; await navigator.clipboard.writeText(value); return true } catch { return false } }
-function formatDate(value: string): string {
+interface GitHistoryGroup {
+  readonly key: string
+  readonly label: string
+  readonly items: readonly { readonly item: GitHistoryItem; readonly index: number; readonly timeLabel: string }[]
+}
+
+function groupHistoryByDate(history: readonly GitHistoryItem[]): readonly GitHistoryGroup[] {
+  const groups: Array<{ readonly key: string; readonly label: string; readonly items: Array<{ readonly item: GitHistoryItem; readonly index: number; readonly timeLabel: string }> }> = []
+  for (const [index, item] of history.entries()) {
+    const timestamp = formatHistoryTimestamp(item.authoredAt)
+    const current = groups.at(-1)
+    if (current?.key === timestamp.key) {
+      current.items.push({ item, index, timeLabel: timestamp.timeLabel })
+      continue
+    }
+    groups.push({ key: timestamp.key, label: timestamp.dateLabel, items: [{ item, index, timeLabel: timestamp.timeLabel }] })
+  }
+  return groups
+}
+
+function formatHistoryTimestamp(value: string): { readonly key: string; readonly dateLabel: string; readonly timeLabel: string } {
   const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return value
-  const parts = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(timestamp)
+  if (Number.isNaN(timestamp)) return { key: 'unknown', dateLabel: '未知日期', timeLabel: '未知时间' }
+  const parts = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(timestamp)
   const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? ''
-  return `${get('month')}月${get('day')}日 ${get('hour')}:${get('minute')}`
+  return { key: `${get('year')}-${get('month')}-${get('day')}`, dateLabel: `${get('month')}月${get('day')}日`, timeLabel: `${get('hour')}:${get('minute')}` }
 }
 function buildCommitMessageText(subject: string, body: string): string { const normalizedSubject = subject.trim(); const normalizedBody = body.trim(); return normalizedBody ? `${normalizedSubject}\n\n${normalizedBody}` : normalizedSubject }
 
@@ -777,11 +800,14 @@ const fileIconStyle: CSSProperties = { width: 12, color: dshThemeColor.labelTert
 const fileNameStyle: CSSProperties = { minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const fileStatusStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontFamily: 'monospace', fontSize: 11 }
 const historyRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, fontSize: 12 }
+const historyDateHeaderStyle: CSSProperties = { paddingTop: 6, color: dshThemeColor.labelSecondary, fontSize: 11, fontWeight: 600 }
+const historyDateHeaderTextStyle: CSSProperties = { display: 'block' }
 const hashStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontSize: 11 }
 const rowActionsStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 2, flex: '0 0 auto' }
 const iconButtonStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: 0, borderRadius: 4, padding: 0, color: dshThemeColor.labelSecondary, background: 'transparent', cursor: 'pointer', fontSize: 16 }
 const dangerIconButtonStyle: CSSProperties = { ...iconButtonStyle, color: dshThemeColor.error }
 const mutedStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontSize: 11 }
+const historyTimeStyle: CSSProperties = { ...mutedStyle, flex: '0 0 auto', fontVariantNumeric: 'tabular-nums' }
 const emptyStyle: CSSProperties = { padding: 16, color: dshThemeColor.labelSecondary, fontSize: 12 }
 const diffOverlayStyle: CSSProperties = { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, boxSizing: 'border-box', background: 'color-mix(in srgb, #000 28%, transparent)' }
 const diffStyle: CSSProperties = { ...sectionStyle, width: 'min(1000px, 100%)', maxHeight: 'min(88vh, 760px)', overflow: 'hidden', boxShadow: dshThemeColor.subtleShadow }

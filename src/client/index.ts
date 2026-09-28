@@ -39,6 +39,9 @@ import { startCodingNsAccountBar } from './account-bar.js'
 import { assertInjectedDshVersion } from './dsh-runtime-version.js'
 import { createDshCapabilityRegistry } from '../dsh-capabilities/index.js'
 import { TYPERT_REMOTE } from '../typert.remote-client.js'
+import { createPeerHostScopedClient } from './peer-host-scoped-client.js'
+import { HostRouter } from './host-router.js'
+export { PeerHostSessionController } from './peer-host-session-controller.js'
 
 export { ensureCryptoRandomUUID } from './lan-access.js'
 export type {
@@ -57,6 +60,8 @@ export type {
 } from './dsh-h5-bootstrap.js'
 export { RemoteDshWebContext } from './remote-web-context.js'
 export type { RemoteDshWebBoot, RemoteDshWebContextOptions } from './remote-web-context.js'
+export { createPeerHostScopedClient } from './peer-host-scoped-client.js'
+export type { PeerHostProxyResponse, PeerHostScopedClient } from './peer-host-scoped-client.js'
 export type {
   CodingNsClientFeatureModule,
   CodingNsClientServices,
@@ -130,6 +135,8 @@ export function apply(ctx?: Context): void {
       dshVersion,
       settings,
       rpc: connection.rpc,
+      peerHost: createPeerHostScopedClient(connection.rpc),
+      hostRouter: new HostRouter(),
       remote: settingsCtx.remote,
       terminalRemote,
       slots: settingsCtx.slots,
@@ -184,6 +191,7 @@ export function apply(ctx?: Context): void {
       return async () => {
         unsubscribe()
         await registry.reconcile([])
+        await services.hostRouter.clear()
         disposeTerminalUi()
         await disposeAccountBar.dispose()
         await disposeTerminalRemote()
