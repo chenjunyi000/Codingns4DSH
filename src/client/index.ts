@@ -30,7 +30,7 @@ import type { CodingNsClientFeatureModule, CodingNsClientServices, CodingNsRpcCl
 import { ensureCryptoRandomUUID } from './lan-access.js'
 import { CodingNsSettingsSection } from './settings-section.js'
 import { callCodingNsRpc, createCodingNsSettingsBridge } from './settings-bridge.js'
-import { debugInfo } from '../shared/debug.js'
+import { debugInfo, debugWarn } from '../shared/debug.js'
 import { createConfigFormSettingsStore, type DshClientConfigForms, type DshConfigForm } from '../dsh-capabilities/client/config-forms-adapter.js'
 import type { CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
 import { CodingNsWebTerminals, registerCodingNsTerminalUi } from './terminal/index.js'
@@ -262,21 +262,29 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
 
   const forms = ctx.get('configForms') as DshClientConfigForms | undefined
   const form = findConfigForm(forms)
-  debugInfo('codingns4dsh: client settings source=configForms', { hasConfigForms: forms !== undefined, hasForm: form !== undefined })
+  if (form === undefined) {
+    // DSH 只向回环页面或声明了 Host 所有权的页面下发持久设置命名空间；局域网和
+    // 中继页面会降级为 memory 模式，ConfigForm 因此缺失。设置页不能停在这里：
+    // 插件设置本来就由自己的 Host RPC 承载，退回 RPC 边界后这些页面依然可读写，
+    // 也不再需要宿主启动页去改页面级 Transport 全局（那会覆盖 Desktop Transport）。
+    debugWarn('codingns4dsh: client config form unavailable; falling back to Host settings RPC', {
+      hasConfigForms: forms !== undefined,
+    })
+    return createCodingNsSettingsBridge(undefined, rpc)
+  }
+  debugInfo('codingns4dsh: client settings source=configForms', { hasConfigForms: forms !== undefined, hasForm: true })
   return createConfigFormSettingsStore(
     { get: <T>() => form as DshConfigForm<T> | undefined },
     CODINGNS_SETTINGS_NAMESPACE,
-    form === undefined
-      ? undefined
-      : {
-        // DSH 0.1.7 的 ConfigForm 会把 Host 后台索引更新也纳入 revision。
-        // Codingns4DSH 的路径操作是原子的，交给 Host RPC 无条件合并，避免
-        // 模块开关因为 cliSessions 的后台心跳而永久冲突。
-        writeUnfenced: async (ops) => callCodingNsRpc<{
-          readonly value: CodingNsSettings
-          readonly revision: number
-        }>(rpc, 'settings/set', { ops }),
-      },
+    {
+      // DSH 0.1.7 的 ConfigForm 会把 Host 后台索引更新也纳入 revision。
+      // Codingns4DSH 的路径操作是原子的，交给 Host RPC 无条件合并，避免
+      // 模块开关因为 cliSessions 的后台心跳而永久冲突。
+      writeUnfenced: async (ops) => callCodingNsRpc<{
+        readonly value: CodingNsSettings
+        readonly revision: number
+      }>(rpc, 'settings/set', { ops }),
+    },
   )
 }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createConfigSettingsStore } from '../data/build/dist/dsh-capabilities/host/config-forms-adapter.js'
 import { createConfigFormSettingsStore } from '../data/build/dist/dsh-capabilities/client/config-forms-adapter.js'
+import { createLegacyClientSettingsStore } from '../data/build/dist/dsh-capabilities/client/settings-scope-adapter.js'
 import { dispatchCodingNsRpc } from '../data/build/dist/dsh-capabilities/host/connection-rpc-adapter.js'
 import { CodingNsRpcTable } from '../data/build/dist/host/rpc-table.js'
 
@@ -20,6 +21,43 @@ test('0.1.7 Client ConfigForm 缺失时只禁用设置能力', async () => {
   const store = createConfigFormSettingsStore({ get: () => undefined }, 'codingns')
   assert.equal(store.getSnapshot().status, 'unavailable')
   assert.equal(await store.set('controlBaseUrl', 'https://example.test'), false)
+})
+
+test('0.1.7 Client ConfigForm 缺失时快照保持稳定引用', () => {
+  const store = createConfigFormSettingsStore({ get: () => undefined }, 'codingns')
+  // 设置页用 useSyncExternalStore 读取快照：每次返回新对象会让 React 在每次
+  // 渲染后判定快照失效并强制再次渲染，最终以 React #185 崩溃设置分区。
+  assert.equal(store.getSnapshot(), store.getSnapshot())
+})
+
+test('旧版 SettingsScope 适配器内容不变时保持快照引用且不通知', () => {
+  const value = { controlBaseUrl: 'https://example.test', modules: {}, cliSessions: [] }
+  let notify: (() => void) | undefined
+  const scope = {
+    // SettingsScope 会在每次读取时构造新对象；内容相同的快照必须被规范化。
+    getSnapshot: () => ({
+      status: 'ready' as const,
+      value: { ...value, modules: { ...value.modules } },
+      base: undefined,
+      user: undefined,
+      revision: 3,
+      writable: true,
+      mode: 'host' as const,
+    }),
+    subscribe: (listener: () => void) => { notify = listener; return () => undefined },
+    mutate: async () => undefined,
+    set: async () => undefined,
+    unset: async () => undefined,
+  }
+  const store = createLegacyClientSettingsStore(scope)
+  const first = store.getSnapshot()
+  let calls = 0
+  store.subscribe(() => { calls += 1 })
+
+  notify?.()
+
+  assert.equal(store.getSnapshot(), first)
+  assert.equal(calls, 0)
 })
 
 test('0.1.7 Client ConfigForm 内容未变化时不重复通知', async () => {

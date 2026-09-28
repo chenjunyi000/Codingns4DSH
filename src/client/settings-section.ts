@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState, useSyncExternalStore } from 'react'
+import { createElement, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { ReactElement } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -63,11 +63,10 @@ export interface CodingNsSectionProps extends PropsRuntime<'settings.section'> {
  * 自己的 settingsPanel，所以新增模块不会在这里产生分支。
  */
 export function CodingNsSettingsSection({ settings, registry, services, restartStates = {} }: CodingNsSectionProps): ReactElement {
-  const snapshot = useSyncExternalStore(
-    (listener) => settings.subscribe(listener),
-    () => settings.getSnapshot(),
-    () => settings.getSnapshot(),
-  )
+  // useSyncExternalStore 要求 subscribe/getSnapshot 保持稳定引用，否则 React
+  // 会在每次渲染后重新订阅并强制再次渲染整个设置分区。
+  const store = useMemo(() => settingsSnapshotHandle(settings), [settings])
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const t = useCodingNsTranslator(services.locale)
   const [toast, setToast] = useState<SettingsNotice | null>(null)
 
@@ -109,6 +108,17 @@ export function CodingNsSettingsSection({ settings, registry, services, restartS
       ),
     ),
   )
+}
+
+/** 稳定引用包装：设置页只依赖内部 Store 契约，不感知 DSH 侧实现。 */
+function settingsSnapshotHandle(settings: CodingNsSettingsStore<CodingNsSettings>): {
+  readonly subscribe: (listener: () => void) => () => void
+  readonly getSnapshot: () => CodingNsSettingsSnapshot<CodingNsSettings>
+} {
+  return {
+    subscribe: (listener) => settings.subscribe(listener),
+    getSnapshot: () => settings.getSnapshot(),
+  }
 }
 
 interface FeatureCardProps {

@@ -1,5 +1,5 @@
 import type { CodingNsSettings } from '../../shared/contracts/config.js'
-import { accepted, type CodingNsSettingsStore } from '../settings-store.js'
+import { accepted, sameSettingsSnapshot, type CodingNsSettingsStore } from '../settings-store.js'
 import { debugInfo, debugWarn } from '../../shared/debug.js'
 
 /** 0.1.7 Client ConfigForm 的最小结构化边界。 */
@@ -34,6 +34,19 @@ export interface DshConfigFormSettingsOptions {
   readonly writeUnfenced?: DshConfigFormUnfencedWriter
 }
 
+/**
+ * 未暴露 ConfigForm（memory 模式、命名空间未下发或版本缺少该接口）时的占位快照。
+ *
+ * 必须是稳定引用：设置页用 `useSyncExternalStore` 读取它，每次返回新对象会让
+ * React 每帧比对失败并持续强制渲染，最终以 React #185 崩溃整个设置分区。
+ */
+const UNAVAILABLE_FORM_SNAPSHOT = Object.freeze({
+  value: undefined,
+  revision: undefined,
+  writable: false,
+  status: 'unavailable' as const,
+})
+
 /** 0.1.7 Client ConfigForm 路由适配器。 */
 export function createConfigFormSettingsStore(
   forms: DshClientConfigForms,
@@ -43,7 +56,7 @@ export function createConfigFormSettingsStore(
   const form = forms.get<CodingNsSettings>(namespace)
   if (form === undefined) {
     return {
-      getSnapshot: () => ({ value: undefined, revision: undefined, writable: false, status: 'unavailable' }),
+      getSnapshot: () => UNAVAILABLE_FORM_SNAPSHOT,
       subscribe: () => () => undefined,
       mutate: async () => false,
       set: async () => false,
@@ -64,7 +77,9 @@ export function createConfigFormSettingsStore(
     // 自有 Host RPC 的写入答复可能先于原生 mirror 事件到达；旧 revision
     // 只能被丢弃，不能把刚接受的模块开关覆盖回去。
     if (snapshot.revision !== undefined && next.revision !== undefined && next.revision < snapshot.revision) return
-    if (sameSnapshot(snapshot, next)) return
+    // ConfigForm 每次读取都可能返回新对象；内容未变化时保持同一引用，
+    // 否则订阅方（useSyncExternalStore）会被无意义地唤醒并反复渲染。
+    if (sameSettingsSnapshot(snapshot, next)) return
     snapshot = next
     for (const listener of [...listeners]) listener()
   }
@@ -76,7 +91,7 @@ export function createConfigFormSettingsStore(
       writable: true,
       status: 'ready' as const,
     }
-    if (sameSnapshot(snapshot, next)) return true
+    if (sameSettingsSnapshot(snapshot, next)) return true
     snapshot = next
     for (const listener of [...listeners]) listener()
     return true
@@ -158,27 +173,4 @@ function toClientValue(value: CodingNsSettings | undefined): CodingNsSettings | 
   return value === undefined
     ? undefined
     : (({ cliSessions: _cliSessions, ...clientValue }) => clientValue)(value)
-}
-
-function sameSnapshot(left: ReturnType<typeof toStoreSnapshot>, right: ReturnType<typeof toStoreSnapshot>): boolean {
-  return sameConfigValue(left.value, right.value)
-    && left.revision === right.revision
-    && left.writable === right.writable
-    && left.status === right.status
-}
-
-/** ConfigForm 可能在每次读取时返回新对象；按配置内容比较，避免无意义地唤醒所有消费者。 */
-function sameConfigValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true
-  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') return false
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
-    return left.every((value, index) => sameConfigValue(value, right[index]))
-  }
-  const leftRecord = left as Record<string, unknown>
-  const rightRecord = right as Record<string, unknown>
-  const leftKeys = Object.keys(leftRecord)
-  const rightKeys = Object.keys(rightRecord)
-  if (leftKeys.length !== rightKeys.length) return false
-  return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key) && sameConfigValue(leftRecord[key], rightRecord[key]))
 }

@@ -3,7 +3,11 @@ import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import type { CodingNsSettings } from '../shared/contracts/config.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
 import type { CodingNsRpcClient } from './features/types.js'
-import type { CodingNsSettingsSnapshot, CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
+import {
+  sameSettingsSnapshot,
+  type CodingNsSettingsSnapshot,
+  type CodingNsSettingsStore,
+} from '../dsh-capabilities/settings-store.js'
 
 type SettingsMutation = Parameters<SettingsScope<CodingNsSettings>['mutate']>[0]
 type SnapshotListener = () => void
@@ -14,8 +18,25 @@ interface RemoteSettingsResponse {
 }
 
 /**
+ * DSH 未提供设置镜像（memory 模式、命名空间未下发或版本缺少 ConfigForm）时的占位快照。
+ *
+ * 它必须是稳定引用：设置页通过 `useSyncExternalStore` 读取快照，每次返回新对象
+ * 会让 React 在每次渲染后都判定快照失效并强制再次渲染，最终以 React #185 崩溃整
+ * 个设置分区。
+ */
+const UNAVAILABLE_LOCAL_SNAPSHOT = Object.freeze({
+  status: 'unavailable' as const,
+  value: undefined,
+  revision: undefined,
+  writable: false,
+})
+
+/**
  * 把 DSH 本地设置和远程 Host 设置 RPC 统一成一个设置作用域。
- * 非回环页面使用 RPC，回环页面完全复用 DSH 的原生设置传输。
+ *
+ * 没有本地镜像时（`local` 为 undefined）完全使用 Host RPC：DSH 只向回环页面或
+ * 声明了 Host 所有权的页面下发持久设置，非回环页面会降级为 memory 模式，此时
+ * 插件设置必须走自己的 Host 写入边界才能保持可读写。
  */
 export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSettings> {
   private snapshot: CodingNsSettingsSnapshot<CodingNsSettings>
@@ -25,18 +46,18 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
   private remoteLoaded = false
 
   constructor(
-    private readonly local: SettingsScope<CodingNsSettings>,
+    private readonly local: SettingsScope<CodingNsSettings> | undefined,
     private readonly rpc: CodingNsRpcClient,
   ) {
-    this.snapshot = toStoreSnapshot(local.getSnapshot())
-    this.localUnsubscribe = local.subscribe(() => {
+    this.snapshot = toStoreSnapshot(local?.getSnapshot() ?? UNAVAILABLE_LOCAL_SNAPSHOT)
+    this.localUnsubscribe = local?.subscribe(() => {
       if (this.isRemote()) {
         void this.load().catch(() => undefined)
         return
       }
       this.remoteLoaded = false
-      this.publish(toStoreSnapshot(local.getSnapshot()))
-    })
+      this.publish(toStoreSnapshot(this.localSnapshot()))
+    }) ?? (() => undefined)
   }
 
   getSnapshot(): CodingNsSettingsSnapshot<CodingNsSettings> { return this.snapshot }
@@ -67,24 +88,27 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
   }
 
   async set(field: string, value: unknown): Promise<boolean> {
-    if (!this.isRemote()) {
-      await this.local.set(field, value)
+    const local = this.local
+    if (local !== undefined && !this.isRemote()) {
+      await local.set(field, value)
       return true
     }
     return this.mutate([{ op: 'set', path: [field], value: toJsonValue(value) }])
   }
 
   async unset(field: string): Promise<boolean> {
-    if (!this.isRemote()) {
-      await this.local.unset(field)
+    const local = this.local
+    if (local !== undefined && !this.isRemote()) {
+      await local.unset(field)
       return true
     }
     return this.mutate([{ op: 'unset', path: [field] }])
   }
 
   async mutate(ops: SettingsMutation, expectedRevision?: number): Promise<boolean> {
-    if (!this.isRemote()) {
-      await this.local.mutate(ops, expectedRevision)
+    const local = this.local
+    if (local !== undefined && !this.isRemote()) {
+      await local.mutate(ops, expectedRevision)
       return true
     }
     const payload = expectedRevision === undefined ? { ops } : { ops, expectedRevision }
@@ -106,12 +130,24 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
     return callCodingNsRpc<T>(this.rpc, endpoint, payload)
   }
 
+  private localSnapshot(): LocalScopeSnapshot {
+    return this.local?.getSnapshot() ?? UNAVAILABLE_LOCAL_SNAPSHOT
+  }
+
+  /**
+   * 内容未变化时不替换快照引用、不唤醒订阅者。
+   *
+   * DSH 的本地设置镜像会在后台索引（例如 cliSessions 心跳）更新时反复通知；
+   * 每次都发布新对象会让设置页持续重渲染，并使按快照身份触发的 effect 反复执行。
+   */
   private publish(next: CodingNsSettingsSnapshot<CodingNsSettings>): void {
+    if (sameSettingsSnapshot(this.snapshot, next)) return
     this.snapshot = next
     for (const listener of [...this.listeners]) listener()
   }
 
   private isRemote(): boolean {
+    if (this.local === undefined) return true
     const snapshot = this.local.getSnapshot()
     // 远程 DSH Web iframe 内的 settingsScope 属于被访问的 DSH Web Host；
     // CodingNS 插件设置仍归外层 CodingNS Host 所有，不能误写入 DSH Web 的本地缓存。
@@ -176,17 +212,20 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 export function createCodingNsSettingsBridge(
-  local: SettingsScope<CodingNsSettings>,
+  local: SettingsScope<CodingNsSettings> | undefined,
   rpc: CodingNsRpcClient,
 ): CodingNsSettingsBridge {
   return new CodingNsSettingsBridge(local, rpc)
 }
 
-function toStoreSnapshot(snapshot: {
+/** 本地镜像或占位快照中的通用字段；DSH 各版本另有 base/user/mode 等附加字段。 */
+type LocalScopeSnapshot = {
   readonly value: CodingNsSettings | undefined
   readonly revision: number | undefined
   readonly writable: boolean
   readonly status: 'loading' | 'ready' | 'unavailable'
-}): CodingNsSettingsSnapshot<CodingNsSettings> {
+}
+
+function toStoreSnapshot(snapshot: LocalScopeSnapshot): CodingNsSettingsSnapshot<CodingNsSettings> {
   return { value: snapshot.value, revision: snapshot.revision, writable: snapshot.writable, status: snapshot.status }
 }

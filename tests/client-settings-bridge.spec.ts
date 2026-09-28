@@ -12,6 +12,62 @@ const settings: CodingNsSettings = {
   lanAccessDsh: { autoStart: false, listenHost: '0.0.0.0', listenPort: 13080, dshPort: 0 },
 }
 
+test('本地镜像内容未变化时不重复通知设置页', () => {
+  const value = { controlBaseUrl: 'https://control.example.com', modules: {} }
+  let notify: (() => void) | undefined
+  const local = {
+    // 只读/同步镜像会在每次读取时构造新对象；内容相同的通知必须被吞掉。
+    getSnapshot: () => ({
+      status: 'ready' as const,
+      value: { ...value, modules: { ...value.modules } },
+      base: undefined,
+      user: undefined,
+      revision: 5,
+      writable: true,
+      mode: 'host' as const,
+    }),
+    subscribe: (listener: () => void) => { notify = listener; return () => undefined },
+    set: async () => undefined,
+    unset: async () => undefined,
+    mutate: async () => undefined,
+  }
+  const bridge = createCodingNsSettingsBridge(local, {
+    call: async () => { throw new Error('本地镜像可用时不应请求 Host RPC') },
+  })
+  const first = bridge.getSnapshot()
+  let calls = 0
+  bridge.subscribe(() => { calls += 1 })
+
+  notify?.()
+
+  assert.equal(calls, 0)
+  assert.equal(bridge.getSnapshot(), first)
+})
+
+test('没有本地设置镜像时完全使用 Host RPC', async () => {
+  const calls: string[] = []
+  const bridge = createCodingNsSettingsBridge(undefined, {
+    call: async (_channel: string, endpoint: string) => {
+      calls.push(endpoint)
+      if (endpoint === 'settings/get') return { ok: true as const, value: { value: settings, revision: 6 } }
+      return { ok: true as const, value: { value: { ...settings, modules: { reverseProxy: true } }, revision: 7 } }
+    },
+  })
+
+  // 局域网与中继页面拿不到 DSH 的持久设置镜像，读取前只暴露稳定的占位快照。
+  assert.equal(bridge.getSnapshot().status, 'unavailable')
+  assert.equal(bridge.getSnapshot(), bridge.getSnapshot())
+
+  await bridge.load()
+
+  assert.deepEqual(calls, ['settings/get'])
+  assert.equal(bridge.getSnapshot().writable, true)
+  assert.deepEqual(bridge.getSnapshot().value, settings)
+  assert.equal(await bridge.set('modules', { reverseProxy: true }), true)
+  assert.deepEqual(calls, ['settings/get', 'settings/set'])
+  assert.equal(bridge.getSnapshot().value?.modules.reverseProxy, true)
+})
+
 test('Host 模式但命名空间不可用时由远程设置 RPC 接管', async () => {
   let snapshot = {
     status: 'loading' as 'loading' | 'unavailable',

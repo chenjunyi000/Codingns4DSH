@@ -1,7 +1,8 @@
-import { createElement, useEffect, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { CodingNsAuthSessionSnapshot } from '../../shared/contracts/auth.js'
 import type { DshDeviceListResponse } from '../../shared/contracts/dsh-device.js'
+import { sameSettingsValue } from '../../dsh-capabilities/settings-store.js'
 import {
   CODINGNS_CONTROL_STATION_URL,
   CODINGNS_CONTROL_BASE_URL_FIELD,
@@ -48,14 +49,22 @@ export function ReverseProxyPanel({ services, enabled, snapshot, notify }: Featu
   const [busy, setBusy] = useState(false)
   const [h5UrlCopied, setH5UrlCopied] = useState(false)
 
+  // 设置快照更新与写入互相触发时必须能收敛：同一个目标地址只写入一次，
+  // 否则一旦 Host 规范化或拒绝写入，就会形成 effect → publish → effect 的
+  // 无限重渲染（React #185）。
+  const lastPersistedControlBaseUrl = useRef<string | null>(null)
+
   useEffect(() => {
     const saved = snapshot.value?.controlBaseUrl
     const resolved = resolveControlBaseUrl(saved)
-    setControlBaseUrls(uniqueControlBaseUrls(snapshot.value?.controlBaseUrls, resolved))
-    setControlBaseUrl(resolved)
-    if (snapshot.status === 'ready' && snapshot.writable && saved !== resolved) {
-      void settings.set(CODINGNS_CONTROL_BASE_URL_FIELD, resolved).catch(() => undefined)
-    }
+    const nextUrls = uniqueControlBaseUrls(snapshot.value?.controlBaseUrls, resolved)
+    // 内容未变化时保留原有状态引用，避免设置通知引起无意义的渲染。
+    setControlBaseUrls((current) => (sameSettingsValue(current, nextUrls) ? current : nextUrls))
+    setControlBaseUrl((current) => (current === resolved ? current : resolved))
+    if (snapshot.status !== 'ready' || !snapshot.writable || saved === resolved) return
+    if (lastPersistedControlBaseUrl.current === resolved) return
+    lastPersistedControlBaseUrl.current = resolved
+    void settings.set(CODINGNS_CONTROL_BASE_URL_FIELD, resolved).catch(() => undefined)
   }, [settings, snapshot.status, snapshot.writable, snapshot.value?.controlBaseUrl, snapshot.value?.controlBaseUrls])
 
   useEffect(() => {

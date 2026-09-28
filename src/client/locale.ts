@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
@@ -483,10 +483,21 @@ export function registerCodingNsLocale(ctx: Context): () => void {
 
 /** 订阅 DSH 语言修订，并返回当前 Codingns4DSH 命名空间翻译函数。 */
 export function useCodingNsTranslator(locale: CodingNsLocale): CodingNsTranslator {
-  const getRevision = (): number => locale.getSnapshot().revision
-  const subscribe = (listener: () => void): (() => void) => locale.subscribe(listener)
-  useSyncExternalStore(subscribe, getRevision, getRevision)
+  // useSyncExternalStore 要求 subscribe/getSnapshot 保持稳定引用：内联闭包会让
+  // React 在每次渲染后追加一次一致性检查，并在引用变化时强制重新渲染。
+  const store = useMemo(() => localeSnapshotHandle(locale), [locale])
+  useSyncExternalStore(store.subscribe, store.getRevision, store.getRevision)
   return locale.bind(CODINGNS_LOCALE_NS)
+}
+
+function localeSnapshotHandle(locale: CodingNsLocale): {
+  readonly subscribe: (listener: () => void) => () => void
+  readonly getRevision: () => number
+} {
+  return {
+    subscribe: (listener) => locale.subscribe(listener),
+    getRevision: () => locale.getSnapshot().revision,
+  }
 }
 
 /** 非 React 注册回调使用的翻译函数。 */
