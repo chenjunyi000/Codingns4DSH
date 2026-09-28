@@ -1,6 +1,6 @@
 # spec006：PeerHost 管理与多 Host 工作区会话聚合
 
-状态：详细设计完成，待实施。
+状态：阶段 1 至阶段 5 已完成；阶段 6、7 进行中；阶段 8 文档同步已完成，等待三版本集成验收。
 
 ## 这份 Spec 解决什么问题
 
@@ -37,6 +37,17 @@
 - 复用 `spec001`、`spec002` 已定义的 Transport、HostScope、generation 和远程 Web 运行时边界。
 - 不把父仓库 CodingNS 作为源码依赖；父仓库只作为行为和安全边界参考。
 - 不改变当前单 Host 登录、局域网访问和中转访问的既有行为。
+
+## 当前实现边界（2026-09-28）
+
+- 已实现 PeerHost 管理面板、Host 侧加密凭据存储、固定握手、HTTP/WS 正向白名单和局域网 Host-to-Host `/ws` connector。
+- 已实现 `HostScope` 作用域校验、`scopeGeneration` 清理、聊天/停止/权限/问题回答命令、实时消息写入、文件/Git/终端/右侧工具的受控适配器，以及有限指数退避和重连后的 generation 重建。
+- 聚合层只接受显式注入的稳定 workspace/session source。未注入时返回 `unsupported` 和中文诊断，不把空列表伪装成成功；三版本 fixture 和真实 DSH source 仍属于阶段 8.1 验收范围。
+- 原生导航只在结构探测到稳定 DSH 容器时挂载。能力缺失时保持 `degraded`/`unsupported`，不使用 iframe 或 Remote Web Context 冒充原生三栏聚合。
+- Relay route 仅代表能力矩阵中的受控扩展点。Host-to-Host 工作台 JSON/WS Transport 尚未验证，所有中转 PeerHost 必须保持 `relay_unavailable/degraded`。
+- 诊断只返回 PeerHost ID、路由类型、状态、稳定错误码、检查时间和脱敏 fingerprint；不向 Client 或日志写入 token、密码、relay ticket、完整 URL、文件内容、命令和模型正文。
+
+详细证据见：[PeerHost 能力与中转边界调查](../../docs/调查报告/20260928-PeerHost能力与中转边界调查.md) 与 [PeerHost 聚合与断线重连实现记录](../../docs/开发记录/20260928-PeerHost聚合与断线重连实现记录.md)。
 
 ## 当前范围
 

@@ -42,7 +42,7 @@ CodingNS 工作台把会话、Agent 选择器与右侧 Git 面板放在同一界
 
 **DSH（DeepSeek Harness）** 是一个编码 Agent 运行框架，由 CLI 和 Web 界面组成，在你的 Workspace 中运行 Agent 循环。
 
-**Codingns4DSH 是一个 DSH 插件 Bundle**（Host 层 + 浏览器层），提供八个模块，全部在 **设置 → Codingns4DSH** 中配置。
+**Codingns4DSH 是一个 DSH 插件 Bundle**（Host 层 + 浏览器层），提供九个模块，全部在 **设置 → Codingns4DSH** 中配置。
 
 > 名称说明：本插件名为 **Codingns4DSH**（npm 包 `@jingyi0605/codingns4dsh`，设置页入口显示为 Codingns4DSH）；文中单独出现的 **Codingns4DSH** 指提供 Control API、账号与中继隧道的平台服务。
 
@@ -56,6 +56,7 @@ CodingNS 工作台把会话、Agent 选择器与右侧 Git 面板放在同一界
 | **中转访问服务** | **在互联网任何位置访问自己的 DSH Web**，端到端加密 | 关 |
 | **工作区调试** | 按工作区保存启动配置、检查端口、HTTP 服务代理 | 开 |
 | **Git 仓库管理** | 在右侧 Sidebar 标签页查看改动、暂存文件、提交和 Git 版本历史 | 开 |
+| **PeerHost 聚合工作台** | 当前 Host 代理已握手的其他 DSH Host，按 HostScope 聚合工作区、会话和受控工具 | 关 |
 
 DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权限确认仍然是 DSH 自己的组件。
 
@@ -136,6 +137,14 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 ### Git 仓库管理
 
 Git 面板通过 DSH 原生右侧 Sidebar 的标签页入口打开，按 Workspace 保存状态并跨会话复用。未初始化的目录可直接初始化仓库；已初始化的仓库支持查看暂存文件和未提交文件、暂存/取消暂存、丢弃更改、填写提交说明、切换分支和浏览提交历史。模块关闭后会移除右侧标签及对应 Host Git RPC，不影响其他模块。
+
+### PeerHost 多 Host 工作区
+
+PeerHost 是当前 Host 的代理能力，不会切换当前登录 Host。启用后可在管理面板添加局域网 PeerHost，Host 侧保存目标配置和登录态，Client 只提交 `targetHostId` 与完整 `HostScope`（`hostId`、`targetHostId`、`workspaceId`、`sessionId`、`scopeGeneration`）。工作区、会话、聊天输入、实时事件、文件、Git、终端和右侧工具都按作用域路由，单个 PeerHost 故障不会阻塞当前 Host 或其他 PeerHost。
+
+当前已验证的路径包括固定握手、HTTP/WS 正向白名单、Host-to-Host 局域网 `/ws` connector、实时事件过滤、有限指数退避、generation 重建和脱敏诊断。DSH 原生导航或 conversation 容器未提供稳定扩展点时，界面会显示明确的 `degraded`/`unsupported` 状态，不创建 iframe，也不会把远端 Web Context 冒充成原生三栏聚合。
+
+中转 PeerHost 仍保持 `relay_unavailable/degraded`：现有浏览器中转 ticket 和任意公网 URL 不能替代经过验证的 Host-to-Host JSON/WS Transport。当前 Host 的既有局域网访问、中转访问、登录和单 Host 会话语义不受 PeerHost 影响。
 
 ### 模块与设置
 

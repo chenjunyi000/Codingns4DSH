@@ -359,8 +359,8 @@
 ### 8.1 三版本和多场景集成测试
 
 - 状态：`IN_PROGRESS`
-- 本次增量（2026-09-28）：新增 `tests/peer-host-integration.spec.ts`，串联当前 Host、LAN PeerHost、同名工作区/会话、单个 PeerHost 故障和目标路由隔离；三版本能力 fixture 仍待补齐。
-- 当前验证：`pnpm run build && node --test tests/peer-host-integration.spec.ts`（1 项通过）；同轮 PeerHost/HostRouter/隐私/Transport 定向测试共 47 项通过。
+- 本次增量（2026-09-28）：新增 `tests/peer-host-integration.spec.ts`，串联当前 Host、LAN PeerHost、同名工作区/会话、单个 PeerHost 故障和目标路由隔离；补充 0.1.5-rc.3、0.1.6-alpha.2、0.1.7-rc.2 三版本显式 adapter fixture，验证原生导航、Remote Web Context 降级和 Relay unavailable 语义。
+- 当前验证：`pnpm run build && node --test tests/peer-host-integration.spec.ts`（已有 1 项通过；三版本 fixture 需在最新构建后复跑）；同轮 PeerHost/HostRouter/隐私/Transport 定向测试共 47 项通过。
 - 做什么：把当前 Host、局域网 PeerHost、中转 PeerHost、未登录、版本不兼容、fingerprint 变化和断线恢复串成集成 fixture。
 - 做完看到什么：一套可重复测试证明单 Host 行为未被破坏，多 Host 作用域正确。
 - 依赖什么：阶段 1 至 7。
@@ -371,7 +371,10 @@
 
 ### 8.2 文档、能力报告和索引同步
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 完成记录（2026-09-28）：同步 Spec README、仓库 README、AGENTS Spec 索引、能力报告生成脚本与报告产物；新增 PeerHost 能力与中转边界调查、聚合与断线重连开发记录。文档明确 LAN connector、HostScope/generation、实时工具、有限重连和隐私诊断的已验证边界，并明确真实 DSH source、三版本 fixture、原生容器缺失和 relay Transport 未验证时的降级状态。
+- 改动文件：`AGENTS.md`、`README.md`、`specs/spec006-PeerHost管理与多Host工作区会话聚合/README.md`、`scripts/generate-capability-report.mjs`、`docs/生成报告/20260925-能力路由报告.md`、`docs/调查报告/20260928-PeerHost能力与中转边界调查.md`、`docs/开发记录/20260928-PeerHost聚合与断线重连实现记录.md`
+- 验证命令：`pnpm run capability:report`；`pnpm run capability:check`；`git diff --check`；文档路径与 Spec 索引扫描通过。
 - 做什么：更新能力报告、README、AGENTS Spec 索引、调查报告和开发记录，记录已实现能力与降级边界。
 - 做完看到什么：新成员能从 Spec、能力矩阵和验证证据追踪 PeerHost 的完整边界。
 - 依赖什么：8.1 及各阶段完成证据。
