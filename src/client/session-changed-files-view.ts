@@ -49,6 +49,7 @@ interface MutableDirectory {
 
 /** 会话“修改文件”视图；数据只通过插件 RPC 和现有 Git RPC 读取。 */
 export function SessionChangedFilesView(props: SessionChangedFilesViewProps): ReactElement {
+  const compactLayout = useCompactLayout()
   const [workspaceId, setWorkspaceId] = useState<string>()
   const [changes, setChanges] = useState<readonly GitChangeItem[]>([])
   const [selectedPath, setSelectedPath] = useState<string>()
@@ -129,9 +130,22 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
       return next
     })
   }
+  const hasChanges = changes.length > 0
+  const viewRootStyle: CSSProperties = { ...rootStyle, padding: compactLayout ? '0 16px' : rootStyle.padding }
+  const viewToolbarStyle: CSSProperties = {
+    ...toolbarStyle,
+    padding: compactLayout ? '10px 0' : toolbarStyle.padding,
+    borderBottom: hasChanges ? toolbarStyle.borderBottom : 'none',
+  }
+  const viewContentStyle: CSSProperties = { ...contentStyle, gridTemplateColumns: compactLayout ? '1fr' : contentStyle.gridTemplateColumns }
+  const viewTreePaneStyle: CSSProperties = {
+    ...treePaneStyle,
+    borderRight: compactLayout || !hasChanges ? 'none' : treePaneStyle.borderRight,
+    borderBottom: compactLayout && hasChanges ? treePaneStyle.borderRight : 'none',
+  }
 
-  return createElement('div', { style: rootStyle },
-    createElement('div', { style: toolbarStyle },
+  return createElement('div', { style: viewRootStyle },
+    createElement('div', { style: viewToolbarStyle },
       createElement('strong', { style: { fontSize: 15 } }, '修改文件'),
       createElement('span', { style: countStyle }, `${changes.length} 个文件`),
       createElement('span', { style: { flex: 1 } }),
@@ -141,17 +155,17 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
         createElement(StageIcon)),
     ),
     error === undefined ? null : createElement('div', { role: 'alert', style: errorStyle }, error),
-    createElement('div', { style: contentStyle },
-      createElement('div', { style: treePaneStyle },
+    createElement('div', { style: viewContentStyle },
+      createElement('div', { style: viewTreePaneStyle },
         loading ? createElement('div', { style: emptyStyle }, '正在读取会话修改…')
           : changes.length === 0 ? createElement('div', { style: emptyStyle }, '本次会话没有已识别的修改文件')
             : tree.map((node) => renderNode(node, 0, collapsed, hoveredPath, selectedPath, toggle, setSelectedPath, setHoveredPath, stageTargets)),
       ),
-      createElement('div', { style: diffPaneStyle },
+      hasChanges ? createElement('div', { style: diffPaneStyle },
         selectedPath === undefined ? createElement('div', { style: emptyStyle }, '选择文件查看 Diff')
           : diff?.content ? createElement('pre', { style: diffStyle }, renderDiff(diff.content))
             : createElement('div', { style: emptyStyle }, '当前文件没有可显示的 Diff'),
-      ),
+      ) : null,
     ),
   )
 }
@@ -376,6 +390,19 @@ function normalizePath(value: string): string { return value.replaceAll('\\', '/
 function fileIcon(name: string): string { return name.includes('.') ? '·' : '□' }
 function asRecord(value: unknown): Record<string, unknown> | undefined { return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined }
 async function call<T>(rpc: CodingNsRpcClient, endpoint: string, payload: unknown): Promise<T> { return await callCodingNsRpc<T>(rpc, endpoint, payload) }
+
+function useCompactLayout(): boolean {
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches === true)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(max-width: 700px)')
+    const update = (): void => setCompact(media.matches)
+    update()
+    media.addEventListener?.('change', update)
+    return () => media.removeEventListener?.('change', update)
+  }, [])
+  return compact
+}
 
 const rootStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', height: 'auto', minHeight: '100%', overflow: 'visible', padding: '0 64px', boxSizing: 'border-box', color: 'var(--dsw-alias-label-primary,inherit)', background: 'var(--dsw-alias-bg-base,transparent)', fontSize: 13 }
 const toolbarStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 1280, boxSizing: 'border-box', padding: '12px 16px', borderBottom: '1px solid var(--dsw-alias-border-l3,#ddd)', flex: '0 0 auto' }
