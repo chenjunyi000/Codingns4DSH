@@ -188,6 +188,9 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       else input.signal?.addEventListener('abort', onAbort, { once: true })
       try {
         const response = await this.startTurn(session, input)
+        // turn/start 可能因上下文超限内部触发 compact；压缩事件在重试成功后
+        // 仍需先交给公共投影器，不能留在驱动的暂存队列里。
+        yield* drainCompactionEvents(session)
         const responseTurnId = readTurnId(response)
         if (responseTurnId !== null) {
           activeTurnId = responseTurnId
@@ -675,7 +678,9 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
   if (type === 'contextCompaction') {
     const details = compactionDetails(item)
     const compactionId = firstToolText(item.id, params.itemId)
-    const phase = method.includes('started') || method.includes('start')
+    const phase = method === 'thread/compacted'
+      ? 'end'
+      : method.includes('started') || method.includes('start')
       ? 'start'
       : method.includes('completed') || method.includes('compacted') || method.includes('summary')
         ? 'summary'
