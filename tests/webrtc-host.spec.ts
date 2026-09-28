@@ -55,16 +55,20 @@ test('Host acceptor 为每个客户端 offer 创建 answer，并接管 DataChann
     removeEventListener(type: string) { channelListeners.delete(type) },
   }
   let peer: HostPeerConnectionLike
+  const peerListeners = new Map<string, (event: Event) => void>()
   let remoteSdp = ''
   let closed = false
   const candidates: string[] = []
   peer = {
+    connectionState: 'connected',
     onicecandidate: null,
     ondatachannel: null,
     createAnswer: async () => ({ type: 'answer' as const, sdp: 'v=0\r\na=fingerprint:sha-256 AA:BB:CC\r\n' }),
     setRemoteDescription: async (description) => { remoteSdp = description.sdp },
     setLocalDescription: async () => {},
     addIceCandidate: async (candidate) => { candidates.push(candidate.candidate) },
+    addEventListener: (type, listener) => { peerListeners.set(type, listener) },
+    removeEventListener: (type) => { peerListeners.delete(type) },
     close: () => { closed = true },
   }
   const carriers: unknown[] = []
@@ -73,6 +77,7 @@ test('Host acceptor 为每个客户端 offer 创建 answer，并接管 DataChann
     signalingTicket: ticket(),
     signalingSocketFactory: () => socket,
     peerConnectionFactory: () => peer,
+    disconnectedGracePeriodMs: 20,
     onConnection: (connection) => { carriers.push(connection.carrier) },
     onSessionClosed: (sessionId) => { closedSessions.push(sessionId) },
   })
@@ -90,6 +95,18 @@ test('Host acceptor 为每个客户端 offer 创建 answer，并接管 DataChann
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(host.sessions.size, 1)
   assert.equal(carriers.length, 1)
+  peer.connectionState = 'disconnected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  peer.connectionState = 'connected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(host.sessions.size, 1)
+  peer.connectionState = 'disconnected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(host.sessions.size, 0)
+  assert.deepEqual(closedSessions, ['session-1'])
   channelListeners.get('close')?.({} as Event)
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(host.sessions.size, 0)

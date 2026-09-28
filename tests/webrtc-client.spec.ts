@@ -65,3 +65,65 @@ test('WebRTC Connector 按 offer、answer、fingerprint 顺序建立 Carrier', a
   assert.deepEqual(candidates, ['candidate:1'])
   await connection.close()
 })
+
+test('客户端短暂 disconnected 会等待恢复，持续 disconnected 才通知关闭', async () => {
+  const socketListeners = new Map<string, (event: Event) => void>()
+  const socket = {
+    send(data: string) {
+      if ((JSON.parse(data) as { type: string }).type === 'offer') queueMicrotask(() => {
+        socketListeners.get('message')?.({ data: JSON.stringify({ type: 'answer', sdp: 'v=0\r\na=fingerprint:sha-256 AA:BB:CC\r\n' }) } as MessageEvent<string>)
+      })
+    },
+    close() {},
+    addEventListener(type: string, listener: (event: Event) => void) { socketListeners.set(type, listener) },
+    removeEventListener(type: string) { socketListeners.delete(type) },
+  }
+  const channelListeners = new Map<string, (event: Event) => void>()
+  const channel = {
+    readyState: 'open',
+    send() {},
+    close() {},
+    addEventListener(type: string, listener: (event: Event) => void) { channelListeners.set(type, listener) },
+    removeEventListener(type: string) { channelListeners.delete(type) },
+  }
+  const peerListeners = new Map<string, (event: Event) => void>()
+  const peer = {
+    connectionState: 'connected',
+    onicecandidate: null,
+    createDataChannel: () => channel,
+    createOffer: async () => ({ type: 'offer' as const, sdp: 'v=0\r\n' }),
+    setLocalDescription: async () => {},
+    setRemoteDescription: async () => {},
+    addIceCandidate: async () => {},
+    addEventListener(type: string, listener: (event: Event) => void) { peerListeners.set(type, listener) },
+    removeEventListener(type: string) { peerListeners.delete(type) },
+    close() {},
+  }
+  const connection = await connectWebRtcClient({
+    signalingTicket: {
+      ticket: 'ticket', expiresAt: '2026-09-21T00:01:00.000Z',
+      signalingBaseUrl: 'https://relay.example.com',
+      iceServers: [{ urls: 'stun:stun.example.com:3478' }], iceTransportPolicy: 'all',
+      hostDtlsFingerprint: 'SHA256:AA:BB:CC', bindingId: 'binding-1', tunnelDomain: 'host.example',
+      trafficRemainingBytes: '0',
+    },
+    signalingSocketFactory: () => socket,
+    peerConnectionFactory: () => peer,
+    disconnectedGracePeriodMs: 20,
+  })
+  let closedCount = 0
+  connection.onClosed(() => { closedCount += 1 })
+  peer.connectionState = 'disconnected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  peer.connectionState = 'connected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(closedCount, 0)
+  peer.connectionState = 'disconnected'
+  peerListeners.get('connectionstatechange')?.({} as Event)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(closedCount, 1)
+  await connection.close()
+  assert.equal(channelListeners.has('close'), false)
+})
