@@ -143,17 +143,16 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
   )
 }
 
-/** 注册 DSH 原生 Conversation View；views 注册表属于可选的兼容能力。 */
+/** 注册 DSH 原生 conversation.view Slot；标签由 DSH 根据 Slot 的 id/label 自动投影。 */
 export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcClient, remote?: unknown): (() => void) | undefined {
   const runtime = globalThis as typeof globalThis & {
     __CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__?: SessionChangedFilesViewRegistration
   }
-  // DSH 热重启可能先保留旧 Context 的原生 View；复用旧注册避免 target 冲突。
+  // DSH 热重启可能先保留旧 Context 的 Slot；复用旧注册避免 id 冲突。
   if (runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__ !== undefined) return undefined
   const value = asRecord(ctx)
   const slots = value?.slots as { inject?: (key: string, callback: () => unknown) => (() => void) } | undefined
   if (typeof slots?.inject !== 'function') return undefined
-  let disposeView: (() => void) | undefined
   let disposeSlot: (() => void) | undefined
   try {
     disposeSlot = slots.inject('conversation.view', () => {
@@ -168,18 +167,15 @@ export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcCl
       }, SessionChangedFilesView)
     })
   } catch (error) {
-    if (isDuplicateViewRegistrationError(error)) {
+    if (isDuplicateRegistrationError(error)) {
       disposeSlot?.()
-      disposeView?.()
       return undefined
     }
     disposeSlot?.()
-    disposeView?.()
     throw error
   }
   const dispose = (): void => {
     disposeSlot?.()
-    disposeView?.()
     if (runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__?.dispose === dispose) {
       delete runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__
     }
@@ -188,7 +184,7 @@ export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcCl
   return dispose
 }
 
-function isDuplicateViewRegistrationError(error: unknown): boolean {
+function isDuplicateRegistrationError(error: unknown): boolean {
   return error instanceof Error && /already registered|已注册/u.test(error.message)
 }
 
