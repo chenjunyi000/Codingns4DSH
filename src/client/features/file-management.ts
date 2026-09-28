@@ -1,5 +1,7 @@
 import type { CodingNsClientFeatureModule } from './types.js'
+import { DEFAULT_FILE_MANAGEMENT_SETTINGS } from '../../shared/contracts/config.js'
 import { startFileManagementDom } from '../file-management-dom.js'
+import { FileManagementPanel } from './file-management-panel.js'
 
 /** 文件管理增强：只在模块启用期间挂载右键菜单和文本编辑器。 */
 export const fileManagementFeature: CodingNsClientFeatureModule = {
@@ -19,6 +21,14 @@ export const fileManagementFeature: CodingNsClientFeatureModule = {
     },
   },
   start(context) {
-    context.resources.add(startFileManagementDom(context.services.rpc))
+    const readOptions = () => {
+      const value = context.services.settings.getSnapshot().value?.fileManagement ?? DEFAULT_FILE_MANAGEMENT_SETTINGS
+      return { menuEnhancement: value.menuEnhancement, fileEditor: value.fileEditor }
+    }
+    const dom = startFileManagementDom(context.services.rpc, readOptions())
+    const unsubscribe = context.services.settings.subscribe(() => dom.setOptions(readOptions()))
+    context.resources.add(unsubscribe)
+    context.resources.add(dom.dispose)
   },
+  settingsPanel: FileManagementPanel,
 }

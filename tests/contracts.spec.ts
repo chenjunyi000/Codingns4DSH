@@ -7,6 +7,7 @@ import {
   DEFAULT_CODINGNS_SETTINGS,
   DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
   DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
+  DEFAULT_FILE_MANAGEMENT_SETTINGS,
   CODINGNS_DSH_ERROR_CODES,
   CodingNsDshError,
   isDshVersionCompatible,
@@ -48,6 +49,7 @@ test('Codingns4DSH 设置用模块名字典表达开关，结构不随模块数�
     agentAdapterPreferences: {},
     terminalEnhancement: DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
     workspaceSessionEnhancement: DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
+    fileManagement: DEFAULT_FILE_MANAGEMENT_SETTINGS,
     lanAccessDsh: { autoStart: false, listenHost: '0.0.0.0', listenPort: 13080, dshPort: 0 },
   })
 })

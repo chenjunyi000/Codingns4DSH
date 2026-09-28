@@ -20,6 +20,8 @@ export interface CodingNsSettings {
   terminalEnhancement: TerminalEnhancementSettings
   /** 原生工作区会话行的浏览器端增强选项。 */
   workspaceSessionEnhancement: WorkspaceSessionEnhancementSettings
+  /** DSH 文件管理侧栏的独立增强选项。 */
+  fileManagement: FileManagementSettings
   /**
    * 功能模块启用意图：模块名 -> 是否启用。
    *
@@ -90,6 +92,19 @@ export interface WorkspaceSessionEnhancementSettings {
   quickPhrasesSeeded: boolean
 }
 
+/** 文件管理增强的两个独立能力开关。 */
+export interface FileManagementSettings {
+  /** 是否为文件和目录显示右键操作菜单。 */
+  menuEnhancement: boolean
+  /** 是否为可编辑文本文件显示编辑器入口。 */
+  fileEditor: boolean
+}
+
+export const DEFAULT_FILE_MANAGEMENT_SETTINGS: FileManagementSettings = {
+  menuEnhancement: true,
+  fileEditor: true,
+}
+
 /** 可复用的快捷会话文本。 */
 export interface QuickPhrase {
   id: string
@@ -146,6 +161,7 @@ export const CODINGNS_MODULES_FIELD = 'modules'
 export const CODINGNS_LAN_ACCESS_DSH_FIELD = 'lanAccessDsh'
 export const CODINGNS_TERMINAL_ENHANCEMENT_FIELD = 'terminalEnhancement'
 export const CODINGNS_WORKSPACE_SESSION_ENHANCEMENT_FIELD = 'workspaceSessionEnhancement'
+export const CODINGNS_FILE_MANAGEMENT_FIELD = 'fileManagement'
 export const DEFAULT_CODINGNS_CONTROL_BASE_URL = 'https://channel.codingns.com:1443'
 export const DEFAULT_CODINGNS_CONTROL_BASE_URLS = [DEFAULT_CODINGNS_CONTROL_BASE_URL]
 /** 控制站的网页登录地址，用于注册 Codingns4DSH 账号。 */
@@ -186,6 +202,7 @@ export const DEFAULT_CODINGNS_SETTINGS: CodingNsSettings = {
   agentAdapterPreferences: {},
   terminalEnhancement: DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
   workspaceSessionEnhancement: DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
+  fileManagement: DEFAULT_FILE_MANAGEMENT_SETTINGS,
   lanAccessDsh: {
     autoStart: false,
     listenHost: '0.0.0.0',

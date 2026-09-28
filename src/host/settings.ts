@@ -76,6 +76,10 @@ export const CodingNsSettingsSchema: z<CodingNsSettings> = z.object({
     // 缺少该字段说明是旧配置；Client 首次加载时会补齐内置快捷会话。
     quickPhrasesSeeded: z.boolean().default(false),
   }).default(DEFAULT_CODINGNS_SETTINGS.workspaceSessionEnhancement),
+  fileManagement: z.object({
+    menuEnhancement: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.menuEnhancement),
+    fileEditor: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.fileEditor),
+  }).default(DEFAULT_CODINGNS_SETTINGS.fileManagement),
 })
 
 /**

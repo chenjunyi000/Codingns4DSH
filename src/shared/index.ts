@@ -6,6 +6,7 @@ export {
   CODINGNS_LAN_ACCESS_DSH_FIELD,
   CODINGNS_TERMINAL_ENHANCEMENT_FIELD,
   CODINGNS_WORKSPACE_SESSION_ENHANCEMENT_FIELD,
+  CODINGNS_FILE_MANAGEMENT_FIELD,
   CODINGNS_MODULES_FIELD,
   CODINGNS_SETTINGS_NAMESPACE,
   CODINGNS_SETTINGS_ENTRY_IDS,
@@ -15,6 +16,7 @@ export {
   DEFAULT_QUICK_PHRASES,
   DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
   DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
+  DEFAULT_FILE_MANAGEMENT_SETTINGS,
   captureRestartFeatureStates,
   enabledFeatureNames,
   isFeatureDshVersionCompatible,
@@ -36,6 +38,7 @@ export {
   type TerminalProfileId,
   type QuickPhrase,
   type WorkspaceSessionEnhancementSettings,
+  type FileManagementSettings,
 } from './contracts/config.js'
 export type {
   FeatureContext,
