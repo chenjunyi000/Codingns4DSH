@@ -119,11 +119,12 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           // 被恢复成 dsh，但 provider 已明确指向外部 Agent；继续旁路会让
           // 第二轮直接落入 DSH 空流，并丢失外部驱动的 usage/context 修正。
           const dshSelection = readDshSelection(value)
-          const selectedExternalAdapter = dshSelection.providerId !== undefined
-            && dshSelection.providerId !== 'dsh'
-            && registry.isEnabled(dshSelection.providerId)
-            ? dshSelection.providerId
-            : undefined
+          const messages = Array.isArray(value?.messages) ? value.messages.filter(isMessage) : []
+          const selectedExternalAdapter = selectExternalAdapter(
+            dshSelection.providerId,
+            inferMessageAdapter(messages),
+            registry,
+          )
           const config = storedConfig.adapterId === 'dsh' && selectedExternalAdapter !== undefined
             ? {
                 adapterId: selectedExternalAdapter,
@@ -131,6 +132,11 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
                 ...(dshSelection.effortId === undefined ? {} : { effortId: dshSelection.effortId }),
               }
             : storedConfig
+          // DSH 首轮请求可能只通过 provider 临时选择外部 Agent，第二轮请求通常不再携带
+          // provider。必须在路由决定后立即持久化绑定，否则下一轮会在进入 Registry 前退回 dsh。
+          if (sessionId !== '' && storedConfig.adapterId === 'dsh' && selectedExternalAdapter !== undefined) {
+            registry.setSession(sessionId, config)
+          }
           if (config.adapterId === 'dsh') {
             const selection = dshSelection
             if (sessionId !== '' && (selection.modelId !== undefined || selection.effortId !== undefined)) {
@@ -139,7 +145,6 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
             yield* guardDshNativeStream(next)
             return
           }
-          const messages = Array.isArray(value?.messages) ? value.messages.filter(isMessage) : []
           const cwd = resolveSessionCwd(context.services.nativeSessions, sessionId, value)
           // 只有 Provider 驱动明确维护了稳定的 turn 分段，才把工具边界映射为 DSH step。
           // Command Code、Codex 会在下一个 assistant 消息处结束当前 step；未声明分段
@@ -333,12 +338,37 @@ function readModelSelectionCandidates(value: Record<string, any> | null): Record
   const result: Record<string, any>[] = []
   for (const candidate of [value, asRecord(value?.request), asRecord(value?.config), asRecord(value?.header), asRecord(asRecord(value?.record)?.rows)]) {
     const selection = asRecord(candidate?.modelSelection)
+    if (selection !== null) result.push(selection)
     const lastUsed = asRecord(selection?.lastUsed)
     const next = asRecord(selection?.next)
+    const pending = asRecord(selection?.pending)
     if (lastUsed !== null) result.push(lastUsed)
     if (next !== null) result.push(next)
+    if (pending !== null) result.push(pending)
   }
   return result
+}
+
+function selectExternalAdapter(
+  selectedProvider: string | undefined,
+  messageAdapter: string | undefined,
+  registry: CodingNsCliAdapterRegistry,
+): string | undefined {
+  for (const candidate of [selectedProvider, messageAdapter]) {
+    if (candidate !== undefined && candidate !== 'dsh' && registry.isEnabled(candidate)) return candidate
+  }
+  return undefined
+}
+
+/** 从当前会话历史恢复外部路由，覆盖 DSH 第二轮省略 provider 的请求形态。 */
+function inferMessageAdapter(messages: readonly CodingNsCliMessage[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const source = asRecord((messages[index] as unknown as Record<string, unknown>).source)
+    if (source?.kind !== 'model' || source.plugin !== 'codingns4dsh') continue
+    const provider = source.provider
+    if (typeof provider === 'string' && provider.trim() !== '') return provider.trim()
+  }
+  return undefined
 }
 
 async function setAdapterEnabled(

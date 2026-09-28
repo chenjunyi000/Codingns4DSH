@@ -874,6 +874,94 @@ test('DSH 请求明确携带外部 provider 时恢复外部适配器路由', asy
   await features.disable('cliAdapters')
 })
 
+test('DSH 首轮选择 Codex 后，未携带 provider 的第二轮仍沿用 Codex', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const prompts: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input) {
+      prompts.push(input.prompt)
+      yield { type: 'text-delta', text: `Codex: ${input.prompt}` }
+      yield { type: 'finish', reason: 'stop' }
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({ rpc: table, events })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+
+  const first: unknown[] = []
+  for await (const chunk of listener!({
+    sessionId: 'dsh-codex-persist',
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    messages: [{ role: 'user', source: { kind: 'user' }, content: '第一轮' }],
+  }, async function* () {})) first.push(chunk)
+  const second: unknown[] = []
+  for await (const chunk of listener!({
+    sessionId: 'dsh-codex-persist',
+    messages: [{ role: 'user', source: { kind: 'user' }, content: '第二轮' }],
+  }, async function* () { yield { type: 'finish', reason: { kind: 'stop' } } })) second.push(chunk)
+
+  assert.deepEqual(prompts, ['第一轮', '第二轮'])
+  assert.equal(first.some((chunk) => (chunk as { type?: string }).type === 'text-delta'), true)
+  assert.equal(second.some((chunk) => (chunk as { type?: string }).type === 'text-delta'), true)
+  assert.equal(registry.getSession('dsh-codex-persist').adapterId, 'codex')
+  await features.disable('cliAdapters')
+})
+
+test('DSH 从 modelSelection.pending 和历史消息恢复 Codex 路由', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const prompts: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input) {
+      prompts.push(input.prompt)
+      yield { type: 'text-delta', text: 'Codex 回复' }
+      yield { type: 'finish', reason: 'stop' }
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({ rpc: table, events })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+
+  const first: unknown[] = []
+  for await (const chunk of listener!({
+    sessionId: 'dsh-codex-shape',
+    modelSelection: { pending: { provider: 'codex', model: 'gpt-5.6-sol' } },
+    messages: [{ role: 'user', source: { kind: 'user' }, content: '第一轮' }],
+  }, async function* () {})) first.push(chunk)
+  const second: unknown[] = []
+  for await (const chunk of listener!({
+    sessionId: 'dsh-codex-shape',
+    messages: [
+      { role: 'assistant', source: { kind: 'model', plugin: 'codingns4dsh', provider: 'codex' }, content: '上一轮回复' },
+      { role: 'user', source: { kind: 'user' }, content: '第二轮' },
+    ],
+  }, async function* () { yield { type: 'finish', reason: { kind: 'stop' } } })) second.push(chunk)
+
+  assert.deepEqual(prompts, ['第一轮', '第二轮'])
+  assert.equal(second.some((chunk) => (chunk as { type?: string }).type === 'text-delta'), true)
+  await features.disable('cliAdapters')
+})
+
 test('DSH 原生 Provider 只有 finish(stop) 时输出明确错误而不是空正常终态', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined

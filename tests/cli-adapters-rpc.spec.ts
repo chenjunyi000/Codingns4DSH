@@ -383,6 +383,58 @@ test('Codex 上下文超限时自动压缩并重试第二轮', async () => {
   driver.dispose()
 })
 
+test('Codex 上下文恰好达到窗口上限时在下一轮前主动压缩', async () => {
+  const methods: string[] = []
+  let turnStarts = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        methods.push(request.method)
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'exact-window-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'thread/compact/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          setImmediate(() => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/compacted', params: { threadId: 'exact-window-thread' } })}\n`))
+          return
+        }
+        if (request.method !== 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        turnStarts += 1
+        const turnId = `exact-window-turn-${turnStarts}`
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+        setImmediate(() => {
+          const usage = turnStarts === 1
+            ? { input_tokens: 100, output_tokens: 1, total_tokens: 101 }
+            : { input_tokens: 12, output_tokens: 1, total_tokens: 13 }
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'exact-window-thread', tokenUsage: { last: usage, contextWindow: 100 } } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'exact-window-thread', turn: { id: turnId, status: 'completed' } } })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  for await (const _chunk of driver.executeTurn({ sessionId: 'exact-window-session', messages: [], prompt: '第一轮' })) { /* 消费首轮 */ }
+  const second: Array<{ type: string; phase?: string }> = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'exact-window-session', messages: [], prompt: '第二轮' })) {
+    if (chunk.type === 'context-compaction' || chunk.type === 'finish') second.push(chunk)
+  }
+
+  assert.equal(methods.filter((method) => method === 'thread/compact/start').length, 1)
+  assert.deepEqual(second.filter((chunk) => chunk.type === 'context-compaction').map((chunk) => chunk.phase), ['start', 'end'])
+  assert.equal(second.at(-1)?.type, 'finish')
+  driver.dispose()
+})
+
 test('Codex 第二轮不会被响应前迟到的旧 turn/completed 直接结束', async () => {
   let turnCount = 0
   const driver = new CodexAppServerDriver({
@@ -418,6 +470,44 @@ test('Codex 第二轮不会被响应前迟到的旧 turn/completed 直接结束'
   for await (const chunk of driver.executeTurn({ sessionId: 'stale-session', messages: [], prompt: '第二轮' })) second.push(chunk)
   assert.equal(second.find((chunk) => chunk.type === 'text-delta')?.text, '第二轮有效回复')
   assert.equal(second.at(-1)?.reason, 'stop')
+  driver.dispose()
+})
+
+test('Codex 独立压缩 turn 的 item 通知不会被当前 turn 过滤器丢弃', async () => {
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'auto-compact-thread' } } })}\n`)
+          return
+        }
+        if (request.method !== 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'user-turn', status: 'inProgress' } } })}\n`)
+        setImmediate(() => {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/started', params: { threadId: 'auto-compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'compact-item' } } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/completed', params: { threadId: 'auto-compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'compact-item', summary: '已压缩旧上下文' } } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/compacted', params: { threadId: 'auto-compact-thread', summary: '已压缩旧上下文' } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'auto-compact-thread', turnId: 'user-turn', itemId: 'user-message', delta: '继续回答' } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'auto-compact-thread', turn: { id: 'user-turn', status: 'completed' } } })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const chunks = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'auto-compact-session', messages: [], prompt: '继续' })) chunks.push(chunk)
+  assert.deepEqual(chunks.filter((chunk) => chunk.type === 'context-compaction').map((chunk) => chunk.phase), ['start', 'summary', 'end'])
+  assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && chunk.text === '继续回答'), true)
+  assert.equal(chunks.at(-1)?.type, 'finish')
   driver.dispose()
 })
 
