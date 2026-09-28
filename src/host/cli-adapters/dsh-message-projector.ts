@@ -39,6 +39,8 @@ export class CodingNsDshMessageProjector {
   private reasoningText = ''
   private textText = ''
   private finished = false
+  /** 只要收到正文、工具、usage 或交互事件，就说明 Provider 确实产出了结果。 */
+  private receivedProviderEvent = false
 
   constructor(private readonly options: CodingNsDshMessageProjectorOptions) {
     this.toolHistory = new CodingNsDshToolHistoryProjector(options.nativeSessions, options.sessionId, options.adapterId)
@@ -50,6 +52,9 @@ export class CodingNsDshMessageProjector {
 
   async push(event: CodingNsAgentEvent): Promise<readonly CodingNsDshStreamChunk[]> {
     if (this.finished) return []
+    if (event.type !== 'session-binding' && event.type !== 'finish') {
+      this.receivedProviderEvent = true
+    }
     if (event.type === 'usage') this.recordUsageSample(event)
     const projected: CodingNsDshStreamChunk[] = []
     for (const normalized of this.normalizer.push(event)) {
@@ -62,6 +67,9 @@ export class CodingNsDshMessageProjector {
   /** Provider 未发送 finish 时补齐 usage 和正常终态。 */
   async complete(reason: 'stop' | 'cancel' = 'stop'): Promise<readonly CodingNsDshStreamChunk[]> {
     if (this.finished) return []
+    if (reason === 'stop' && !this.receivedProviderEvent) {
+      return this.fail('CODINGNS_PROVIDER_EMPTY_RESPONSE: Provider 未返回任何有效事件。')
+    }
     const projected = await this.flushUsage()
     projected.push(...await this.project({ type: 'finish', reason }))
     return projected

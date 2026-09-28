@@ -186,6 +186,22 @@ test('消息 block 切换后执行失败仍写入当前正文 block', async () =
   assert.equal(chunks.at(-1)?.type, 'finish')
 })
 
+test('Provider 没有任何有效事件时 complete 不得伪装成 stop', async () => {
+  const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'session-empty' })
+  const chunks = await projector.complete()
+  assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && String(chunk.text).includes('CODINGNS_PROVIDER_EMPTY_RESPONSE')), true)
+  assert.deepEqual(chunks.at(-1), {
+    type: 'finish',
+    reason: {
+      kind: 'error',
+      failure: {
+        message: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: Provider 未返回任何有效事件。',
+        code: 'PROVIDER_ERROR',
+      },
+    },
+  })
+})
+
 test('公共消息投影层使用 DSH 原生权限和问题组件并回传统一回答', async () => {
   const approvals = []
   const questions = []

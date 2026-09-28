@@ -716,6 +716,62 @@ test('CLI 功能模块按会话配置接管 llm/stream，并保留默认 DSH 流
   assert.equal(listener, undefined)
 })
 
+test('DSH 请求明确携带外部 provider 时恢复外部适配器路由', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const calls: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input) {
+      calls.push(input.prompt)
+      yield { type: 'text-delta', text: '第二轮由 Codex 处理' }
+      yield { type: 'finish', reason: 'stop' }
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({ rpc: table, events })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  const chunks = []
+  for await (const chunk of listener!({
+    sessionId: 'dsh-restored-codex',
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    messages: [{ role: 'user', source: { kind: 'user' }, content: '继续' }],
+  }, async function* () { yield { type: 'finish', reason: { kind: 'stop' } } })) chunks.push(chunk)
+  assert.equal(calls[0], '继续')
+  assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && chunk.text === '第二轮由 Codex 处理'), true)
+  await features.disable('cliAdapters')
+})
+
+test('DSH 原生 Provider 只有 finish(stop) 时输出明确错误而不是空正常终态', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({ rpc: table, events })
+  features.register(createCliAdaptersFeature())
+  await features.start('cliAdapters')
+  const chunks = []
+  for await (const chunk of listener!({ sessionId: 'native-empty', provider: 'deepseek-official' }, async function* () {
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  })) chunks.push(chunk)
+  assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && String(chunk.text).includes('CODINGNS_PROVIDER_EMPTY_RESPONSE')), true)
+  assert.deepEqual(chunks.at(-1), { type: 'finish', reason: { kind: 'error', failure: { message: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: DSH Provider 未返回任何有效事件。', code: 'PROVIDER_ERROR' } } })
+  await features.disable('cliAdapters')
+})
+
 test('分段适配器的 step 边界必须在 DSH finish 前注入下一个 step', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined

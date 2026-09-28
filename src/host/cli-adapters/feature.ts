@@ -110,17 +110,33 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
         const dispose = events.on('llm/stream', async function* (options: unknown, next: () => AsyncIterable<unknown>) {
           const value = asRecord(options)
           const sessionId = typeof value?.sessionId === 'string' ? value.sessionId : ''
-          const config = sessionId ? registry.getSession(sessionId) : { adapterId: 'dsh' }
-          if (config.adapterId === 'dsh') {
-            const selection = readDshSelection(value)
-            if (sessionId !== '' && (selection.modelId !== undefined || selection.effortId !== undefined)) {
-              registry.setSession(sessionId, { adapterId: 'dsh', ...selection })
-            }
+          if (value?.purpose === 'session-title' || value?.purpose === 'compaction') {
             yield* next()
             return
           }
-          if (value?.purpose === 'session-title' || value?.purpose === 'compaction') {
-            yield* next()
+          const storedConfig = sessionId ? registry.getSession(sessionId) : { adapterId: 'dsh' }
+          // DSH 原生请求仍会携带当前模型提供方。旧会话在重载后可能暂时
+          // 被恢复成 dsh，但 provider 已明确指向外部 Agent；继续旁路会让
+          // 第二轮直接落入 DSH 空流，并丢失外部驱动的 usage/context 修正。
+          const dshSelection = readDshSelection(value)
+          const selectedExternalAdapter = dshSelection.providerId !== undefined
+            && dshSelection.providerId !== 'dsh'
+            && registry.isEnabled(dshSelection.providerId)
+            ? dshSelection.providerId
+            : undefined
+          const config = storedConfig.adapterId === 'dsh' && selectedExternalAdapter !== undefined
+            ? {
+                adapterId: selectedExternalAdapter,
+                ...(dshSelection.modelId === undefined ? {} : { modelId: dshSelection.modelId }),
+                ...(dshSelection.effortId === undefined ? {} : { effortId: dshSelection.effortId }),
+              }
+            : storedConfig
+          if (config.adapterId === 'dsh') {
+            const selection = dshSelection
+            if (sessionId !== '' && (selection.modelId !== undefined || selection.effortId !== undefined)) {
+              registry.setSession(sessionId, { adapterId: 'dsh', ...selection })
+            }
+            yield* guardDshNativeStream(next)
             return
           }
           const messages = Array.isArray(value?.messages) ? value.messages.filter(isMessage) : []
@@ -189,6 +205,48 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
       context.resources.add(async () => { await registry.dispose(); await sessionStore.flush() })
     },
   }
+}
+
+/**
+ * DSH 原生 Provider 可能只返回一个 finish(stop)。不能把这个空回合当作成功，
+ * 否则 Session 会落下一条空 assistant/message，用户只能看到“一秒结束”。
+ */
+async function* guardDshNativeStream(next: () => AsyncIterable<unknown>): AsyncIterable<unknown> {
+  let meaningful = false
+  const terminal: unknown[] = []
+  for await (const chunk of next()) {
+    if (isDshFinishChunk(chunk)) {
+      terminal.push(chunk)
+      continue
+    }
+    meaningful ||= isMeaningfulDshChunk(chunk)
+    yield chunk
+  }
+  if (meaningful) {
+    for (const chunk of terminal) yield chunk
+    return
+  }
+  const message = 'CODINGNS_PROVIDER_EMPTY_RESPONSE: DSH Provider 未返回任何有效事件。'
+  yield { type: 'block-start', index: 1, blockType: 'text' }
+  yield { type: 'text-delta', index: 1, text: message }
+  yield { type: 'block-end', index: 1, block: { type: 'text', text: message } }
+  yield { type: 'finish', reason: { kind: 'error', failure: { message, code: 'PROVIDER_ERROR' } } }
+}
+
+function isDshFinishChunk(value: unknown): boolean {
+  const record = asRecord(value)
+  return record?.type === 'finish'
+}
+
+function isMeaningfulDshChunk(value: unknown): boolean {
+  const record = asRecord(value)
+  if (record === null) return false
+  if (record.type === 'text-delta' || record.type === 'reasoning-delta' || record.type === 'usage' || record.type === 'tool-call' || record.type === 'tool-result') return true
+  if (record.type === 'block-end') {
+    const block = asRecord(record.block)
+    return typeof block?.text === 'string' && block.text !== ''
+  }
+  return false
 }
 
 function readAdapterId(value: unknown): string {
