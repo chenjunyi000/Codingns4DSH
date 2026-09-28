@@ -47,6 +47,21 @@ export interface LanAccessDshLoginStore {
   clear(): Promise<void>
 }
 
+/**
+ * Cookie 不包含端口信息；多个 DSH 实例若共用名称，浏览器会在实例之间覆盖会话。
+ * 正式环境保留旧名称，开发环境由启动包装命令显式指定独立名称。
+ */
+export const DEFAULT_LOGIN_PROTECTION_COOKIE_NAME = 'dsh_codingns_session'
+const LOGIN_PROTECTION_COOKIE_NAME_ENV = 'CODINGNS4DSH_LOGIN_COOKIE_NAME'
+const COOKIE_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/u
+
+export function resolveLoginProtectionCookieName(configured = process.env[LOGIN_PROTECTION_COOKIE_NAME_ENV]): string {
+  const value = configured?.trim()
+  return value !== undefined && value !== '' && value.length <= 128 && COOKIE_NAME_PATTERN.test(value)
+    ? value
+    : DEFAULT_LOGIN_PROTECTION_COOKIE_NAME
+}
+
 /** 浏览器中继只携带短期签名票据，密码哈希和签名密钥始终留在 Host。 */
 export async function openLoginProtectionSession(
   store: LanAccessDshLoginStore,
@@ -162,7 +177,12 @@ export class LanAccessDshProxy {
   constructor(
     private readonly runtime: LanAccessDshRuntime = createNodeLanAccessDshRuntime(),
     private readonly authenticatedUrl?: string,
-  ) {}
+    sessionCookieName = resolveLoginProtectionCookieName(),
+  ) {
+    this.sessionCookieName = resolveLoginProtectionCookieName(sessionCookieName)
+  }
+
+  private readonly sessionCookieName: string
 
   listenHosts(): readonly string[] {
     return this.runtime.listListenHosts()
@@ -309,7 +329,7 @@ export class LanAccessDshProxy {
   private authorize(request: ParsedLanRequest, localAddress: boolean): Uint8Array | 'pass' {
     const config = this.loginConfig
     if (request.path === '/__codingns/session' && request.method === 'GET') {
-      const token = readCookie(request.headers.cookie, 'dsh_codingns_session')
+      const token = readCookie(request.headers.cookie, this.sessionCookieName)
       const authenticated = !localAddress && config !== null && config.enabled && config.scopes.lan
         && token !== undefined && !this.revokedSessions.has(token)
         && verifySignedSessionToken(token, config, 'lan')
@@ -327,17 +347,17 @@ export class LanAccessDshProxy {
       const payload = encodeSessionPayload({ username: config.username, scope: 'lan', expiresAt, nonce: randomBytes(16).toString('base64url') })
       const token = `${payload}.${signSessionPayload(payload, config)}`
       this.revokedSessions.delete(token)
-      return loginResponse(303, '', { 'Set-Cookie': sessionCookie(token, config.timeoutSeconds), Location: '/' })
+      return loginResponse(303, '', { 'Set-Cookie': sessionCookie(this.sessionCookieName, token, config.timeoutSeconds), Location: '/' })
     }
     if (request.path === '/__codingns/logout') {
-      const token = readCookie(request.headers.cookie, 'dsh_codingns_session')
+      const token = readCookie(request.headers.cookie, this.sessionCookieName)
       if (token !== undefined && verifySignedSessionToken(token, config, 'lan')) this.revokedSessions.add(token)
-      return loginResponse(303, '', { 'Set-Cookie': 'dsh_codingns_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0', Location: '/' })
+      return loginResponse(303, '', { 'Set-Cookie': clearSessionCookie(this.sessionCookieName), Location: '/' })
     }
     // 浏览器会在页面刷新时独立请求 Web App manifest；它只包含静态元数据，
     // 不应因为登录保护缺少 Cookie 而产生 401 控制台噪声。
     if (request.path === '/manifest.webmanifest' && request.method === 'GET') return 'pass'
-    const token = readCookie(request.headers.cookie, 'dsh_codingns_session')
+    const token = readCookie(request.headers.cookie, this.sessionCookieName)
     if (token !== undefined && !this.revokedSessions.has(token) && verifySignedSessionToken(token, config, 'lan')) {
       return 'pass'
     }
@@ -428,8 +448,12 @@ function readCookie(value: string | undefined, name: string): string | undefined
   return undefined
 }
 
-function sessionCookie(token: string, timeoutSeconds: number): string {
-  return `dsh_codingns_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${timeoutSeconds}`
+function sessionCookie(name: string, token: string, timeoutSeconds: number): string {
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${timeoutSeconds}`
+}
+
+function clearSessionCookie(name: string): string {
+  return `${name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`
 }
 
 function getSetCookie(headers: Headers): string | undefined {

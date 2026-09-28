@@ -5,10 +5,12 @@ import { createLanAccessDshFeature } from '../data/build/dist/host/features/inde
 import {
   LanAccessDshProxy,
   LanAccessDshRequestTransform,
+  DEFAULT_LOGIN_PROTECTION_COOKIE_NAME,
   InMemoryLanAccessDshLoginStore,
   createLanAccessDshRpcHandler,
   normalizeLanAccessDshConfig,
   normalizeLanAccessDshRpcBody,
+  resolveLoginProtectionCookieName,
   rewriteLanAccessDshRequestHeaders,
   type LanAccessDshRuntime,
   type LanAccessDshStream,
@@ -79,6 +81,13 @@ class FakeSettings {
     })
   }
 }
+
+test('登录保护 Cookie 名称支持按 DSH 实例隔离', () => {
+  assert.equal(DEFAULT_LOGIN_PROTECTION_COOKIE_NAME, 'dsh_codingns_session')
+  assert.equal(resolveLoginProtectionCookieName('dsh_codingns_stage0'), 'dsh_codingns_stage0')
+  assert.equal(resolveLoginProtectionCookieName(''), DEFAULT_LOGIN_PROTECTION_COOKIE_NAME)
+  assert.equal(resolveLoginProtectionCookieName('invalid cookie name'), DEFAULT_LOGIN_PROTECTION_COOKIE_NAME)
+})
 
 test('配置只包含监听地址、监听端口和 DSH 本地端口', () => {
   assert.deepEqual(normalizeLanAccessDshConfig({ listenHost: '0.0.0.0', listenPort: 13080, dshPort: 9080 }), { listenHost: '0.0.0.0', listenPort: 13080, dshPort: 9080 })
