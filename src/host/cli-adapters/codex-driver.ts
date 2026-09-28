@@ -234,13 +234,15 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         removeNotificationListener()
         eventQueue.close()
       }
+      // 终态 chunk 之后调用方不会再拉动本迭代器，turnId 必须在产出 finish
+      // 前复位，否则下一轮 steer/interrupt 会指向已经结束的 turn。
+      session.turnId = null
       if (!input.signal?.aborted && terminalReason !== 'cancel' && !sawMeaningfulEvent) {
         yield { type: 'text-delta', text: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: Codex Provider 未返回任何有效事件。' }
         yield { type: 'finish', reason: 'error' }
       } else {
         yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : terminalReason ?? 'stop' }
       }
-      session.turnId = null
     } finally { /* app-server 在会话结束前保持连接。 */ }
   }
 
@@ -263,13 +265,24 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         session.threadId = readId(thread) ?? input.providerSessionId ?? input.sessionId
         session.providerSessionId = session.threadId
       }
+      // 只有 Host 显式声明续段时才复用挂起的 Provider 运行。新用户回合、注入
+      // 失败或取消后的下一次执行必须丢弃旧段：旧段要么已经跑完，要么其队列
+      // 已关闭，复用只会立刻产出 stop，把新消息变成空回合。
+      const suspended = input.resumeSegmentedTurn === true
+        && session.segmentedTurn !== undefined
+        && !session.segmentedTurn.done
+        ? session.segmentedTurn
+        : undefined
+      if (suspended === undefined && session.segmentedTurn !== undefined) {
+        this.closeSegmentedTurn(session, session.segmentedTurn)
+      }
       // 分段 step 仍属于同一个 Provider turn；恢复它时不能插入 compact turn。
-      const hasSuspendedTurn = session.segmentedTurn !== undefined
+      const hasSuspendedTurn = suspended !== undefined
       if (!hasSuspendedTurn) await this.ensureContextCapacity(session, input)
       if (!hasSuspendedTurn) yield* drainCompactionEvents(session)
-      active = session.segmentedTurn ?? await this.startSegmentedTurn(session, input)
+      active = suspended ?? await this.startSegmentedTurn(session, input)
       yield* drainCompactionEvents(session)
-      const isNew = session.segmentedTurn === undefined
+      const isNew = suspended === undefined
       if (isNew) session.segmentedTurn = active
       if (isNew) yield { type: 'session-binding', providerSessionId: session.providerSessionId }
 
@@ -367,6 +380,9 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
           if (input.signal?.aborted) throw new Error('请求已取消')
           active.done = true
           session.turnId = null
+          // finish 是调用方看到的最后一个 chunk，之后不会再拉动本迭代器。
+          // 悬挂段必须在产出终态前解除，否则它会被当成下一轮的可续段复用。
+          if (session.segmentedTurn === active) session.segmentedTurn = undefined
           active.removeAbortListener()
           active.removeNotificationListener()
           yield { type: 'finish', reason: active.terminalReason ?? 'stop' }
@@ -546,6 +562,16 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     if (session === undefined || session.threadId === '' || session.turnId === null) return
     try { await session.rpc.request('turn/interrupt', { threadId: session.threadId, turnId: session.turnId }, { killOnAbort: false }) }
     catch { /* app-server 可能已经发出 turn/completed */ }
+  }
+
+  /**
+   * 丢弃等待下一个 DSH step 的分段运行（取消、注入失败或切换适配器时）。
+   * 队列关闭后旧回合的通知不会再被投影进下一轮，续段标记同时解除。
+   */
+  discardSegmentedTurn(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (session?.segmentedTurn === undefined) return
+    this.closeSegmentedTurn(session, session.segmentedTurn)
   }
 
   /** 回传原生权限请求；审批值只在 Host 进程中流转。 */

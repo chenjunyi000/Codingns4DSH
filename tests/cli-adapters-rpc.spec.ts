@@ -237,8 +237,95 @@ test('Codex 只在 assistant item 切换后分段，同一 assistant 的多个�
   ])
 
   const second = []
-  for await (const chunk of driver.executeTurn({ sessionId: 'message-boundary', messages: [], prompt: '继续', splitToolSteps: true })) second.push(chunk)
+  for await (const chunk of driver.executeTurn({ sessionId: 'message-boundary', messages: [], prompt: '继续', splitToolSteps: true, resumeSegmentedTurn: true })) second.push(chunk)
   assert.deepEqual(second.map(({ type }) => type), ['text-delta', 'tool-event', 'tool-event', 'finish'])
+  driver.dispose()
+})
+
+test('Codex 一轮结束后再次对话必须重新发起 turn/start，不会被已结束的分段吞掉', async () => {
+  const turnStarts: string[] = []
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'restart-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          const turnId = `restart-turn-${turnStarts.length + 1}`
+          turnStarts.push(turnId)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+          setImmediate(() => {
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'restart-thread', turnId, itemId: `message-${turnStarts.length}`, delta: `第${turnStarts.length}轮回复` } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'restart-thread', turn: { id: turnId, status: 'completed' } } })}\n`)
+          })
+          return
+        }
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'restart-session', messages: [], prompt: '第一轮', splitToolSteps: true })) first.push(chunk)
+  // 上一轮已经结束：新用户回合没有续段声明，必须丢弃残留分段并重新 turn/start。
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'restart-session', messages: [], prompt: '第二轮', splitToolSteps: true })) second.push(chunk)
+
+  assert.deepEqual(first.map(({ type }) => type), ['session-binding', 'text-delta', 'finish'])
+  assert.deepEqual(second.map(({ type }) => type), ['session-binding', 'text-delta', 'finish'])
+  assert.deepEqual(second.filter((chunk) => chunk.type === 'text-delta'), [{ type: 'text-delta', text: '第2轮回复', messageId: 'message-2' }])
+  assert.deepEqual(turnStarts, ['restart-turn-1', 'restart-turn-2'])
+  driver.dispose()
+})
+
+test('Codex 取消后丢弃分段运行，下一轮重新 turn/start 而不是续接旧段', async () => {
+  const turnStarts: number[] = []
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'discard-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          turnStarts.push(turnStarts.length + 1)
+          const turnId = `discard-turn-${turnStarts.length}`
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+          setImmediate(() => {
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'discard-thread', turnId, itemId: `assistant-${turnStarts.length}`, delta: '先检查' } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/completed', params: { threadId: 'discard-thread', turnId, item: { type: 'commandExecution', id: 'call-1', command: 'pwd', aggregated_output: '/tmp', status: 'completed' } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'discard-thread', turnId, itemId: `assistant-${turnStarts.length}-next`, delta: '继续处理' } })}\n`)
+          })
+          return
+        }
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'discard-session', messages: [], prompt: '执行', splitToolSteps: true })) first.push(chunk)
+  assert.equal(first.at(-1)?.type, 'step-boundary')
+
+  driver.discardSegmentedTurn?.('discard-session')
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'discard-session', messages: [], prompt: '新问题', splitToolSteps: true })) second.push(chunk)
+
+  assert.deepEqual(second.map(({ type }) => type), ['session-binding', 'text-delta', 'tool-event', 'step-boundary'])
+  assert.deepEqual(turnStarts, [1, 2])
   driver.dispose()
 })
 
