@@ -34,6 +34,8 @@ export interface WebRtcHostAcceptorOptions {
     iceServers: RelayIceServer[]
     iceTransportPolicy: 'all' | 'relay'
   }): HostPeerConnectionLike
+  /** ICE 短暂进入 disconnected 时保留会话的时间，避免中继链路抖动移除 Host session。 */
+  disconnectedGracePeriodMs?: number
   channelLabel?: string
   onConnection?: (connection: WebRtcHostSession) => void | Promise<void>
   onSessionClosed?: (sessionId: string) => void | Promise<void>
@@ -167,6 +169,7 @@ export async function acceptWebRtcHost(options: WebRtcHostAcceptorOptions): Prom
         options.onConnection,
         () => { void closeSession(sessionId) },
         TUNNEL_DATA_CHANNEL_LABEL,
+        options.disconnectedGracePeriodMs,
         options.debug,
       )
       sessions.set(sessionId, session)
@@ -203,6 +206,7 @@ class HostSessionImpl implements WebRtcHostSession {
   private closed = false
   private offerPromise: Promise<void> | null = null
   private remoteDescriptionReady = false
+  private disconnectedTimer: ReturnType<typeof setTimeout> | undefined
   private readonly pendingCandidates: Array<{ candidate: string; sdpMid: string | null }> = []
 
   constructor(
@@ -212,6 +216,7 @@ class HostSessionImpl implements WebRtcHostSession {
     private readonly onConnection: WebRtcHostAcceptorOptions['onConnection'],
     private readonly onTransportClosed: () => void | Promise<void>,
     channelLabel: string | undefined,
+    private readonly disconnectedGracePeriodMs: number | undefined,
     private readonly debug?: DshTransportDebugLogger,
   ) {
     this.peerConnection.addEventListener?.('connectionstatechange', this.onPeerState)
@@ -278,6 +283,7 @@ class HostSessionImpl implements WebRtcHostSession {
     this.peerConnection.ondatachannel = null
     this.peerConnection.removeEventListener?.('connectionstatechange', this.onPeerState)
     this.peerConnection.removeEventListener?.('iceconnectionstatechange', this.onPeerState)
+    this.clearDisconnectedTimer()
     await this._carrier?.close()
     this._carrier = null
     this.peerConnection.close()
@@ -286,7 +292,27 @@ class HostSessionImpl implements WebRtcHostSession {
   private readonly onPeerState = () => {
     const state = this.peerConnection as HostPeerConnectionLike & { connectionState?: string; iceConnectionState?: string }
     const value = state.connectionState ?? state.iceConnectionState
-    if (value === 'failed' || value === 'disconnected' || value === 'closed') void this.onTransportClosed()
+    if (value === 'failed' || value === 'closed') {
+      this.clearDisconnectedTimer()
+      void this.onTransportClosed()
+      return
+    }
+    if (value === 'disconnected') {
+      if (this.disconnectedTimer !== undefined) return
+      const gracePeriod = Math.max(0, this.disconnectedGracePeriodMs ?? 5_000)
+      this.disconnectedTimer = setTimeout(() => {
+        this.disconnectedTimer = undefined
+        if (!this.closed) void this.onTransportClosed()
+      }, gracePeriod)
+      return
+    }
+    this.clearDisconnectedTimer()
+  }
+
+  private clearDisconnectedTimer(): void {
+    if (this.disconnectedTimer === undefined) return
+    clearTimeout(this.disconnectedTimer)
+    this.disconnectedTimer = undefined
   }
 }
 
