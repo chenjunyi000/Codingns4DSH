@@ -78,6 +78,11 @@ interface SelectionState extends CodingNsCliSessionConfig {}
 const DEFAULT_SELECTION: SelectionState = { adapterId: 'dsh' }
 const selections = new Map<string, SelectionState>()
 const selectionListeners = new Map<string, Set<() => void>>()
+/** 两个 Slot 共用同一条初始化读取，避免响应顺序造成状态回退。 */
+const selectionLoads = new Map<string, Promise<CodingNsCliSessionConfig>>()
+/** 记录每个会话最新的写入，旧响应不能覆盖用户较新的选择。 */
+const selectionUpdates = new Map<string, { readonly revision: number; readonly promise: Promise<CodingNsCliSessionConfig> }>()
+const selectionRevisions = new Map<string, number>()
 
 /** 在 Agent 和模型两个 Slot 之间共享当前会话选择。 */
 function useSelection(sessionId: string | undefined, rpc: CodingNsRpcClient): [SelectionState, (next: SelectionState) => void] {
@@ -86,7 +91,9 @@ function useSelection(sessionId: string | undefined, rpc: CodingNsRpcClient): [S
   useEffect(() => {
     if (sessionId === undefined || sessionId.trim() === '') return
     let active = true
-    void callCliRpc<CodingNsCliSessionConfig>(rpc, 'session/get', { sessionId })
+    const loaded = selectionLoads.get(sessionId) ?? callCliRpc<CodingNsCliSessionConfig>(rpc, 'session/get', { sessionId })
+    selectionLoads.set(sessionId, loaded)
+    void loaded
       .then((value) => {
         if (!active) return
         // 用户可能已在 session/get 返回前切换 Agent；旧响应不能覆盖本地最新选择。
@@ -94,6 +101,9 @@ function useSelection(sessionId: string | undefined, rpc: CodingNsRpcClient): [S
         publishSelection(sessionId, value)
       })
       .catch(() => undefined)
+      .finally(() => {
+        if (selectionLoads.get(sessionId) === loaded) selectionLoads.delete(sessionId)
+      })
     const listeners = selectionListeners.get(sessionId) ?? new Set<() => void>()
     selectionListeners.set(sessionId, listeners)
     const listener = (): void => setSelection(selections.get(sessionId) ?? DEFAULT_SELECTION)
@@ -111,9 +121,18 @@ function useSelection(sessionId: string | undefined, rpc: CodingNsRpcClient): [S
   const update = (next: SelectionState): void => {
     if (sessionId === undefined || sessionId.trim() === '') return
     publishSelection(sessionId, next)
-    void callCliRpc<CodingNsCliSessionConfig>(rpc, 'session/set', { sessionId, ...next })
-      .then((normalized) => publishSelection(sessionId, normalized))
+    const revision = (selectionRevisions.get(sessionId) ?? 0) + 1
+    selectionRevisions.set(sessionId, revision)
+    const promise = callCliRpc<CodingNsCliSessionConfig>(rpc, 'session/set', { sessionId, ...next })
+    selectionUpdates.set(sessionId, { revision, promise })
+    void promise
+      .then((normalized) => {
+        if (selectionUpdates.get(sessionId)?.revision === revision) publishSelection(sessionId, normalized)
+      })
       .catch(() => undefined)
+      .finally(() => {
+        if (selectionUpdates.get(sessionId)?.revision === revision) selectionUpdates.delete(sessionId)
+      })
   }
   return [selection, update]
 }
@@ -336,15 +355,25 @@ function ModelSlot(props: CliSlotProps): ReactElement | null {
       .then((value) => {
         if (!active) return
         setCatalogState({ adapterId, value })
-        // session/set 可能在模型目录请求期间返回适配器级记忆值；不能使用
-        // effect 闭包里的旧 selection，否则会把记忆模型覆盖成目录第一项。
-        const currentSelection = sessionId === undefined
-          ? selection
-          : selections.get(sessionId) ?? selection
-        const model = findModel(value, currentSelection.modelId) ?? firstModel(value)
-        if (model === undefined) return
-        const effort = model.efforts.includes(currentSelection.effortId ?? '') ? currentSelection.effortId : defaultEffort(model.efforts)
-        if (model.id !== currentSelection.modelId || effort !== currentSelection.effortId) update({ adapterId, modelId: model.id, ...(effort ? { effortId: effort } : {}) })
+        const normalize = (): void => {
+          if (!active) return
+          // session/set 可能正在回填适配器级记忆值；必须等它完成后再补默认值，
+          // 否则目录第一项会先写入 Host，随后覆盖真正的记忆选择。
+          const currentSelection = sessionId === undefined
+            ? selection
+            : selections.get(sessionId) ?? selection
+          if (currentSelection.adapterId !== adapterId) return
+          const model = findModel(value, currentSelection.modelId) ?? firstModel(value)
+          if (model === undefined) return
+          const effort = model.efforts.includes(currentSelection.effortId ?? '') ? currentSelection.effortId : defaultEffort(model.efforts)
+          if (model.id !== currentSelection.modelId || effort !== currentSelection.effortId) update({ adapterId, modelId: model.id, ...(effort ? { effortId: effort } : {}) })
+        }
+        const pending = sessionId === undefined ? undefined : selectionUpdates.get(sessionId)
+        if (pending === undefined) {
+          normalize()
+        } else {
+          void pending.promise.then(normalize).catch(normalize)
+        }
       })
       .catch(() => { if (active) setCatalogState({ adapterId, value: { groups: [], currentModel: null, currentEffort: null } }) })
       .finally(() => { if (active) setRefreshingAdapterId(null) })
