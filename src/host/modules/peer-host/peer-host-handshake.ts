@@ -70,7 +70,7 @@ export class PeerHostHandshakeService {
       return value
     } catch (error) {
       if (error instanceof HandshakeError) throw error
-      throw new HandshakeError(PEER_HOST_ERROR_CODES.UNREACHABLE, error instanceof Error ? error.message : '目标 Host 不可达')
+      throw new HandshakeError(PEER_HOST_ERROR_CODES.UNREACHABLE, '目标 Host 不可达')
     } finally {
       clearTimeout(timer)
     }

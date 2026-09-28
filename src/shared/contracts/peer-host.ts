@@ -51,6 +51,16 @@ export type PeerHostClientRecord = Omit<PeerHostRecord, 'route'> & {
   readonly route: PeerHostClientRoute
 }
 
+/** Client 可见的 PeerHost 诊断快照；不包含完整路由、凭据或正文。 */
+export interface PeerHostDiagnosticSnapshot {
+  readonly peerHostId: string
+  readonly routeKind: 'lan' | 'relay'
+  readonly status: PeerHostStatus
+  readonly lastErrorCode: PeerHostErrorCode | null
+  readonly lastCheckedAt: number | null
+  readonly fingerprint: string | null
+}
+
 /** 当前 Host 插件自有 WebSocket 入口；不包含任何目标 Host 地址或凭据。 */
 export interface PeerHostWebSocketEndpoint {
   readonly host: string

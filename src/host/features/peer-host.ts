@@ -166,7 +166,13 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
           case 'wsEndpoint': return wsEndpoint
           case 'aggregate': {
             if (options.aggregateSources === undefined) {
-              throw new CodingNsRpcError(PEER_HOST_ERROR_CODES.AGGREGATE_UNAVAILABLE, '当前 Host 尚未提供可验证的工作区摘要源')
+              return aggregate.load([{
+                hostId: 'local-host',
+                targetHostId: null,
+                hostLabel: '当前 Host',
+                capability: { available: false, reason: '当前 Host 尚未提供可验证的工作区/会话摘要 source' },
+                load: async () => [],
+              }])
             }
             return aggregate.load(await options.aggregateSources())
           }

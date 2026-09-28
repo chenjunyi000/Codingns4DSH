@@ -13,10 +13,22 @@ export class HostRouter {
   getCurrent(): HostScope | null { return this.current }
 
   async switchTo(input: HostRouterInput, disposer?: ResourceScopeDisposer): Promise<HostScope> {
+    return this.transitionTo(input, disposer, false)
+  }
+
+  /**
+   * 重连成功后强制创建新的 generation，即使逻辑 HostScope 没有变化。
+   * 旧作用域的所有 disposer 会先执行，调用方必须用返回值重建订阅。
+   */
+  async rebuild(input: HostRouterInput, disposer?: ResourceScopeDisposer): Promise<HostScope> {
+    return this.transitionTo(input, disposer, true)
+  }
+
+  private async transitionTo(input: HostRouterInput, disposer: ResourceScopeDisposer | undefined, force: boolean): Promise<HostScope> {
     validateInput(input)
     let result: HostScope | undefined
     const operation = this.transition.then(async () => {
-      if (this.current !== null && sameInput(this.current, input)) {
+      if (!force && this.current !== null && sameInput(this.current, input)) {
         if (disposer) this.addDisposer(disposer)
         result = this.current
         return

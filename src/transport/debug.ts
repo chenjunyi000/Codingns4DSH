@@ -39,10 +39,31 @@ export function createDshTransportDebugLogger(options: DshTransportDebugOptions 
         side,
         component,
         event,
-        ...fields,
+        ...sanitizeDshTransportDebugFields(fields),
       })
     },
   }
+}
+
+/**
+ * 调试字段采用正向白名单。Transport 可能同时处理 token、URL、命令和正文，
+ * 因此不能依赖调用方自觉脱敏；未知字段和错误正文直接丢弃。
+ */
+export function sanitizeDshTransportDebugFields(fields: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const allowed = new Set([
+    'bytes', 'physicalBytes', 'bodyBytes', 'sdpBytes', 'streamId', 'messageId', 'sessionId',
+    'generation', 'previousGeneration', 'hostId', 'expectedHostId', 'hostKind', 'expectedHostKind',
+    'channel', 'channelLabel', 'operation', 'feature', 'type', 'code', 'state', 'role',
+    'streams', 'activeStreams', 'openingStreams', 'maxStreams', 'fragmentId', 'chunkCount',
+    'totalBytes', 'payloadBytes', 'bufferedAmount', 'highWaterMark', 'lowWaterMark', 'dataType',
+    'valueType', 'trafficRemainingBytes',
+  ])
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(fields)) {
+    if (!allowed.has(key)) continue
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) result[key] = value
+  }
+  return result
 }
 
 /** 解析统一的 Codingns4DSH 调试开关，保留旧隧道变量作为兼容别名。 */

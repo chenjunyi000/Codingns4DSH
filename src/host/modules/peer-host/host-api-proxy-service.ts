@@ -2,6 +2,7 @@ import type { HostScope, PeerHostErrorCode, PeerHostRecord } from '../../../shar
 import { PEER_HOST_ERROR_CODES } from '../../../shared/contracts/peer-host.js'
 import { PeerHostSessionService } from './peer-host-session.js'
 import { PeerHostStore } from './peer-host-store.js'
+import { peerHostSafeError } from './peer-host-diagnostics.js'
 
 const MAX_PROXY_BODY_BYTES = 4 * 1024 * 1024
 const ALLOWED_QUERY = new Set(['workspaceId', 'sessionId', 'scopeGeneration', 'cursor', 'path', 'toolId'])
@@ -160,7 +161,7 @@ async function forwardResponse(response: Response, scope: HostScope): Promise<Re
 
 function errorResponse(error: unknown): Response {
   const code = error instanceof PeerHostProxyError ? error.code : PEER_HOST_ERROR_CODES.PROXY_UNREACHABLE
-  const message = error instanceof PeerHostProxyError ? error.message : '目标 Host 代理请求失败'
+  const message = error instanceof PeerHostProxyError ? peerHostSafeError(error.code).message : '目标 Host 代理请求失败'
   const status = code === PEER_HOST_ERROR_CODES.SCOPE_MISMATCH || code === PEER_HOST_ERROR_CODES.PROXY_PATH_NOT_ALLOWED ? 400 : code === PEER_HOST_ERROR_CODES.NOT_FOUND ? 404 : code === PEER_HOST_ERROR_CODES.SESSION_REQUIRED ? 401 : 502
   return Response.json({ error: { code, message } }, { status })
 }

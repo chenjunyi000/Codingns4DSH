@@ -3,6 +3,7 @@ import { PEER_HOST_ERROR_CODES } from '../../../shared/contracts/peer-host.js'
 import { PeerHostSessionService } from './peer-host-session.js'
 import { PeerHostStore } from './peer-host-store.js'
 import { PeerHostConnectorError } from './host-ws-connector.js'
+import { peerHostSafeError } from './peer-host-diagnostics.js'
 
 export const PEER_HOST_WS_CLIENT_MESSAGE_TYPES = new Set([
   'workbench.subscribe', 'workbench.refresh', 'fileTree.subscribe', 'fileTree.refresh',
@@ -59,7 +60,7 @@ export class PeerHostWsProxyService {
         await this.sessions.invalidate(peerHostId)
         throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SESSION_REQUIRED, '目标 Host 登录态已失效')
       }
-      if (error instanceof PeerHostConnectorError) throw new PeerHostWsProxyError(error.code, error.message)
+      if (error instanceof PeerHostConnectorError) throw new PeerHostWsProxyError(error.code, peerHostSafeError(error.code).message)
       throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.PROXY_UNREACHABLE, '目标 Host 代理连接失败')
     }
     let closed = false

@@ -253,6 +253,7 @@
 
 - 状态：`IN_PROGRESS`
 - 当前 Host 摘要 source 增量（2026-09-28）：新增 `PeerHostWorkspaceSessionSummarySource` 与 `createAggregateHostSource`。聚合层不再假设 DSH 私有 `SessionStore/WorkspaceRegistry` 结构；未注入稳定 source 时返回 `availability: unsupported` 和明确 `diagnostic`，不把空工作区伪装成成功。注入 source 后统一生成 `hostId/targetHostId/workspaceId/sessionId/scopeGeneration` 作用域节点。
+- Host RPC `peerHost/aggregate` 在未注入 source 时同样返回 `当前 Host` 的 unsupported 诊断节点，不再抛出不可区分的 RPC 错误。
 - 验证：`pnpm run typecheck`；`pnpm run build`；`node --test tests/peer-host-aggregate.spec.ts`（5 项通过，含 source 不可用诊断和可用 source HostScope 聚合）。
 - 本次增量（2026-09-28）：新增 `src/client/peer-host-native-session-ui.ts` 原生会话 UI adapter。adapter 只在结构探测到 DSH `[data-composer-card]`/conversation 容器时挂载，加载历史并把白名单实时事件写入带完整 HostScope 的当前会话节点；generation 失效由 `PeerHostSessionController` 拒绝旧结果。未探测到稳定容器时显示“原生 conversation 容器不可用”降级状态，不创建 iframe 或伪装三栏。
 - 验证：`pnpm run typecheck`；`pnpm run build`；`node --test tests/peer-host-native-session-ui.spec.ts`（2 项通过）。
@@ -340,7 +341,11 @@
 
 ### 7.3 增加运行时诊断和隐私检查
 
-- 状态：`TODO`
+- 状态：`DONE`
+- 已完成增量：新增 PeerHost 诊断快照与默认关闭的诊断 sink，仅输出 `peerHostId`、路由类型、状态、稳定错误码、检查时间和脱敏 fingerprint；新增固定错误码文案，网络/Transport 底层异常不再回显原始消息。Transport 调试 logger 改为正向元数据白名单，丢弃 token、password、authorization、Cookie、完整 baseUrl、relay ticket、文件路径/内容、命令、模型正文和错误详情。未知 WS connector 异常统一收敛为 `PEER_HOST_PROXY_UNREACHABLE`。
+- 改动文件：`src/host/modules/peer-host/peer-host-diagnostics.ts`、`src/host/modules/peer-host/peer-host-handshake.ts`、`src/host/modules/peer-host/host-ws-proxy-service.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`src/host/index.ts`、`src/client/peer-host-management-api.ts`、`src/transport/debug.ts`、`tests/peer-host-privacy.spec.ts`
+- 验证命令：`pnpm run build && node --test tests/peer-host-privacy.spec.ts tests/transport-debug.spec.ts tests/peer-host-security.spec.ts`（10 项通过）；`pnpm run typecheck`；`git diff --check`
+- 已知限制：诊断 RPC 只返回脱敏快照；默认不输出诊断日志，只有显式设置 `CODINGNS4DSH_DEBUG=1` 才写入 Host 控制台。完整文件、命令和模型消息仍不进入诊断数据结构。
 - 做什么：补充 PeerHost 状态诊断、性能指标和日志敏感字段扫描。
 - 做完看到什么：维护者能定位握手、代理、作用域和中转失败，同时日志不含凭据和内容数据。
 - 依赖什么：全部前置阶段；现有 resource-scope debug log 规范。
@@ -355,7 +360,7 @@
 
 - 状态：`IN_PROGRESS`
 - 本次增量（2026-09-28）：新增 `tests/peer-host-integration.spec.ts`，串联当前 Host、LAN PeerHost、同名工作区/会话、单个 PeerHost 故障和目标路由隔离；三版本能力 fixture 仍待补齐。
-- 当前验证：待下一轮构建后运行 `node --test tests/peer-host-integration.spec.ts`。
+- 当前验证：`pnpm run build && node --test tests/peer-host-integration.spec.ts`（1 项通过）；同轮 PeerHost/HostRouter/隐私/Transport 定向测试共 47 项通过。
 - 做什么：把当前 Host、局域网 PeerHost、中转 PeerHost、未登录、版本不兼容、fingerprint 变化和断线恢复串成集成 fixture。
 - 做完看到什么：一套可重复测试证明单 Host 行为未被破坏，多 Host 作用域正确。
 - 依赖什么：阶段 1 至 7。

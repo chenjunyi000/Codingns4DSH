@@ -18,6 +18,44 @@ export interface AggregateHostSource {
   readonly targetHostId: string | null
   readonly hostLabel: string
   readonly load: () => Promise<readonly AggregateWorkspaceSource[]>
+  /** DSH 未提供稳定摘要来源时显式声明降级，不把失败折叠成空数组。 */
+  readonly capability?: {
+    readonly available: boolean
+    readonly reason: string
+  }
+}
+
+/**
+ * 当前 Host 的 workspace/session 摘要来源契约。
+ *
+ * DSH 版本之间的 SessionStore/WorkspaceController 不是稳定公共 API，聚合层
+ * 不直接读取未知对象。Host 只有在完成结构探测后，才能注入这个 source。
+ */
+export interface PeerHostWorkspaceSessionSummarySource {
+  readonly capabilityId: 'peer-host.native-workspace-session-summary'
+  readonly available: boolean
+  readonly reason?: string
+  load(signal?: AbortSignal): Promise<readonly AggregateWorkspaceSource[]>
+}
+
+/** 将显式 source 转为聚合任务；不可用 source 保留 unsupported 诊断。 */
+export function createAggregateHostSource(input: {
+  readonly hostId: string
+  readonly targetHostId: string | null
+  readonly hostLabel: string
+  readonly source: PeerHostWorkspaceSessionSummarySource
+}): AggregateHostSource {
+  const source = input.source
+  return {
+    hostId: input.hostId,
+    targetHostId: input.targetHostId,
+    hostLabel: input.hostLabel,
+    capability: {
+      available: source.available,
+      reason: source.reason?.trim() || (source.available ? '摘要 source 已就绪' : 'Host 未提供稳定 workspace/session 摘要 source'),
+    },
+    load: () => source.load(),
+  }
 }
 
 /** 并发加载多 Host 摘要；单个目标失败只生成该 Host 的错误节点。 */
@@ -29,6 +67,17 @@ export class PeerHostAggregateService {
   }
 
   private async loadOne(source: AggregateHostSource): Promise<AggregateHostResult> {
+    if (source.capability?.available === false) {
+      return {
+        hostId: source.hostId,
+        targetHostId: source.targetHostId,
+        hostLabel: source.hostLabel,
+        availability: 'unsupported',
+        errorCode: null,
+        diagnostic: source.capability.reason,
+        workspaces: [],
+      }
+    }
     try {
       const workspaces = await withTimeout(source.load(), this.timeoutMs)
       return {
