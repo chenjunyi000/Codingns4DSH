@@ -63,7 +63,8 @@ test('没有 uiConversation.views 时仍注册 conversation.view 标签', () => 
       if (dispose !== undefined) disposers.push(dispose)
       return () => undefined
     },
-    register(options: Record<string, unknown>, component: unknown) {
+    register(this: typeof slots, options: Record<string, unknown>, component: unknown) {
+      assert.equal(this, slots)
       registrations.push({ options, component })
       return () => undefined
     },

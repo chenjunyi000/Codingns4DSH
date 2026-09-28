@@ -151,14 +151,16 @@ export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcCl
   // DSH 热重启可能先保留旧 Context 的 Slot；复用旧注册避免 id 冲突。
   if (runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__ !== undefined) return undefined
   const value = asRecord(ctx)
-  const slots = value?.slots as { inject?: (key: string, callback: () => unknown) => (() => void) } | undefined
-  if (typeof slots?.inject !== 'function') return undefined
+  const slots = value?.slots as {
+    inject?: (key: string, callback: () => unknown) => (() => void)
+    register?: (options: unknown, component: unknown) => () => void
+  } | undefined
+  if (typeof slots?.inject !== 'function' || typeof slots.register !== 'function') return undefined
   let disposeSlot: (() => void) | undefined
   try {
     disposeSlot = slots.inject('conversation.view', () => {
-      const register = (slots as { register?: (options: unknown, component: unknown) => () => void }).register
-      if (typeof register !== 'function') return () => undefined
-      return register({
+      // 必须通过 SlotRegistry 实例调用 register，保留其 Cordis 调用上下文。
+      return slots.register!({
         name: 'conversation.view',
         id: SESSION_CHANGED_FILES_VIEW_ID,
         order: 100,

@@ -295,6 +295,9 @@ test('远程设置 RPC 返回版本并只允许修改 Codingns4DSH 字段', asyn
     ops: [{ op: 'set', path: ['modules', 'fileManagement'], value: true }],
   })
   await handler('set', {
+    ops: [{ op: 'set', path: ['fileManagement', 'sessionChangedFiles'], value: false }],
+  })
+  await handler('set', {
     ops: [{ op: 'set', path: ['controlBaseUrls'], value: ['https://channel.codingns.com:1443', 'https://control.example.com'] }],
   })
   assert.deepEqual(received, {
