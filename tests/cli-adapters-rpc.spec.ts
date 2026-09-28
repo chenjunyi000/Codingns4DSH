@@ -579,6 +579,7 @@ test('Codex 独立压缩 turn 的 item 通知不会被当前 turn 过滤器丢�
         }
         stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'user-turn', status: 'inProgress' } } })}\n`)
         setImmediate(() => {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'auto-compact-thread', tokenUsage: { last: { input_tokens: 99, output_tokens: 1, total_tokens: 100 }, contextWindow: 100 } } })}\n`)
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/started', params: { threadId: 'auto-compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'compact-item' } } })}\n`)
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/completed', params: { threadId: 'auto-compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'compact-item', summary: '已压缩旧上下文' } } })}\n`)
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/compacted', params: { threadId: 'auto-compact-thread', summary: '已压缩旧上下文' } })}\n`)
@@ -593,8 +594,62 @@ test('Codex 独立压缩 turn 的 item 通知不会被当前 turn 过滤器丢�
   const chunks = []
   for await (const chunk of driver.executeTurn({ sessionId: 'auto-compact-session', messages: [], prompt: '继续' })) chunks.push(chunk)
   assert.deepEqual(chunks.filter((chunk) => chunk.type === 'context-compaction').map((chunk) => chunk.phase), ['start', 'summary', 'end'])
+  assert.equal(chunks.find((chunk) => chunk.type === 'context-compaction' && chunk.phase === 'summary')?.shadowedTokenCount, 99)
   assert.equal(chunks.some((chunk) => chunk.type === 'text-delta' && chunk.text === '继续回答'), true)
   assert.equal(chunks.at(-1)?.type, 'finish')
+  driver.dispose()
+})
+
+test('Codex 自动压缩后第二轮使用压缩后的上下文状态', async () => {
+  const methods: string[] = []
+  let turnCount = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        methods.push(request.method)
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'auto-reset-thread' } } })}\n`)
+          return
+        }
+        if (request.method !== 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        turnCount += 1
+        const turnId = `auto-reset-turn-${turnCount}`
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+        setImmediate(() => {
+          const usage = turnCount === 1
+            ? { input_tokens: 99, output_tokens: 1, total_tokens: 100 }
+            : { input_tokens: 12, output_tokens: 1, total_tokens: 13 }
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'auto-reset-thread', tokenUsage: { last: usage, contextWindow: 100 } } })}\n`)
+          if (turnCount === 1) {
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/started', params: { threadId: 'auto-reset-thread', turnId: 'auto-reset-compact', item: { type: 'contextCompaction', id: 'auto-reset-item' } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/completed', params: { threadId: 'auto-reset-thread', turnId: 'auto-reset-compact', item: { type: 'contextCompaction', id: 'auto-reset-item', summary: '已自动压缩' } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/compacted', params: { threadId: 'auto-reset-thread', summary: '已自动压缩' } })}\n`)
+          }
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'auto-reset-thread', turnId, itemId: turnId, delta: `第${turnCount}轮` } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'auto-reset-thread', turn: { id: turnId, status: 'completed' } } })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'auto-reset-session', messages: [], prompt: '第一轮' })) first.push(chunk)
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'auto-reset-session', messages: [], prompt: '第二轮' })) second.push(chunk)
+
+  assert.equal(first.some((chunk) => chunk.type === 'context-compaction'), true)
+  assert.equal(second.find((chunk) => chunk.type === 'usage')?.contextTokens, 12)
+  assert.equal(methods.filter((method) => method === 'thread/compact/start').length, 0)
+  assert.equal(second.at(-1)?.reason, 'stop')
   driver.dispose()
 })
 

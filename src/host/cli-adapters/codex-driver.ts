@@ -222,7 +222,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
           const rawChunk = codexMessageToChunk(message)
           if (rawChunk === null) continue
           if (rawChunk.type !== 'finish') sawMeaningfulEvent = true
-          const chunk = stabilizeCodexUsage(session, rawChunk)
+          const chunk = stabilizeCodexEvent(session, rawChunk)
           yield chunk
         }
         if (input.signal?.aborted) await this.interrupt(input.sessionId)
@@ -409,7 +409,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         }
         active.currentAssistantMessageId = chunk.messageId
       }
-      const stabilizedChunk = stabilizeCodexUsage(session, chunk)
+      const stabilizedChunk = stabilizeCodexEvent(session, chunk)
       if (stabilizedChunk.type === 'tool-event' && (stabilizedChunk.status === 'completed' || stabilizedChunk.status === 'failed')) {
         active.sawCompletedTool = true
       }
@@ -523,12 +523,16 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       await session.rpc.request('thread/compact/start', { threadId: session.threadId }, { signal: input.signal, killOnAbort: false })
       await done
       if (summary !== undefined || shadowedTokenCount !== undefined || shadowedItemCount !== undefined) {
+        // Codex 的 app-server 通知通常不携带被压缩 token 数。DSH 的
+        // contextPressure 必须用该数扣除已被替换的 surface；这里使用压缩前
+        // 最后一次 Provider prompt 规模作为保守锚点，不能把缺失值写成 0。
+        const resolvedShadowedTokenCount = shadowedTokenCount ?? session.contextTokens
         session.pendingCompactionEvents.push({
           type: 'context-compaction',
           phase: 'summary',
           compactionId,
           ...(summary === undefined ? {} : { summary }),
-          ...(shadowedTokenCount === undefined ? {} : { shadowedTokenCount }),
+          ...(resolvedShadowedTokenCount === undefined ? {} : { shadowedTokenCount: resolvedShadowedTokenCount }),
           ...(shadowedItemCount === undefined ? {} : { shadowedItemCount }),
         })
       }
@@ -679,6 +683,20 @@ function stabilizeCodexUsage(session: CodexSession, event: CodingNsAgentEvent): 
     contextTokens,
     contextUsageRatio: Number(Math.min(1, contextTokens / session.contextWindow).toFixed(6)),
   }
+}
+
+function stabilizeCodexEvent(session: CodexSession, event: CodingNsAgentEvent): CodingNsAgentEvent {
+  if (event.type !== 'context-compaction') return stabilizeCodexUsage(session, event)
+
+  // 自动压缩的 item 通知没有独立 usage。压缩结束后清零本地状态，避免下一轮
+  // 把压缩前的旧 prompt 规模误认为当前上下文并再次发起压缩。
+  if (event.phase === 'end') {
+    session.contextTokens = 0
+    return event
+  }
+
+  if (event.phase !== 'summary' || event.shadowedTokenCount !== undefined || session.contextTokens === undefined) return event
+  return { ...event, shadowedTokenCount: session.contextTokens }
 }
 
 function prepareCodexSession(session: CodexSession, input: CodingNsCliTurnInput): void {
