@@ -40,6 +40,8 @@ export interface DshHostDeviceRuntimeOptions {
   readonly dshVersion?: string
   /** 覆盖自动获取的计算机名，主要用于测试和受控运行环境。 */
   readonly computerName?: string
+  /** 当前 DSH 配置文件名称，用于在远端 Host 列表中区分同机实例。 */
+  readonly profileName?: string
   readonly capabilities?: readonly string[]
   readonly resources?: Pick<FeatureResourceScope, 'add'>
   readonly signalingSocketFactory?: Parameters<typeof startHostRelayRuntime>[0]['signalingSocketFactory']
@@ -74,12 +76,13 @@ export async function startDshHostDeviceRuntime(options: DshHostDeviceRuntimeOpt
   const dtlsStore = options.dtlsStore ?? new FileHostDtlsIdentityStore(defaultDtlsPath())
   const identity = await ensureHostDtlsIdentity(dtlsStore)
   const dshVersion = options.dshVersion?.trim() || DSH_VERSION
+  const reportedDshVersion = formatDshVersion(dshVersion, options.profileName ?? process.env.CODINGNS4DSH_PROFILE_NAME)
   const computerName = options.computerName?.trim() || hostname().trim() || 'unknown'
-  const heartbeatDetails: DshDeviceHeartbeatRequest = { dshVersion, computerName, dtlsFingerprint: identity.fingerprint }
+  const heartbeatDetails: DshDeviceHeartbeatRequest = { dshVersion: reportedDshVersion, computerName, dtlsFingerprint: identity.fingerprint }
   const registerDevice = async (previous: DshDeviceCredentialRecord | null): Promise<{ credential: DshDeviceCredentialRecord; device: DshDeviceSummary }> => {
     const request: DshDeviceRegistrationRequest = {
       displayName: options.displayName?.trim() || previous?.displayName || 'DSH Host',
-      dshVersion,
+      dshVersion: reportedDshVersion,
       computerName,
       devicePublicKey: identity.certPem,
       dtlsFingerprint: identity.fingerprint,
@@ -94,7 +97,7 @@ export async function startDshHostDeviceRuntime(options: DshHostDeviceRuntimeOpt
       dtlsFingerprint: identity.fingerprint,
       tunnelDomain: registered.device.tunnelDomain ?? null,
       displayName: registered.device.displayName,
-      dshVersion: registered.device.dshVersion ?? dshVersion,
+      dshVersion: registered.device.dshVersion ?? reportedDshVersion,
       computerName: registered.device.computerName ?? computerName,
       savedAt: new Date().toISOString(),
     }
@@ -190,8 +193,18 @@ async function requestDshTicket(
   }
 }
 
-function defaultDshCredentialPath(): string { return join(homedir(), '.config', 'codingns4dsh', 'device-credential.json') }
-function defaultDtlsPath(): string { return join(homedir(), '.config', 'codingns4dsh', 'dtls-identity.json') }
+function defaultDshCredentialPath(): string { return join(defaultStateDirectory(), 'device-credential.json') }
+function defaultDtlsPath(): string { return join(defaultStateDirectory(), 'dtls-identity.json') }
+
+function defaultStateDirectory(): string {
+  return process.env.CODINGNS4DSH_STATE_DIR?.trim() || join(homedir(), '.config', 'codingns4dsh')
+}
+
+/** 只装饰远端列表展示值；Transport 握手仍使用原始 DSH 版本。 */
+function formatDshVersion(version: string, profileName: string | undefined): string {
+  const profile = profileName?.trim()
+  return profile ? `${version} (配置: ${profile})` : version
+}
 
 function isRecoverableDshDeviceCredentialError(error: unknown): boolean {
   return isRecord(error) && error.status === 404 && error.errorCode === 'DSH_DEVICE_NOT_FOUND'

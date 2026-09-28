@@ -6,6 +6,7 @@ import { CodingNsAuthSession } from '../auth-session.js'
 import { HttpCodingNsControlApiClient } from '../control-api-client.js'
 import { FileCodingNsCredentialStore, FileDshDeviceCredentialStore } from '../credential-store.js'
 import { startDshHostDeviceRuntime, type DshHostDeviceRuntime } from '../dsh-device-runtime.js'
+import { FileHostDtlsIdentityStore } from '../relay-tunnel-runtime.js'
 import type { DshRelayTicketRequest } from '../../shared/contracts/dsh-device.js'
 import { CodingNsRpcError } from '../rpc-table.js'
 import type { CodingNsHostServices } from './types.js'
@@ -46,6 +47,7 @@ export function createAuthFeature(): FeatureModule<CodingNsHostServices> {
       const stateDirectory = process.env.CODINGNS4DSH_STATE_DIR?.trim() || join(homedir(), '.config', 'codingns4dsh')
       const credentials = new FileCodingNsCredentialStore(join(stateDirectory, 'codingns-credentials.json'))
       const dshCredentials = new FileDshDeviceCredentialStore(join(stateDirectory, 'device-credential.json'))
+      const dtlsIdentity = new FileHostDtlsIdentityStore(join(stateDirectory, 'dtls-identity.json'))
       const loginProtectionStore = new FileLanAccessDshLoginStore(join(stateDirectory, 'lan-access-login.json'))
       let session: CodingNsAuthSession | null = null
       let sessionBaseUrl: string | null = null
@@ -95,6 +97,7 @@ export function createAuthFeature(): FeatureModule<CodingNsHostServices> {
               controlClient: target.getControlClient(),
               accessToken,
               credentialStore: dshCredentials,
+              dtlsStore: dtlsIdentity,
               accessTokenProvider: () => target.getAccessToken(),
               withAccessToken: <T>(operation: (accessToken: string) => Promise<T>) => target.withAccessToken(operation),
               ...(context.services.dshVersion === undefined ? {} : { dshVersion: context.services.dshVersion }),
