@@ -11,6 +11,17 @@ import { dshPopupSurfaceStyle, dshThemeColor } from './theme.js'
 
 const QUICK_PHRASE_FALLBACK_SIZE = 28
 const QUICK_PHRASE_FALLBACK_ICON_SIZE = 14
+const QUICK_PHRASE_STYLE_ID = 'codingns4dsh-quick-phrase-responsive-style'
+
+/** 移动端弹层脱离对话窗口边界，使用整个视口宽度。 */
+function installQuickPhraseStyles(): void {
+  if (typeof document === 'undefined' || document.querySelector(`style[data-plugin-css="${QUICK_PHRASE_STYLE_ID}"]`) !== null) return
+  const style = document.createElement('style')
+  style.dataset.plugin = 'codingns4dsh'
+  style.dataset.pluginCss = QUICK_PHRASE_STYLE_ID
+  style.textContent = '@media (max-width: 768px){.codingns4dsh-quick-phrase-overlay{left:0!important;right:0!important;width:100vw!important}}'
+  document.head.appendChild(style)
+}
 
 type QuickPhraseSlotProps = {
   readonly useInput: SnapshotSelectorHook<InputState>
@@ -25,6 +36,7 @@ export function registerQuickPhraseSlot(
   settings: CodingNsSettingsStore<CodingNsSettings>,
   locale: CodingNsLocale,
 ): () => void {
+  installQuickPhraseStyles()
   const t = locale.bind('codingns')
   return slots.inject('conversation.input.left', () => slots.register({
     name: 'conversation.input.left',
@@ -196,6 +208,7 @@ function QuickPhraseSlot(props: QuickPhraseSlotProps): ReactElement | null {
       createElement('path', { d: 'M5 5h14v14H9l-4 4V5z' }),
     )),
     open && createElement('div', {
+      className: 'codingns4dsh-quick-phrase-overlay',
       role: 'dialog',
       'aria-label': t('workspace.quickPhrasesDialogLabel'),
       'aria-modal': true,
@@ -269,6 +282,7 @@ function QuickPhraseSlot(props: QuickPhraseSlotProps): ReactElement | null {
       ),
     )),
     addOpen && createElement('div', {
+      className: 'codingns4dsh-quick-phrase-overlay',
       role: 'dialog',
       'aria-label': t('workspace.quickPhrasesAddDialogLabel'),
       'aria-modal': true,

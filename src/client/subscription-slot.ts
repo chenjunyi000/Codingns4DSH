@@ -23,8 +23,21 @@ interface SubscriptionSlotProps {
   readonly useSession?: SessionSelector
 }
 
+const SUBSCRIPTION_STYLE_ID = 'codingns4dsh-subscription-responsive-style'
+
+/** 移动端订阅入口只保留图标，完整数据仍可在点击后的弹层中查看。 */
+function installSubscriptionStyles(): void {
+  if (typeof document === 'undefined' || document.querySelector(`style[data-plugin-css="${SUBSCRIPTION_STYLE_ID}"]`) !== null) return
+  const style = document.createElement('style')
+  style.dataset.plugin = 'codingns4dsh'
+  style.dataset.pluginCss = SUBSCRIPTION_STYLE_ID
+  style.textContent = '@media (max-width: 768px){.codingns4dsh-subscription-trigger{gap:0!important;padding-left:4px!important;padding-right:4px!important}.codingns4dsh-subscription-label,.codingns4dsh-subscription-value{display:none!important}.codingns4dsh-subscription-popover{position:fixed!important;left:12px!important;right:12px!important;bottom:48px!important;width:auto!important;min-width:0!important;max-width:none!important;max-height:calc(100vh - 72px)!important;overflow:auto!important}}'
+  document.head.appendChild(style)
+}
+
 /** 在 DSH 原生步骤统计左侧显示当前 Agent 的订阅余量。 */
 export function registerSubscriptionSlot(slots: SlotRegistry, rpc: CodingNsRpcClient): () => void {
+  installSubscriptionStyles()
   return slots.inject('conversation.composer.dock', () => slots.register({
     name: 'conversation.composer.dock',
     id: 'codingns4dsh-subscription',
@@ -156,21 +169,22 @@ function CommandCodeSubscriptionSlot(props: SubscriptionSlotProps): ReactElement
     )
     : sub2api !== undefined
       ? createElement('span', { 'aria-hidden': true, style: sub2apiIdentityStyle },
-        logoSource !== '' && createElement('img', { src: logoSource, alt: '', width: 20, height: 20, style: sub2apiLogoStyle }),
-        createElement('span', undefined, formatSub2ApiMoney(sub2api.balance, sub2api.unit)),
+        createElement('img', { src: logoSource || providerIconUrl(adapterId ?? 'dsh') || '', alt: '', width: 20, height: 20, style: sub2apiLogoStyle }),
+        createElement('span', { className: 'codingns4dsh-subscription-value' }, formatSub2ApiMoney(sub2api.balance, sub2api.unit)),
       )
       : deepseek !== undefined
         ? createElement('span', { 'aria-hidden': true, style: deepseekBalanceIdentityStyle },
         deepseekIconSource !== undefined && createElement('img', { src: deepseekIconSource, alt: '', width: 18, height: 18, style: deepseekLogoStyle }),
-        createElement('span', { style: deepseekBalanceStyle }, deepseekBalance === null ? '--' : formatDeepseekMoney(deepseekBalance.totalBalance, deepseekBalance.currency)),
+        createElement('span', { className: 'codingns4dsh-subscription-value', style: deepseekBalanceStyle }, deepseekBalance === null ? '--' : formatDeepseekMoney(deepseekBalance.totalBalance, deepseekBalance.currency)),
         )
         : createElement('span', { 'aria-hidden': true, style: deepseekBalanceIdentityStyle },
           deepseekIconSource !== undefined && createElement('img', { src: deepseekIconSource, alt: '', width: 18, height: 18, style: deepseekLogoStyle }),
-          createElement('span', { style: deepseekBalanceStyle }, formatProviderBalance(providerBalance)),
+          createElement('span', { className: 'codingns4dsh-subscription-value', style: deepseekBalanceStyle }, formatProviderBalance(providerBalance)),
         )
   return createElement('div', { ref: rootRef, style: subscriptionRootStyle },
     createElement('button', {
       type: 'button',
+      className: 'codingns4dsh-subscription-trigger',
       onClick: () => setOpen((value) => !value),
       disabled: loading && usage === null,
       'aria-label': label,
@@ -178,7 +192,7 @@ function CommandCodeSubscriptionSlot(props: SubscriptionSlotProps): ReactElement
       style: subscriptionTriggerStyle,
     },
       triggerContent,
-      createElement('span', { style: subscriptionLabelStyle },
+      createElement('span', { className: 'codingns4dsh-subscription-label', style: subscriptionLabelStyle },
         sub2api === undefined && deepseek === undefined && providerBalance === undefined
           ? (resetLabel ?? '订阅余量')
           : sub2api !== undefined ? `今日 ${formatSub2ApiMoney(sub2api.today.cost, sub2api.unit)}` : deepseek !== undefined ? '账户余额' : '官方余量',
@@ -197,7 +211,7 @@ function SubscriptionPopover({ usage, providerName }: { readonly usage: CliSubsc
     { id: 'secondary', label: formatSubscriptionWindowLabel(usage.secondary, '周额度'), window: usage.secondary },
     { id: 'monthly', label: formatSubscriptionWindowLabel(usage.monthly, '月额度'), window: usage.monthly },
   ] as const
-  return createElement('div', { role: 'dialog', 'aria-label': `${providerName} 订阅使用情况`, style: subscriptionPopoverStyle },
+  return createElement('div', { className: 'codingns4dsh-subscription-popover', role: 'dialog', 'aria-label': `${providerName} 订阅使用情况`, style: subscriptionPopoverStyle },
     createElement('div', { style: popoverHeadingStyle },
       createElement('strong', undefined, `${providerName} 订阅`),
       usage.planType && createElement('span', { style: { color: dshThemeColor.labelTertiary } }, formatPlanType(usage.planType)),
@@ -222,7 +236,7 @@ function formatSubscriptionWindowLabel(window: CliSubscriptionWindow | null, fal
 }
 
 function ProviderBalancePopover({ usage, providerName }: { readonly usage: ProviderBalanceUsage; readonly providerName: string }): ReactElement {
-  return createElement('div', { role: 'dialog', 'aria-label': `${providerName} 官方余量`, style: subscriptionPopoverStyle },
+  return createElement('div', { className: 'codingns4dsh-subscription-popover', role: 'dialog', 'aria-label': `${providerName} 官方余量`, style: subscriptionPopoverStyle },
     createElement('div', { style: popoverHeadingStyle },
       createElement('strong', undefined, `${providerName} 官方余量`),
       createElement('span', { style: { color: dshThemeColor.labelTertiary } }, formatProviderBalance(usage)),
@@ -235,7 +249,7 @@ function ProviderBalancePopover({ usage, providerName }: { readonly usage: Provi
 }
 
 function DeepseekPopover({ usage, providerName }: { readonly usage: DeepseekUsage; readonly providerName: string }): ReactElement {
-  return createElement('div', { role: 'dialog', 'aria-label': `${providerName} 账户余额`, style: subscriptionPopoverStyle },
+  return createElement('div', { className: 'codingns4dsh-subscription-popover', role: 'dialog', 'aria-label': `${providerName} 账户余额`, style: subscriptionPopoverStyle },
     createElement('div', { style: popoverHeadingStyle },
       createElement('strong', undefined, `${providerName} 账户余额`),
       createElement('span', { style: { color: usage.isAvailable === false ? dshThemeColor.error : dshThemeColor.labelTertiary } }, usage.isAvailable === false ? '不可用' : '可用'),
@@ -252,7 +266,7 @@ function DeepseekPopover({ usage, providerName }: { readonly usage: DeepseekUsag
 }
 
 function Sub2ApiPopover({ usage, providerName }: { readonly usage: Sub2ApiUsage; readonly providerName: string }): ReactElement {
-  return createElement('div', { role: 'dialog', 'aria-label': `${providerName} 上游用量`, style: subscriptionPopoverStyle },
+  return createElement('div', { className: 'codingns4dsh-subscription-popover', role: 'dialog', 'aria-label': `${providerName} 上游用量`, style: subscriptionPopoverStyle },
     createElement('div', { style: popoverHeadingStyle },
       createElement('strong', undefined, `${providerName} 上游用量`),
       createElement('span', { style: { color: dshThemeColor.labelTertiary } }, formatSub2ApiMoney(usage.balance, usage.unit)),
