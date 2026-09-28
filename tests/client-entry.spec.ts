@@ -42,7 +42,7 @@ test('Desktop dsh-app 页面不请求不存在的本地身份端点', async () =
   assert.match(source, /location\.protocol[\s\S]{0,180}protocol !== 'http:'[\s\S]{0,100}protocol !== 'https:'/u)
 })
 
-test('Host 启动页在运行时合并 Web 所有权且不覆盖 Desktop Transport', async () => {
+test('Host 启动页只合并既有 Transport 且不覆盖 Desktop Transport', async () => {
   const source = await readFile(hostSource, 'utf8')
   assert.match(source, /webserver\/index-inject/u)
   assert.match(source, /injectDshWebTransportOwnership/u)

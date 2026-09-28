@@ -10,15 +10,13 @@ export interface DshIndexInjectionEntry {
  * 在启动页声明 Host 所有权，同时保留 Desktop 已经提供的完整 Transport。
  *
  * 这里只使用 DSH WebServer 支持的 JSON global 行，不在首页安装全局 setter。
- * setter 会改变原生 Client 对 Transport 的启动顺序；在 Windows 重启时序下，
- * 这会把本应由 DSH Client 接管的全局状态变成插件的副作用。
+ * 页面可能由 Desktop Shell 在更晚的阶段注入自己的 Transport；因此找不到
+ * 已有 Transport 时必须保持不变，不能追加同名全局，否则会覆盖 Desktop 的
+ * `streamBaseUrl`，让 `/api/remote.mux` 退回 `ws://app`。
  */
 export function injectDshWebTransportOwnership(table: unknown[]): void {
   const index = table.findIndex((entry) => isTransportInjection(entry))
-  if (index < 0) {
-    table.push({ kind: 'global', name: '__DSH_TRANSPORT__', value: { ownsHost: true } })
-    return
-  }
+  if (index < 0) return
 
   const entry = table[index]
   if (!isRecord(entry) || !isRecord(entry.value)) return

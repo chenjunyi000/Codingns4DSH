@@ -67,7 +67,8 @@ export function apply(ctx?: Context): void {
       hasWebServer: (hostCtx as Context & { webServer?: unknown }).webServer !== undefined,
     })
     const webServerPort = (hostCtx as Context & { webServer: { port: number } }).webServer.port
-    // 在注入表执行时合并 ownsHost，保留 Desktop 或远程 iframe 已准备好的 Transport。
+    // 仅在 DSH 已提供 Transport 时补充 ownsHost；普通 Web 的 Codingns4DSH
+    // 设置由 Client RPC 桥接持久化，不能在这里追加同名全局覆盖 Desktop。
     const indexInjectionEvents = hostCtx as unknown as { on(name: string, listener: (table: unknown[]) => void): unknown }
     debugInfo('codingns4dsh: host index injection registration begin')
     indexInjectionEvents.on('webserver/index-inject', (table) => {
@@ -378,3 +379,13 @@ export {
   type PeerHostRelayConnectorOptions,
   type PeerHostRelayTransportFactory,
   type PeerHostReconnectManagerOptions,
+  type PeerHostReconnectSnapshot,
+  type PeerHostReconnectState,
+} from './modules/peer-host/peer-host-relay.js'
+export {
+  createPeerHostDiagnosticSink,
+  peerHostSafeError,
+  toPeerHostDiagnosticSnapshot,
+  type PeerHostDiagnosticSink,
+  type PeerHostDiagnosticSnapshot,
+} from './modules/peer-host/peer-host-diagnostics.js'

@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { injectDshWebTransportOwnership } from '../data/build/dist/host/index-injection.js'
 
-test('普通 Web 入口注入 Host 所有权', () => {
+test('没有既有 Transport 时不追加同名全局', () => {
   const table: unknown[] = []
 
   injectDshWebTransportOwnership(table)
 
-  assert.deepEqual(table, [{ kind: 'global', name: '__DSH_TRANSPORT__', value: { ownsHost: true } }])
+  assert.deepEqual(table, [])
 })
 
 test('Desktop Transport 保留 streamBaseUrl 并补充 Host 所有权', () => {
