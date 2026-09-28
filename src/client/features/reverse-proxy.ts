@@ -1,6 +1,5 @@
 import { ReverseProxyPanel } from './reverse-proxy-panel.js'
-import type { CodingNsClientFeatureModule } from './types.js'
-import type { CodingNsRpcClient } from './types.js'
+import type { CodingNsClientFeatureModule, CodingNsClientServices, CodingNsRpcClient } from './types.js'
 import { startDshH5Bootstrap } from '../dsh-h5-bootstrap.js'
 import { callCodingNsRpc } from '../settings-bridge.js'
 import { LOGIN_PROTECTION_SESSION_EVENT, readLoginProtectionSession } from './login-protection-session.js'
@@ -52,9 +51,11 @@ export const reverseProxyFeature: CodingNsClientFeatureModule = {
       // 插件贡献，禁止同一页面重新申请票据并建立第二条中继连接。
       return () => { if (isCurrent()) delete runtime.__CODINGNS4DSH_REVERSE_PROXY_EPOCH__ }
     }
-    // 当前 DSH Client 已经在启动期登记默认 Transport。动态功能不能在
-    // Cordis 启动后再次接管全局 Connection；独立 H5 页面使用专用入口。
-    if (hasPreCordisTransport()) {
+    // 页面级 Transport 已经在启动期由 DSH 或 Desktop 登记，动态功能不能在
+    // Cordis 启动后再次接管全局 Connection：两个 owner 会竞争同一个
+    // generation，插件自己的中继连接还会覆盖页面真实的传输实现。
+    // 独立 H5 页面使用专用入口（startDshH5BrowserBootstrap），不经过功能模块。
+    if (hasPageConnection(context.services)) {
       return () => { if (isCurrent()) delete runtime.__CODINGNS4DSH_REVERSE_PROXY_EPOCH__ }
     }
     const abort = new AbortController()
@@ -126,8 +127,23 @@ export const reverseProxyFeature: CodingNsClientFeatureModule = {
   settingsPanel: ReverseProxyPanel,
 }
 
-function hasPreCordisTransport(): boolean {
-  return (globalThis as typeof globalThis & { __DSH_TRANSPORT__?: unknown }).__DSH_TRANSPORT__ !== undefined
+/**
+ * 本页是否已经由 DSH Client 持有页面级 Connection。
+ *
+ * 功能模块运行在 DSH Client 内部，页面级 Transport 已由 DSH 或 Desktop 在启动期
+ * 登记。这里只读取显式的连接服务：页面级 Transport 全局同时被 Desktop 壳、Host
+ * 启动页注入行和中继 iframe 桥三方写入，用它的存在性推断运行环境无法区分
+ * 「Desktop 页面」「Host 自己的 Web 页面」和「普通浏览器页面」，一旦它的写入策略
+ * 变化，中继模块的启停就会跟着漂移。
+ */
+function hasPageConnection(services: CodingNsClientServices): boolean {
+  const ctx = services.uiContext as { get?: (name: string) => unknown } | undefined
+  if (ctx === undefined || typeof ctx.get !== 'function') return false
+  try {
+    return ctx.get('connection') !== undefined
+  } catch {
+    return false
+  }
 }
 
 function isTransportAlreadyRegistered(error: unknown): boolean {

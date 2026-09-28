@@ -806,7 +806,7 @@ function createBridgeScript(): string {
     const parentTransport = (() => {
       try { return parent.__CODINGNS4DSH_REMOTE_TRANSPORT__; } catch { return undefined; }
     })();
-    globalThis.__DSH_TRANSPORT__ = {
+    const bridgedTransport = {
       fetch: window.fetch.bind(window),
       openStream: openRemoteStream,
       // 仅作为 iframe 内 RemoteWebSocket 的虚拟基址，实际请求仍回到父窗口。
@@ -818,6 +818,28 @@ function createBridgeScript(): string {
       reconnect: parentTransport?.reconnect?.bind(parentTransport),
       close: parentTransport?.close?.bind(parentTransport),
     };
+    // 远程 DSH Web 的启动页自带 Host 注入的 __DSH_TRANSPORT__ 行，它在本脚本之后
+    // 执行：直接赋值会覆盖桥接 Transport，丢掉 openStream 和 streamBaseUrl，让
+    // /api/remote.mux 退回 iframe 自己的 WebSocket（CSP connect-src 为 none），
+    // 会话列表和原生设置页面会一起加载失败。这里改为合并写入，后到的赋值只能补充
+    // 字段，桥接能力始终保留。
+    const mergeTransport = (next) => Object.assign(
+      {},
+      next !== null && typeof next === 'object' ? next : {},
+      bridgedTransport,
+    );
+    let transportValue = mergeTransport(globalThis.__DSH_TRANSPORT__);
+    try {
+      Object.defineProperty(globalThis, '__DSH_TRANSPORT__', {
+        configurable: true,
+        enumerable: true,
+        get: () => transportValue,
+        set: (next) => { transportValue = mergeTransport(next); },
+      });
+    } catch {
+      // 同名属性不可配置时退化为一次合并赋值，同样保留桥接字段。
+      globalThis.__DSH_TRANSPORT__ = mergeTransport(globalThis.__DSH_TRANSPORT__);
+    }
     globalThis.__CODINGNS4DSH_DEBUG__ = (event, fields = {}) => {
       bridgeLog('client.' + String(event), fields);
     };
