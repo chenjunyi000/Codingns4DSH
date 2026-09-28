@@ -32,7 +32,7 @@ export interface WebRtcClientConnectorOptions {
   peerConnectionFactory(options: { iceServers: RelayIceServer[]; iceTransportPolicy: 'all' | 'relay' }): PeerConnectionLike
   channelLabel?: string
   timeoutMs?: number
-  /** ICE 短暂进入 disconnected 时保留连接的时间，避免中继链路抖动触发重连。 */
+  /** 已保留的兼容参数；disconnected 不再单独触发重连，以 DataChannel/failed/closed 为准。 */
   disconnectedGracePeriodMs?: number
   heartbeatIntervalMs?: number
   debug?: DshTransportDebugLogger
@@ -73,13 +73,7 @@ export async function connectWebRtcClient(options: WebRtcClientConnectorOptions)
   const carrier = createDataChannelCarrier(channel, { ...(options.debug ? { debug: options.debug } : {}) })
   let closed = false
   let closeNotified = false
-  let disconnectedTimer: ReturnType<typeof setTimeout> | undefined
   const closeListeners = new Set<(error?: Error) => void>()
-  const clearDisconnectedTimer = () => {
-    if (disconnectedTimer === undefined) return
-    clearTimeout(disconnectedTimer)
-    disconnectedTimer = undefined
-  }
   const notifyClosed = (error?: Error) => {
     if (closeNotified) return
     closeNotified = true
@@ -94,20 +88,8 @@ export async function connectWebRtcClient(options: WebRtcClientConnectorOptions)
     const value = state.connectionState ?? state.iceConnectionState
     debug.log('webrtc.peer.state', { state: value ?? 'unknown' })
     if (value === 'failed' || value === 'closed') {
-      clearDisconnectedTimer()
       notifyClosed(new Error(`PeerConnection ${value}`))
-      return
     }
-    if (value === 'disconnected') {
-      if (disconnectedTimer !== undefined) return
-      const gracePeriod = Math.max(0, options.disconnectedGracePeriodMs ?? 5_000)
-      disconnectedTimer = setTimeout(() => {
-        disconnectedTimer = undefined
-        if (!closed) notifyClosed(new Error('PeerConnection disconnected'))
-      }, gracePeriod)
-      return
-    }
-    clearDisconnectedTimer()
   }
   signaling.addEventListener('close', onSignalingClose)
   signaling.addEventListener('error', onSignalingError)
@@ -124,7 +106,6 @@ export async function connectWebRtcClient(options: WebRtcClientConnectorOptions)
     signaling.removeEventListener('error', onSignalingError)
     peerConnection.removeEventListener?.('connectionstatechange', onPeerState)
     peerConnection.removeEventListener?.('iceconnectionstatechange', onPeerState)
-    clearDisconnectedTimer()
     for (const cleanup of cleanupListeners.splice(0)) cleanup()
     await carrier.close()
     peerConnection.close()

@@ -8,11 +8,18 @@ import type { CodingNsCarrier } from '../data/build/dist/transport/carrier.js'
 class FakeCarrier implements CodingNsCarrier {
   state: CodingNsCarrier['state'] = 'open'
   private listeners = new Set<(data: Uint8Array) => void>()
+  private closeListeners = new Set<(reason?: string) => void>()
   sent: Uint8Array[] = []
   send(data: Uint8Array): void { this.sent.push(data) }
   subscribe(listener: (data: Uint8Array) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  onClosed(listener: (reason?: string) => void): () => void { this.closeListeners.add(listener); return () => this.closeListeners.delete(listener) }
   emit(data: Uint8Array): void { for (const listener of this.listeners) listener(data) }
-  async close(): Promise<void> { this.state = 'closed' }
+  emitClosed(reason = 'fake carrier closed'): void {
+    if (this.state === 'closed') return
+    this.state = 'closed'
+    for (const listener of [...this.closeListeners]) listener(reason)
+  }
+  async close(): Promise<void> { this.emitClosed() }
 }
 
 test('Tunnel Frame 编解码并拒绝非法版本', () => {
@@ -74,6 +81,18 @@ test('Transport 关闭时 pending RPC 和 stream waiter 都收敛', async () => 
   await transport.close()
   await assert.rejects(rpc, /Transport 已关闭/u)
   await assert.rejects(next, /Transport 已关闭/u)
+})
+
+test('Carrier 真实关闭会立即失效当前 generation 并收敛 pending RPC', async () => {
+  const carrier = new FakeCarrier()
+  const transport = new DshCodingNsTransport({ carrier, generation: { id: 1, host: { home: '/tmp' } } })
+  let generation: number | undefined = transport.getGeneration()?.id
+  transport.onGenerationChange((next) => { generation = next?.id })
+  const rpc = transport.rpc({ method: 'pending', payload: {} })
+  carrier.emitClosed('DataChannel closed')
+  assert.equal(generation, undefined)
+  await assert.rejects(rpc, /DataChannel closed/u)
+  await transport.close()
 })
 
 test('generation 更新会拒绝旧请求并隔离旧响应', async () => {

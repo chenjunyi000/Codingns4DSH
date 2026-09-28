@@ -66,7 +66,7 @@ test('WebRTC Connector 按 offer、answer、fingerprint 顺序建立 Carrier', a
   await connection.close()
 })
 
-test('客户端短暂 disconnected 会等待恢复，持续 disconnected 才通知关闭', async () => {
+test('客户端 disconnected 不会主动关闭，PeerConnection failed 才通知关闭', async () => {
   const socketListeners = new Map<string, (event: Event) => void>()
   const socket = {
     send(data: string) {
@@ -109,20 +109,15 @@ test('客户端短暂 disconnected 会等待恢复，持续 disconnected 才通�
     },
     signalingSocketFactory: () => socket,
     peerConnectionFactory: () => peer,
-    disconnectedGracePeriodMs: 20,
   })
   let closedCount = 0
   connection.onClosed(() => { closedCount += 1 })
   peer.connectionState = 'disconnected'
   peerListeners.get('connectionstatechange')?.({} as Event)
-  await new Promise((resolve) => setTimeout(resolve, 5))
-  peer.connectionState = 'connected'
-  peerListeners.get('connectionstatechange')?.({} as Event)
   await new Promise((resolve) => setTimeout(resolve, 30))
   assert.equal(closedCount, 0)
-  peer.connectionState = 'disconnected'
+  peer.connectionState = 'failed'
   peerListeners.get('connectionstatechange')?.({} as Event)
-  await new Promise((resolve) => setTimeout(resolve, 30))
   assert.equal(closedCount, 1)
   await connection.close()
   assert.equal(channelListeners.has('close'), false)

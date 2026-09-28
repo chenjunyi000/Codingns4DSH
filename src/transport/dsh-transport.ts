@@ -30,6 +30,7 @@ export class DshCodingNsTransport implements CodingNsTransport {
   private readonly listeners = new Set<(generation: CodingNsTransportGeneration | undefined) => void>()
   private readonly multiplexer: DshTunnelMultiplexer
   private currentCarrier: CodingNsCarrier
+  private unsubscribeCarrierClosed: (() => void) | undefined
   private generation: CodingNsTransportGeneration | undefined
 
   constructor(private readonly options: DshCodingNsTransportOptions) {
@@ -44,6 +45,7 @@ export class DshCodingNsTransport implements CodingNsTransport {
       ...(options.flowControl ? { flowControl: options.flowControl } : {}),
       ...(options.debug ? { debug: options.debug } : {}),
     })
+    this.bindCarrierClosed(options.carrier)
   }
 
   rpc<TResponse = unknown, TPayload = unknown>(request: CodingNsRpcRequest<TPayload>): Promise<TResponse> {
@@ -115,6 +117,7 @@ export class DshCodingNsTransport implements CodingNsTransport {
     this.multiplexer.replaceCarrier(carrier)
     this.multiplexer.setSession(session)
     this.currentCarrier = carrier
+    this.bindCarrierClosed(carrier)
     this.updateGeneration(generation)
   }
 
@@ -127,11 +130,20 @@ export class DshCodingNsTransport implements CodingNsTransport {
   }
 
   close(): Promise<void> {
+    this.unsubscribeCarrierClosed?.()
+    this.unsubscribeCarrierClosed = undefined
     this.multiplexer.close()
     const previous = this.generation
     this.generation = undefined
     if (previous) for (const listener of [...this.listeners]) listener(undefined)
     return this.currentCarrier.close()
+  }
+
+  private bindCarrierClosed(carrier: CodingNsCarrier): void {
+    this.unsubscribeCarrierClosed?.()
+    this.unsubscribeCarrierClosed = carrier.onClosed?.((reason) => {
+      this.invalidateConnection(new Error(reason ?? 'Transport Carrier 已关闭'))
+    })
   }
 
   /** 给 pre-Cordis 启动胶水使用，不直接安装 DSH Connection。 */

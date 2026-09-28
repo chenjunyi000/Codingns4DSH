@@ -77,7 +77,6 @@ test('Host acceptor 为每个客户端 offer 创建 answer，并接管 DataChann
     signalingTicket: ticket(),
     signalingSocketFactory: () => socket,
     peerConnectionFactory: () => peer,
-    disconnectedGracePeriodMs: 20,
     onConnection: (connection) => { carriers.push(connection.carrier) },
     onSessionClosed: (sessionId) => { closedSessions.push(sessionId) },
   })
@@ -97,14 +96,11 @@ test('Host acceptor 为每个客户端 offer 创建 answer，并接管 DataChann
   assert.equal(carriers.length, 1)
   peer.connectionState = 'disconnected'
   peerListeners.get('connectionstatechange')?.({} as Event)
-  await new Promise((resolve) => setTimeout(resolve, 5))
-  peer.connectionState = 'connected'
-  peerListeners.get('connectionstatechange')?.({} as Event)
   await new Promise((resolve) => setTimeout(resolve, 30))
   assert.equal(host.sessions.size, 1)
-  peer.connectionState = 'disconnected'
+  peer.connectionState = 'failed'
   peerListeners.get('connectionstatechange')?.({} as Event)
-  await new Promise((resolve) => setTimeout(resolve, 30))
+  await new Promise((resolve) => setImmediate(resolve))
   assert.equal(host.sessions.size, 0)
   assert.deepEqual(closedSessions, ['session-1'])
   channelListeners.get('close')?.({} as Event)
