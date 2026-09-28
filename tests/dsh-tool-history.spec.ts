@@ -270,6 +270,31 @@ test('公共工具投影层统一映射 edit_file 并生成 DSH diff 元数据',
   })
 })
 
+test('公共工具投影层把 Codex fileChange 的 unified diff 映射为编辑元数据', () => {
+  const sink = createSink()
+  const projector = new CodingNsDshToolHistoryProjector(sink.bridge as never, 'session-codex-file-change')
+  projector.observe({
+    type: 'tool-event',
+    toolName: 'edit_file',
+    callId: 'file-change-1',
+    input: JSON.stringify({
+      changes: [{
+        file_path: '/workspace/a.ts',
+        kind: 'update',
+        diff: '@@ -1 +1 @@\n-old\n+new',
+      }],
+    }),
+    status: 'running',
+  })
+  projector.observe({ type: 'tool-event', toolName: 'edit_file', callId: 'file-change-1', status: 'completed' })
+  projector.finalize('stop')
+
+  assert.equal(sink.calls[0]?.call.name, 'edit')
+  assert.deepEqual(sink.results[0]?.result.meta, {
+    diffs: [{ path: '/workspace/a.ts', oldText: 'old', newText: 'new' }],
+  })
+})
+
 test('公共工具投影层把 shell 别名归一为 bash 且失败终态只记录一次', () => {
   const sink = createSink()
   const projector = new CodingNsDshToolHistoryProjector(sink.bridge as never, 'session-shell')

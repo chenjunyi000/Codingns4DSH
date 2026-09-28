@@ -108,6 +108,7 @@ export class CodingNsDshMessageProjector {
         provider: this.options.adapterId,
         model: this.options.modelId ?? this.options.adapterId,
         contextWindow: event.contextWindow,
+        confirmed: true,
       })
     }
     this.options.nativeSessions?.appendUsageSample?.(this.options.sessionId, usage)
@@ -127,13 +128,9 @@ export class CodingNsDshMessageProjector {
       case 'message-boundary':
         return this.closeMessageBlock(event.channel)
       case 'step-boundary':
-        // DSH 0.1.7 的 Chat 分组器会把同一 Turn 中没有可见 assistant
-        // 回复的连续工具节点合并到一个 process group。Codex 的工具已经
-        // 在外部进程完成，分段之间没有 DSH 原生 assistant 文本可供分组器
-        // 识别，因此写入一个 Markdown 引用定义作为不可见的回复边界。
-        // 必须从新行开始；DSH UI 会忽略 definition 节点，而不是把 HTML 当注释解析。
-        // 该内容不会显示给用户，也不会改变工具的原生 step 坐标。
-        return this.appendDelta('text', '\n\n[//]: # (codingns-step-boundary)')
+        // step 边界由 DSH 原生 turn/step 事件表达，不再伪造 Markdown 文本。
+        // 伪造的空文本会被 Chat 渲染成额外的空白块，导致相邻 step 间距异常。
+        return []
       case 'tool-event':
         return this.externalToolChunk(this.toolHistory.observe(event))
       case 'permission-request':

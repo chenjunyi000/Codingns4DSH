@@ -79,6 +79,8 @@ export interface CodingNsNativeRequestContext {
   readonly provider: string
   readonly model: string
   readonly contextWindow?: number
+  /** Provider usage 明确确认的容量；路由占位上下文不应覆盖它。 */
+  readonly confirmed?: boolean
 }
 
 /** 外部 Provider 已报告的用量采样；写入 assistant/attempt，不加入模型可见 surface。 */
@@ -172,9 +174,15 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     ? (ctx as unknown as { on(name: string, listener: (...args: unknown[]) => unknown): () => unknown }).on.bind(ctx)
     : undefined
   const externalHandles = new Map<string, CodingNsNativeToolCallHandle>()
+  const confirmedContextWindows = new Map<string, number>()
+  // Agent.inject() 只是把消息放进队列，新的 DSH step 会在稍后的事件循环中
+  // 才创建。此期间 activeStep 仍然指向旧 step，工具追加必须暂缓，否则会把
+  // 下一步的工具写进旧 step；step/start 到达后由工具投影器重试。
+  const pendingStepTransitions = new Set<string>()
   let injectedStepSequence = 0
   const modernInjectedSource = isModernDshVersion(dshVersion)
   const appendNativeToolCall = (sessionId: string, call: CodingNsNativeToolCall): CodingNsNativeToolCallHandle | null => {
+    if (on !== undefined && pendingStepTransitions.has(sessionId)) return null
     const session = appendableSession(store?.get(sessionId))
     const position = session === null ? null : activeStep(session)
     if (session === null || position === null) return null
@@ -244,10 +252,54 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
       // 投影先清空旧 pressure，再等待下一条 usage，ContextMeter 因而闪烁。
       // 保留已有容量并跳过等价事件，让用量更新直接落到同一个组件上。
       const previous = latestRequestContext(session)
-      if (previous !== null
-        && previous.provider === context.provider
-        && previous.model === context.model
-        && (context.contextWindow === undefined || previous.contextWindow === context.contextWindow)) return true
+      const contextKey = `${sessionId}\u0000${context.provider}\u0000${context.model}`
+      if (previous !== null && previous.provider === context.provider && previous.model === context.model) {
+        const historicalWindow = historicalUsageContextWindow(session)
+        if (context.contextWindow === undefined) {
+          if (historicalWindow !== undefined && previous.contextWindow !== historicalWindow) {
+            session.append('request/context', {
+              provider: context.provider,
+              model: context.model,
+              contextWindow: historicalWindow,
+            })
+          }
+          return true
+        }
+        if (previous.contextWindow === context.contextWindow
+          && context.confirmed === true
+          && historicalWindow !== undefined
+          && historicalWindow !== context.contextWindow) {
+          session.append('request/context', {
+            provider: context.provider,
+            model: context.model,
+            contextWindow: historicalWindow,
+          })
+          confirmedContextWindows.set(contextKey, historicalWindow)
+          return true
+        }
+        if (previous.contextWindow === context.contextWindow) {
+          if (context.confirmed === true && context.contextWindow !== undefined) confirmedContextWindows.set(contextKey, context.contextWindow)
+          return true
+        }
+        // 已经确认过的同一路由容量是会话级事实。迟到/全局 usage 不能覆盖它。
+        if (confirmedContextWindows.has(contextKey)) return true
+        // 进程重启后仍可从历史 usage 恢复稳定容量，避免尾部遗留的错误
+        // request/context=1M 在第二轮开始时再次成为当前窗口。
+        if (context.confirmed === true && historicalWindow !== undefined && historicalWindow !== context.contextWindow) {
+          if (previous.contextWindow !== historicalWindow) {
+            session.append('request/context', {
+              provider: context.provider,
+              model: context.model,
+              contextWindow: historicalWindow,
+            })
+          }
+          confirmedContextWindows.set(contextKey, historicalWindow)
+          return true
+        }
+        // 允许本次运行首次明确确认的 usage 修正历史遗留的路由占位值，
+        // 例如旧日志中的 1M 随后被 Codex usage 明确纠正为 258400。
+        if (context.confirmed !== true) return true
+      }
       // Registry 在一轮开始时只能提供适配器身份，不能提供 Provider 容量。
       // 继承上一条已知容量，避免先写无容量事件导致 ContextMeter 卸载；
       // 真正的 usage 到达后，投影器会用 Provider 的最新容量覆盖它。
@@ -257,6 +309,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
         model: context.model,
         ...(contextWindow === undefined ? {} : { contextWindow }),
       })
+      if (context.confirmed === true && context.contextWindow !== undefined) confirmedContextWindows.set(contextKey, context.contextWindow)
       return true
     } catch {
       return false
@@ -267,6 +320,18 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     const position = session === null ? null : activeStep(session)
     if (session === null || position === null) return false
     try {
+      const previousContext = latestRequestContext(session)
+      const normalizedUsage = previousContext?.contextWindow !== undefined
+        && usage.contextWindow !== undefined
+        && usage.contextWindow !== previousContext.contextWindow
+        ? {
+            ...usage,
+            contextWindow: previousContext.contextWindow,
+            ...(usage.contextTokens === undefined ? {} : {
+              contextUsageRatio: Number(Math.min(1, usage.contextTokens / previousContext.contextWindow).toFixed(6)),
+            }),
+          }
+        : usage
       session.append('assistant/attempt', {
         turn: position.turn,
         step: position.step,
@@ -275,7 +340,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
           time: Date.now(),
           chunk: {
             type: 'usage',
-            usage: compactUsage(usage),
+          usage: compactUsage(normalizedUsage),
           },
         }],
       })
@@ -290,6 +355,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     injectedStepSequence += 1
     const boundedSummary = summary.trim().slice(0, 120) || '外部工具已完成，继续处理当前任务。'
     try {
+      if (on !== undefined) pendingStepTransitions.add(sessionId)
       ;(agent as { inject(message: unknown): void }).inject({
         id: `codingns-external-step-${injectedStepSequence}-${randomUUID()}`,
         role: 'user',
@@ -300,6 +366,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
       })
       return true
     } catch {
+      pendingStepTransitions.delete(sessionId)
       return false
     }
   }
@@ -440,7 +507,14 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     subscribe(handlers) {
       const disposers: Array<() => unknown> = []
       if (on !== undefined && handlers.onEvent !== undefined) {
-        disposers.push(on('session/event', (session: unknown, event: unknown) => handlers.onEvent?.(session, event)))
+        disposers.push(on('session/event', (session: unknown, event: unknown) => {
+          if (isNativeStepStart(event)) {
+            for (const sessionId of pendingStepTransitions) {
+              if (store?.get(sessionId) === session) pendingStepTransitions.delete(sessionId)
+            }
+          }
+          handlers.onEvent?.(session, event)
+        }))
       }
       if (on !== undefined && handlers.onFlush !== undefined) {
         disposers.push(on('session/flush', (session: unknown) => handlers.onFlush?.(session)))
@@ -479,6 +553,10 @@ function appendableSession(value: unknown): AppendableSession | null {
   return value as unknown as AppendableSession
 }
 
+function isNativeStepStart(value: unknown): boolean {
+  return isRecord(value) && value.type === 'step/start'
+}
+
 function latestRequestContext(session: AppendableSession): RequestContextSnapshot | null {
   let events: readonly unknown[]
   try { events = session.snapshotEvents() } catch { return null }
@@ -497,6 +575,32 @@ function latestRequestContext(session: AppendableSession): RequestContextSnapsho
     }
   }
   return null
+}
+
+function historicalUsageContextWindow(session: AppendableSession): number | undefined {
+  let events: readonly unknown[]
+  try { events = session.snapshotEvents() } catch { return undefined }
+  const counts = new Map<number, number>()
+  for (const candidate of events) {
+    const event = isRecord(candidate) && candidate.type === 'assistant/attempt' ? candidate : null
+    const data = isRecord(event?.data) ? event.data : null
+    const stream = Array.isArray(data?.stream) ? data.stream : []
+    for (const entry of stream) {
+      const chunk = isRecord(entry) && isRecord(entry.chunk) ? entry.chunk : null
+      const usage = isRecord(chunk?.usage) ? chunk.usage : null
+      const window = usage?.contextWindow
+      if (typeof window === 'number' && Number.isFinite(window) && window > 0) counts.set(window, (counts.get(window) ?? 0) + 1)
+    }
+  }
+  let selected: number | undefined
+  let count = 0
+  for (const [window, occurrences] of counts) {
+    if (occurrences >= count) {
+      selected = window
+      count = occurrences
+    }
+  }
+  return selected
 }
 
 function activeStep(session: AppendableSession): { turn: number; step: number } | null {

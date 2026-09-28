@@ -340,8 +340,22 @@ function canonicalToolName(value: string): string {
 function toolResultMeta(name: string, argumentsJson: string): { readonly meta?: unknown } {
   if (name !== 'edit' && name !== 'write') return {}
   const args = parseRecord(argumentsJson)
+  if (name === 'edit' && Array.isArray(args?.changes)) {
+    const diffs = args.changes.flatMap((value) => {
+      if (!isRecord(value)) return []
+      const path = stringValue(value.file_path ?? value.path)
+      const diff = stringValue(value.diff ?? value.patch)
+      if (path === null || diff === null) return []
+      return [unifiedDiffMeta(path, diff, stringValue(value.kind))]
+    })
+    return diffs.length > 0 ? { meta: { diffs } } : {}
+  }
   const path = stringValue(args?.file_path)
   const newText = stringValue(name === 'edit' ? args?.new_string : args?.content)
+  if (name === 'edit' && path !== null) {
+    const diff = stringValue(args?.diff ?? args?.patch)
+    if (diff !== null) return { meta: { diffs: [unifiedDiffMeta(path, diff, stringValue(args?.kind))] } }
+  }
   if (path === null || newText === null) return {}
   const oldText = name === 'edit' ? stringValue(args?.old_string) : null
   return {
@@ -349,6 +363,24 @@ function toolResultMeta(name: string, argumentsJson: string): { readonly meta?: 
       diffs: [{ path, oldText, newText }],
     },
   }
+}
+
+function unifiedDiffMeta(path: string, diff: string, kind: string | null): { readonly path: string; readonly oldText: string | null; readonly newText: string } {
+  const oldLines: string[] = []
+  const newLines: string[] = []
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('--- ') || line.startsWith('+++ ') || line.startsWith('@@')) continue
+    if (line.startsWith('-')) oldLines.push(line.slice(1))
+    else if (line.startsWith('+')) newLines.push(line.slice(1))
+    else if (line.startsWith(' ')) {
+      const context = line.slice(1)
+      oldLines.push(context)
+      newLines.push(context)
+    }
+  }
+  const oldText = kind === 'add' || kind === 'create' ? null : oldLines.join('\n')
+  const newText = kind === 'delete' || kind === 'remove' ? '' : newLines.join('\n')
+  return { path, oldText, newText }
 }
 
 /** Command Code 等 Provider 会把文本块包成 JSON；原生结果只展示真正文本。 */

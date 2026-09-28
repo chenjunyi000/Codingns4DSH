@@ -253,6 +253,78 @@ test('原生会话桥接跳过等价 request/context 并保留已有上下文容
   assert.equal(events.length, 1)
 })
 
+test('原生会话桥接拒绝同一路由的冲突上下文容量', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'request/context', seq: 0, data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 1000000 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-context-conflict' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendRequestContext?.('native-context-conflict', {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+    contextWindow: 258400,
+    confirmed: true,
+  }), true)
+  assert.equal(events.length, 2)
+  assert.equal(events.at(-1)?.data?.contextWindow, 258400)
+  assert.equal(bridge.appendRequestContext?.('native-context-conflict', {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+    contextWindow: 1000000,
+    confirmed: true,
+  }), true)
+  assert.equal(events.length, 2)
+})
+
+test('原生会话桥接从历史 usage 恢复稳定窗口，纠正尾部遗留的 1M', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'request/context', seq: 0, data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 1000000 } },
+    {
+      type: 'assistant/attempt',
+      seq: 1,
+      data: { stream: [{ chunk: { type: 'usage', usage: { contextWindow: 258400 } } }] },
+    },
+    { type: 'request/context', seq: 2, data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 1000000 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-context-history' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendRequestContext?.('native-context-history', {
+    provider: 'codex',
+    model: 'gpt-5.3-codex',
+    contextWindow: 1000000,
+    confirmed: true,
+  }), true)
+  assert.equal(events.at(-1)?.data?.contextWindow, 258400)
+})
+
 test('原生会话桥接在路由切换时继承已知上下文容量', () => {
   const events: Array<Record<string, any>> = [
     { type: 'request/context', seq: 0, data: { provider: 'glor', model: 'deepseek-v4.1-flash', contextWindow: 1000000 } },
@@ -521,6 +593,46 @@ test('原生会话桥接使用 Agent.inject 把外部工具推进下一个合法
   })
   assert.equal(bridge.injectNextStep?.('missing'), false)
   assert.equal(bridge.canInjectNextStep?.('missing'), false)
+})
+
+test('Agent.inject 尚未创建新 step 时不把后续工具追加到旧 step', () => {
+  const listeners = new Map<string, (...args: unknown[]) => unknown>()
+  const events: Array<Record<string, any>> = [
+    { type: 'turn/start', seq: 0, data: { turn: 1 } },
+    { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const agent = { id: 'step-race', inject() {} }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      if (name === 'sessions') return { get(id: string) { return id === agent.id ? session : undefined }, list() { return [session] } }
+      if (name === 'agents') return { get(id: string) { return id === agent.id ? agent : undefined } }
+      return undefined
+    },
+    on(name: string, listener: (...args: unknown[]) => unknown) {
+      listeners.set(name, listener)
+      return () => { listeners.delete(name) }
+    },
+  } as never)
+  const dispose = bridge.subscribe({ onEvent() {} })
+
+  assert.equal(bridge.injectNextStep?.(agent.id), true)
+  assert.equal(bridge.appendToolCall?.(agent.id, { callId: 'next-call', name: 'bash', arguments: '{}' }), null)
+
+  events.push({ type: 'step/start', seq: events.length, data: { turn: 1, step: 2 } })
+  listeners.get('session/event')?.(session, events.at(-1))
+  const handle = bridge.appendToolCall?.(agent.id, { callId: 'next-call', name: 'bash', arguments: '{}' })
+  assert.deepEqual(handle, { sessionId: agent.id, turn: 1, step: 2, callId: 'next-call', callSeq: 4 })
+  assert.equal(events.filter((event) => event.type === 'tool/call').length, 1)
+  assert.equal((events.find((event) => event.type === 'tool/call')?.data as { step: number }).step, 2)
+  dispose()
 })
 
 test('DSH 0.1.7 使用 model-selection source 注入下一个 step', () => {

@@ -79,7 +79,7 @@ test('用量带上下文窗口时写入 DSH request/context 元数据', async ()
 
   assert.deepEqual(contexts, [{
     sessionId: 'session-context',
-    context: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 258400 },
+    context: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 258400, confirmed: true },
   }])
 })
 
@@ -110,7 +110,7 @@ test('Provider usage 到达时先写入非 surface 采样，ContextMeter 不等�
   }])
   assert.deepEqual(contexts, [{
     sessionId: 'session-usage-sample',
-    context: { provider: 'opencode', model: 'deepseek/deepseek-flash', contextWindow: 1000000 },
+    context: { provider: 'opencode', model: 'deepseek/deepseek-flash', contextWindow: 1000000, confirmed: true },
   }])
 
   const finish = await projector.push({ type: 'finish', reason: 'stop' })
@@ -170,12 +170,9 @@ test('Codex assistant item 切换时封口旧正文并分配新的 DSH block', a
   ])
 })
 
-test('工具 step 边界写入不可见 assistant 分隔块，避免 DSH 0.1.7 合并 process group', async () => {
+test('工具 step 边界不伪造空白 assistant 文本', async () => {
   const projector = new CodingNsDshMessageProjector({ adapterId: 'codex', sessionId: 'step-boundary' })
-  assert.deepEqual(await projector.push({ type: 'step-boundary' }), [
-    { type: 'block-start', index: 1, blockType: 'text' },
-    { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
-  ])
+  assert.deepEqual(await projector.push({ type: 'step-boundary' }), [])
 })
 
 test('消息 block 切换后执行失败仍写入当前正文 block', async () => {
