@@ -11,6 +11,7 @@ import { WorkspaceSessionEnhancementPanel } from './workspace-session-enhancemen
 import type { CodingNsClientFeatureModule } from './types.js'
 import { registerSubscriptionSlot } from '../subscription-slot.js'
 import { registerQuickPhraseSlot } from '../quick-phrase-slot.js'
+import { startWorkspaceSessionRightbarDom, type WorkspaceSessionRightbarDomController } from '../workspace-session-rightbar-dom.js'
 
 /** DSH 0.1.6 原生会话行增强：Logo 与归档会话入口共用同一生命周期。 */
 export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
@@ -22,7 +23,7 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
     runtime: 'client',
     ui: {
       label: '工作区会话增强',
-      description: '在原生工作区会话行显示 Agent Logo、归档入口、工作区隐藏/恢复入口和订阅/用量信息，并提供本地快捷会话。',
+      description: '在原生工作区会话行显示 Agent Logo、归档入口、工作区隐藏/恢复入口和订阅/用量信息，提供本地快捷会话，并可记忆对话窗口与右侧栏宽度比例。',
       labelKey: 'feature.workspaceSession.label',
       descriptionKey: 'feature.workspaceSession.description',
       order: 35,
@@ -36,6 +37,7 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
     let logoDom: WorkspaceSessionLogoDomController | undefined
     let archiveDom: WorkspaceSessionArchiveDomController | undefined
     let visibilityDom: WorkspaceSessionVisibilityDomController | undefined
+    let rightbarDom: WorkspaceSessionRightbarDomController | undefined
     let adapterRefreshTimer: ReturnType<typeof globalThis.setInterval> | undefined
     let disposeSubscription: (() => void) | undefined
     let disposeQuickPhrases: (() => void) | undefined
@@ -74,6 +76,13 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
       visibilityDom?.dispose()
       visibilityDom = undefined
     }
+    const enableRightbarMemory = (): void => {
+      if (rightbarDom === undefined) rightbarDom = startWorkspaceSessionRightbarDom()
+    }
+    const disableRightbarMemory = (): void => {
+      rightbarDom?.dispose()
+      rightbarDom = undefined
+    }
     const enableSubscription = (): void => {
       if (disposeSubscription !== undefined || context.services.slots === undefined) return
       disposeSubscription = registerSubscriptionSlot(context.services.slots, context.services.rpc)
@@ -95,6 +104,7 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
       archiveDom?.dispose()
       archiveDom = undefined
       disableWorkspaceVisibility()
+      disableRightbarMemory()
       disableSubscription()
       disableQuickPhrases()
     }
@@ -144,6 +154,10 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showQuickPhrases
       if (showQuickPhrases) enableQuickPhrases()
       else disableQuickPhrases()
+      const rememberConversationRightbarRatio = workspaceSettings?.rememberConversationRightbarRatio
+        ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.rememberConversationRightbarRatio
+      if (rememberConversationRightbarRatio) enableRightbarMemory()
+      else disableRightbarMemory()
     }
 
     sync()
