@@ -97,6 +97,27 @@ test('0.1.7 Client 设置写入通过 Host RPC 跳过后台索引 revision 冲�
   assert.equal(store.getSnapshot().revision, 9)
 })
 
+test('0.1.7 Client 只读 ConfigForm 镜像仍允许通过 Host RPC 停用模块', async () => {
+  const value = { controlBaseUrl: 'https://example.test', modules: { peerHost: true }, cliSessions: [] }
+  const form = {
+    getSnapshot: () => ({ value, revision: 3, writable: false as const, status: 'ready' as const }),
+    subscribe: () => () => undefined,
+    mutate: async () => { throw new Error('不应调用只读 ConfigForm') },
+    set: async () => { throw new Error('不应调用只读 ConfigForm') },
+    unset: async () => { throw new Error('不应调用只读 ConfigForm') },
+  }
+  const store = createConfigFormSettingsStore({ get: () => form }, 'codingns', {
+    writeUnfenced: async (operations) => {
+      assert.deepEqual(operations, [{ op: 'set', path: ['modules', 'peerHost'], value: false }])
+      return { value: { ...value, modules: { peerHost: false } }, revision: 4 }
+    },
+  })
+
+  assert.equal(store.getSnapshot().writable, true)
+  assert.equal(await store.mutate([{ op: 'set', path: ['modules', 'peerHost'], value: false }]), true)
+  assert.equal(store.getSnapshot().value?.modules.peerHost, false)
+})
+
 test('统一 RPC dispatch 只使用宿主传入的 peer context', async () => {
   const table = new CodingNsRpcTable()
   let received: unknown

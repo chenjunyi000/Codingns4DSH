@@ -116,6 +116,10 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
     // 远程 DSH Web iframe 内的 settingsScope 属于被访问的 DSH Web Host；
     // CodingNS 插件设置仍归外层 CodingNS Host 所有，不能误写入 DSH Web 的本地缓存。
     return isRemoteWebContext() || snapshot.mode === 'memory' || snapshot.status === 'unavailable'
+      // 某些 DSH 版本只向 Client 暴露只读设置镜像，但当前 Host 仍提供
+      // Codingns4DSH 自有 settings/set RPC。此时必须切换到 Host 写入边界，
+      // 否则设置页会永久把所有模块开关显示为不可操作。
+      || snapshot.writable === false
   }
 }
 

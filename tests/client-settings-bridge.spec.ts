@@ -155,6 +155,36 @@ test('远程设置 RPC 在逻辑通道不存在时回退到 /api 路由', async 
   assert.deepEqual(bridge.getSnapshot().value, settings)
 })
 
+test('只读 SettingsScope 镜像切换到 Host RPC 后可写', async () => {
+  const local = {
+    getSnapshot: () => ({
+      status: 'ready' as const,
+      value: settings,
+      revision: 1,
+      writable: false,
+      mode: 'host' as const,
+    }),
+    subscribe: () => () => undefined,
+    set: async () => undefined,
+    unset: async () => undefined,
+    mutate: async () => undefined,
+  }
+  const calls: string[] = []
+  const bridge = createCodingNsSettingsBridge(local, {
+    call: async (_channel, endpoint) => {
+      calls.push(endpoint)
+      return { ok: true as const, value: { value: { ...settings, modules: { peerHost: false } }, revision: 2 } }
+    },
+  })
+
+  await bridge.load()
+  assert.equal(bridge.getSnapshot().writable, true)
+  assert.deepEqual(calls, ['settings/get'])
+  assert.equal(await bridge.mutate([{ op: 'set', path: ['modules', 'peerHost'], value: false }]), true)
+  assert.deepEqual(calls, ['settings/get', 'settings/set'])
+  assert.equal(bridge.getSnapshot().value?.modules.peerHost, false)
+})
+
 test('外部 Agent RPC 在逻辑通道返回 405 时回退到 /api 路由', async () => {
   const calls: Array<[string, string]> = []
   const rpc = {

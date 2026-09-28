@@ -50,7 +50,8 @@ export function createConfigFormSettingsStore(
       unset: async () => false,
     }
   }
-  let snapshot = toStoreSnapshot(form.getSnapshot())
+  const hostWriterAvailable = options.writeUnfenced !== undefined
+  let snapshot = toStoreSnapshot(form.getSnapshot(), hostWriterAvailable)
   debugInfo('codingns4dsh: client config form selected', {
     namespace,
     status: snapshot.status,
@@ -59,7 +60,7 @@ export function createConfigFormSettingsStore(
   })
   const listeners = new Set<() => void>()
   const refresh = (): void => {
-    const next = toStoreSnapshot(form.getSnapshot())
+    const next = toStoreSnapshot(form.getSnapshot(), hostWriterAvailable)
     // 自有 Host RPC 的写入答复可能先于原生 mirror 事件到达；旧 revision
     // 只能被丢弃，不能把刚接受的模块开关覆盖回去。
     if (snapshot.revision !== undefined && next.revision !== undefined && next.revision < snapshot.revision) return
@@ -138,12 +139,17 @@ async function writeWithRetry(
   return retried
 }
 
-function toStoreSnapshot(snapshot: ReturnType<DshConfigForm<CodingNsSettings>['getSnapshot']>) {
+function toStoreSnapshot(
+  snapshot: ReturnType<DshConfigForm<CodingNsSettings>['getSnapshot']>,
+  hostWriterAvailable = false,
+) {
   const value = toClientValue(snapshot.value)
   return {
     value: value as CodingNsSettings | undefined,
     revision: snapshot.revision,
-    writable: snapshot.writable,
+    // 0.1.7 ConfigForm 的 writable 只描述原生表单镜像；插件自己的 Host
+    // RPC 是实际写入边界，因此存在该 writer 时不能把开关误判为只读。
+    writable: snapshot.writable || hostWriterAvailable,
     status: snapshot.status ?? 'ready' as const,
   }
 }
