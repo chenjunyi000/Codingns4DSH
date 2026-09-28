@@ -290,6 +290,48 @@ test('原生会话桥接拒绝同一路由的冲突上下文容量', () => {
   assert.equal(events.length, 2)
 })
 
+test('原生会话桥接允许 catalog 提示修正每个新 step 的 1M 占位值', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'request/context', seq: 0, data: { provider: 'codex', model: 'gpt-5.6-sol', contextWindow: 1000000 } },
+    {
+      type: 'assistant/attempt',
+      seq: 1,
+      data: { stream: [{ chunk: { type: 'usage', usage: { contextWindow: 258400 } } }] },
+    },
+  ]
+  const session = {
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown) {
+      const event = { type, seq: events.length, data }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'native-context-catalog' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendRequestContext?.('native-context-catalog', {
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    contextWindow: 258400,
+    confirmed: true,
+  }), true)
+  events.push({ type: 'request/context', seq: events.length, data: { provider: 'codex', model: 'gpt-5.6-sol', contextWindow: 1000000 } })
+  assert.equal(bridge.appendRequestContext?.('native-context-catalog', {
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    contextWindow: 258400,
+    confirmed: true,
+    source: 'catalog',
+  }), true)
+  assert.equal(events.at(-1)?.data?.contextWindow, 258400)
+})
+
 test('原生会话桥接从历史 usage 恢复稳定窗口，纠正尾部遗留的 1M', () => {
   const events: Array<Record<string, any>> = [
     { type: 'request/context', seq: 0, data: { provider: 'codex', model: 'gpt-5.3-codex', contextWindow: 1000000 } },

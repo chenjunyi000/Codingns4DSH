@@ -81,6 +81,8 @@ export interface CodingNsNativeRequestContext {
   readonly contextWindow?: number
   /** Provider usage 明确确认的容量；路由占位上下文不应覆盖它。 */
   readonly confirmed?: boolean
+  /** 容量来源；catalog 只用于首个 usage 前的已知模型提示，不锁定后续 Provider usage。 */
+  readonly source?: 'provider' | 'catalog'
 }
 
 /** 外部 Provider 已报告的用量采样；写入 assistant/attempt，不加入模型可见 surface。 */
@@ -278,11 +280,15 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
           return true
         }
         if (previous.contextWindow === context.contextWindow) {
-          if (context.confirmed === true && context.contextWindow !== undefined) confirmedContextWindows.set(contextKey, context.contextWindow)
+          if (context.confirmed === true && context.source !== 'catalog' && context.contextWindow !== undefined) {
+            confirmedContextWindows.set(contextKey, context.contextWindow)
+          }
           return true
         }
         // 已经确认过的同一路由容量是会话级事实。迟到/全局 usage 不能覆盖它。
-        if (confirmedContextWindows.has(contextKey)) return true
+        // DSH 每个新 step 会先写入一次通用 1M 占位值。catalog 提示必须能把
+        // 这个占位值恢复为已知容量，但真实 Provider usage 仍由锁定值保护。
+        if (confirmedContextWindows.has(contextKey) && context.source !== 'catalog') return true
         // 进程重启后仍可从历史 usage 恢复稳定容量，避免尾部遗留的错误
         // request/context=1M 在第二轮开始时再次成为当前窗口。
         if (context.confirmed === true && historicalWindow !== undefined && historicalWindow !== context.contextWindow) {
@@ -309,7 +315,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
         model: context.model,
         ...(contextWindow === undefined ? {} : { contextWindow }),
       })
-      if (context.confirmed === true && context.contextWindow !== undefined) confirmedContextWindows.set(contextKey, context.contextWindow)
+      if (context.confirmed === true && context.source !== 'catalog' && context.contextWindow !== undefined) {
+        confirmedContextWindows.set(contextKey, context.contextWindow)
+      }
       return true
     } catch {
       return false
