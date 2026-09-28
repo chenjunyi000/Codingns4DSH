@@ -133,7 +133,13 @@ export function ReverseProxyPanel({ services, enabled, snapshot, notify }: Featu
   async function loadDevicesInternal(): Promise<void> {
     const next = await callCodingNsRpc<DshDeviceListResponse>(rpc, 'auth/dsh/device/list', {})
     setDevices(next)
-    const preferred = next.devices.find((device) => device.online && device.status === 'active')?.dshDeviceId ?? ''
+    const hasCurrentDevice = typeof next.currentDeviceId === 'string' && next.currentDeviceId.length > 0
+    const current = !hasCurrentDevice
+      ? undefined
+      : next.devices.find((device) => device.dshDeviceId === next.currentDeviceId && device.status === 'active')
+    const preferred = hasCurrentDevice
+      ? current?.dshDeviceId ?? ''
+      : next.devices.find((device) => device.online && device.status === 'active')?.dshDeviceId ?? ''
     setSelectedDeviceId(preferred)
   }
 

@@ -137,9 +137,14 @@ export function createAuthFeature(): FeatureModule<CodingNsHostServices> {
         bind: (payload) => requireSession().bindHost(parseHostBind(payload)),
         unbind: (payload) => requireSession().unbindHost(parseStringField(payload, 'bindingId')),
         signalingTicket: (payload) => requireSession().createClientSignalingTicket(parseOptionalStringField(payload, 'tunnelDomain')),
-        'dsh/device/list': () => {
+        'dsh/device/list': async () => {
           const target = requireSession()
-          return target.withAccessToken((accessToken) => target.getControlClient().listDshDevices(accessToken))
+          return target.withAccessToken(async (accessToken) => {
+            const listed = await target.getControlClient().listDshDevices(accessToken)
+            // 即使 Host 当前未启动，也用本地凭据标识当前设备，避免列表回退到账号下另一台 Host。
+            const currentDeviceId = dshRuntime?.credential.deviceId ?? (await dshCredentials.read())?.deviceId
+            return currentDeviceId === undefined ? listed : { ...listed, currentDeviceId }
+          })
         },
         'dsh/device/start': async () => { await startDsh(requireSession()); return dshRuntime?.device ?? null },
         'dsh/device/stop': async () => { await dshRuntime?.stop(); dshRuntime = null; return { stopped: true } },
