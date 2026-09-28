@@ -75,12 +75,10 @@ export async function startDshHostDeviceRuntime(options: DshHostDeviceRuntimeOpt
   const identity = await ensureHostDtlsIdentity(dtlsStore)
   const dshVersion = options.dshVersion?.trim() || DSH_VERSION
   const computerName = options.computerName?.trim() || hostname().trim() || 'unknown'
-  const heartbeatDetails: DshDeviceHeartbeatRequest = { dshVersion, computerName }
-  let credential = await credentialStore.read()
-  let device: DshDeviceSummary
-  if (credential === null || credential.dtlsFingerprint !== identity.fingerprint) {
+  const heartbeatDetails: DshDeviceHeartbeatRequest = { dshVersion, computerName, dtlsFingerprint: identity.fingerprint }
+  const registerDevice = async (previous: DshDeviceCredentialRecord | null): Promise<{ credential: DshDeviceCredentialRecord; device: DshDeviceSummary }> => {
     const request: DshDeviceRegistrationRequest = {
-      displayName: options.displayName?.trim() || 'DSH Host',
+      displayName: options.displayName?.trim() || previous?.displayName || 'DSH Host',
       dshVersion,
       computerName,
       devicePublicKey: identity.certPem,
@@ -89,7 +87,7 @@ export async function startDshHostDeviceRuntime(options: DshHostDeviceRuntimeOpt
       capabilities: [...(options.capabilities ?? ['rpc', 'pty', 'file', 'web'])],
     }
     const registered = await withAccessToken((accessToken) => options.controlClient.registerDshDevice(accessToken, request))
-    credential = {
+    const nextCredential: DshDeviceCredentialRecord = {
       deviceId: registered.device.dshDeviceId ?? registered.device.deviceId ?? (() => { throw new Error('DSH 注册响应缺少设备标识') })(),
       deviceCredential: registered.deviceCredential,
       credentialVersion: registered.credentialVersion,
@@ -100,32 +98,41 @@ export async function startDshHostDeviceRuntime(options: DshHostDeviceRuntimeOpt
       computerName: registered.device.computerName ?? computerName,
       savedAt: new Date().toISOString(),
     }
-    await credentialStore.write(credential)
+    await credentialStore.write(nextCredential)
+    return { credential: nextCredential, device: registered.device }
+  }
+  let credential = await credentialStore.read()
+  let device: DshDeviceSummary
+  if (credential === null || credential.dtlsFingerprint !== identity.fingerprint) {
+    const registered = await registerDevice(credential)
+    credential = registered.credential
     device = registered.device
   } else {
     const listed = await withAccessToken((accessToken) => options.controlClient.listDshDevices(accessToken))
-    device = listed.devices.find((candidate) => (candidate.dshDeviceId ?? candidate.deviceId) === credential!.deviceId) ?? {
-      dshDeviceId: credential.deviceId,
-      deviceId: credential.deviceId,
-      displayName: credential.displayName,
-      dshVersion: credential.dshVersion ?? dshVersion,
-      computerName: credential.computerName ?? computerName,
-      protocolVersion: options.protocolVersion ?? 'dsh-envelope-v1',
-      capabilities: [...(options.capabilities ?? [])],
-      dtlsFingerprint: credential.dtlsFingerprint,
-      ...(credential.tunnelDomain === null ? {} : { tunnelDomain: credential.tunnelDomain }),
-      status: 'active',
-      online: false,
-      lastHeartbeatAt: null,
-      createdAt: credential.savedAt,
-      updatedAt: credential.savedAt,
+    const listedDevice = listed.devices.find((candidate) => (candidate.dshDeviceId ?? candidate.deviceId) === credential!.deviceId)
+    if (listedDevice) {
+      device = listedDevice
+    } else {
+      // 控制台删除了服务端记录时，旧凭据已经失去归属，必须重新注册当前 DTLS 身份。
+      const registered = await registerDevice(credential)
+      credential = registered.credential
+      device = registered.device
     }
   }
 
   if (credential === null) throw new Error('DSH 设备凭据初始化失败')
-  const savedCredential = credential
-
-  await withAccessToken((accessToken) => options.controlClient.heartbeatDshDevice(accessToken, savedCredential.deviceId, savedCredential.deviceCredential, heartbeatDetails))
+  let savedCredential = credential
+  try {
+    await withAccessToken((accessToken) => options.controlClient.heartbeatDshDevice(accessToken, savedCredential.deviceId, savedCredential.deviceCredential, heartbeatDetails))
+  } catch (error) {
+    if (!isRecoverableDshDeviceCredentialError(error)) throw error
+    // 设备记录可能在列表检查后、心跳前被删除，此时换发当前 Host 的新凭据。
+    await credentialStore.clear()
+    const registered = await registerDevice(savedCredential)
+    savedCredential = registered.credential
+    device = registered.device
+    await withAccessToken((accessToken) => options.controlClient.heartbeatDshDevice(accessToken, savedCredential.deviceId, savedCredential.deviceCredential, heartbeatDetails))
+  }
   const runtimeOptions = {
     controlClient: { createSignalingTicket: async () => { throw new Error('DSH runtime 必须使用 DSH ticket') } },
     createTicket: ({ identity: material, credentialVersion }: { accessToken: string; identity: typeof identity; credentialVersion?: number }) => requestDshTicket(withAccessToken, options.controlClient, savedCredential, material.fingerprint, credentialVersion),
@@ -185,3 +192,11 @@ async function requestDshTicket(
 
 function defaultDshCredentialPath(): string { return join(homedir(), '.config', 'codingns4dsh', 'device-credential.json') }
 function defaultDtlsPath(): string { return join(homedir(), '.config', 'codingns4dsh', 'dtls-identity.json') }
+
+function isRecoverableDshDeviceCredentialError(error: unknown): boolean {
+  return isRecord(error) && error.status === 404 && error.errorCode === 'DSH_DEVICE_NOT_FOUND'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}

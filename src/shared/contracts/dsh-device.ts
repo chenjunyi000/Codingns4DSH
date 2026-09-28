@@ -51,6 +51,8 @@ export interface DshDeviceHeartbeatResponse {
 export interface DshDeviceHeartbeatRequest {
   dshVersion?: string
   computerName?: string
+  /** Host 当前使用的 DTLS 身份指纹，用于防止设备凭据串用。 */
+  dtlsFingerprint?: string
 }
 
 export interface DshRelayTicketRequest {
