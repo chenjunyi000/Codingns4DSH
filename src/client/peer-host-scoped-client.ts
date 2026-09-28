@@ -5,7 +5,7 @@ export interface PeerHostEventSocket {
   readonly readyState: number
   send(data: string): void
   close(code?: number, reason?: string): void
-  on(event: 'message' | 'close' | 'error', listener: (...args: any[]) => void): void
+  on(event: 'open' | 'message' | 'close' | 'error', listener: (...args: any[]) => void): void
 }
 
 export interface PeerHostEventSubscription {
@@ -121,6 +121,8 @@ export function createPeerHostScopedClient(rpc: CodingNsRpcClient): PeerHostScop
 }
 
 const OPEN = 1
+const CLOSED = 3
+const SOCKET_OPEN_TIMEOUT_MS = 15_000
 const PEER_HOST_EVENT_TYPES = new Set([
   'system.connected', 'workbench.snapshot', 'workbench.delta', 'fileTree.snapshot',
   'git.snapshot', 'session.subscribed', 'session.backfill', 'session.delta',
@@ -134,17 +136,19 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
   const maxReconnectAttempts = normalizeReconnectAttempts(options.maxReconnectAttempts)
   const reconnectDelaysMs = normalizeReconnectDelays(options.reconnectDelaysMs)
   let socket = await socketFactory(scope)
+  await waitForSocketOpen(socket)
   let closed = false
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let reconnectAttempt = 0
   let connecting = false
+  const replayableSubscriptions = new Map<PeerHostClientMessageType, Readonly<Record<string, unknown>>>()
 
   const close = (): void => {
     if (closed) return
     closed = true
     if (reconnectTimer !== undefined) clearTimeout(reconnectTimer)
     reconnectTimer = undefined
-    if (socket.readyState === OPEN) socket.close(1000, 'PeerHost 作用域已清理')
+    closeSocket(socket, 1000, 'PeerHost 作用域已清理')
   }
 
   const send = (type: PeerHostClientMessageType, payload: Readonly<Record<string, unknown>> = {}): void => {
@@ -152,6 +156,7 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
     assertMessagePayload(payload)
     if (closed || socket.readyState !== OPEN) throw new Error('PeerHost WebSocket 尚未连接')
     socket.send(JSON.stringify({ type, ...scope, ...payload }))
+    if (PEER_HOST_REPLAYABLE_MESSAGE_TYPES.has(type)) replayableSubscriptions.set(type, { ...payload })
   }
   const terminalInput = (payload: Readonly<Record<string, unknown>>): void => { send('terminal.input', payload) }
   const terminalResize = (payload: Readonly<Record<string, unknown>>): void => { send('terminal.resize', payload) }
@@ -185,14 +190,16 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
       if (current.readyState === OPEN) current.close(1011, 'PeerHost WebSocket 连接错误')
       else scheduleReconnect()
     })
+    replaySubscriptions(current)
   }
   const reconnect = async (): Promise<void> => {
     if (closed || connecting) return
     connecting = true
     try {
       const next = await socketFactory(scope)
+      await waitForSocketOpen(next)
       if (closed) {
-        if (next.readyState === OPEN) next.close(1000, 'PeerHost 作用域已清理')
+        closeSocket(next, 1000, 'PeerHost 作用域已清理')
         return
       }
       reconnectAttempt = 0
@@ -205,6 +212,36 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
   }
   attach(socket)
   return { close, send, terminalInput, terminalResize, terminalClose, rightToolSubscribe, rightToolRefresh, rightToolClose }
+
+  function replaySubscriptions(current: PeerHostEventSocket): void {
+    if (current.readyState !== OPEN) return
+    for (const [type, payload] of replayableSubscriptions) {
+      current.send(JSON.stringify({ type, ...scope, ...payload }))
+    }
+  }
+}
+
+async function waitForSocketOpen(socket: PeerHostEventSocket): Promise<void> {
+  if (socket.readyState === OPEN) return
+  if (socket.readyState === CLOSED) throw new Error('PeerHost WebSocket 在打开前关闭')
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    const finish = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    const timer = setTimeout(() => finish(new Error('PeerHost WebSocket 打开超时')), SOCKET_OPEN_TIMEOUT_MS)
+    socket.on('open', () => finish())
+    socket.on('close', () => finish(new Error('PeerHost WebSocket 在打开前关闭')))
+    socket.on('error', () => finish(new Error('PeerHost WebSocket 打开失败')))
+  })
+}
+
+function closeSocket(socket: PeerHostEventSocket, code: number, reason: string): void {
+  if (socket.readyState !== CLOSED) socket.close(code, reason)
 }
 
 const PEER_HOST_CLIENT_MESSAGE_TYPES = new Set<PeerHostClientMessageType>([
@@ -215,16 +252,26 @@ const PEER_HOST_CLIENT_MESSAGE_TYPES = new Set<PeerHostClientMessageType>([
   'rightTool.subscribe', 'rightTool.refresh', 'rightTool.close',
 ])
 
+/** 这些消息描述可重建的订阅，重连后可以安全重放；命令和输入绝不能重放。 */
+const PEER_HOST_REPLAYABLE_MESSAGE_TYPES = new Set<PeerHostClientMessageType>([
+  'workbench.subscribe', 'fileTree.subscribe', 'git.subscribe', 'session.subscribe', 'terminal.subscribe', 'rightTool.subscribe',
+])
+
 function parseScopedEvent(raw: string, expected: HostScope): Record<string, unknown> | null {
   let value: unknown
   try { value = JSON.parse(raw) } catch { return null }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const event = value as Record<string, unknown>
   if (typeof event.type !== 'string' || !PEER_HOST_EVENT_TYPES.has(event.type)) return null
+  if (requiresSession(event.type) && (typeof event.sessionId !== 'string' || event.sessionId.trim() === '')) return null
   if (event.hostId !== expected.hostId || event.targetHostId !== expected.targetHostId || event.workspaceId !== expected.workspaceId || event.scopeGeneration !== expected.scopeGeneration) return null
   const eventSessionId = typeof event.sessionId === 'string' && event.sessionId.trim() !== '' ? event.sessionId : null
   if (eventSessionId !== expected.sessionId) return null
   return event
+}
+
+function requiresSession(type: string): boolean {
+  return type.startsWith('session.')
 }
 
 function assertMessagePayload(payload: Readonly<Record<string, unknown>>): void {
