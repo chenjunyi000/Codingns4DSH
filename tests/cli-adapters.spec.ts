@@ -939,6 +939,51 @@ test('Codex 连续 50 个工具事件后仍可接收第二条用户消息且不�
   await features.disable('cliAdapters')
 })
 
+test('Codex 新会话在首个 usage 到达前也使用 256K 上下文窗口', async () => {
+  const contexts: unknown[] = []
+  const nativeSessions = {
+    available: true,
+    store: undefined,
+    controller: undefined,
+    get() { return { header: { cwd: '/workspace' } } },
+    list() { return [] },
+    async ensure() { return null },
+    async flush() {},
+    appendRequestContext(_sessionId: string, context: unknown) {
+      contexts.push(context)
+      return true
+    },
+    subscribe() { return () => {} },
+  }
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn() {
+      yield { type: 'text-delta', text: '首轮响应' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }], {}, { nativeSessions })
+
+  const chunks = []
+  for await (const chunk of registry.execute({
+    adapterId: 'codex',
+    sessionId: 'codex-new-context',
+    modelId: 'gpt-5.6-sol',
+    messages: [],
+    prompt: '第一句话',
+  })) chunks.push(chunk)
+
+  assert.deepEqual(contexts, [{
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    contextWindow: 258400,
+    confirmed: true,
+    source: 'catalog',
+  }])
+  assert.equal(chunks.at(-1)?.type, 'finish')
+})
+
 test('CLI 功能模块把异常和取消映射成 DSH 原生终止原因且不会留下运行中工具', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined

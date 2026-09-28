@@ -77,6 +77,15 @@ export const CODEX_CATALOG = staticCatalog('codex', 'Codex', [
   { id: 'gpt-5.3-codex', efforts: ['low', 'medium', 'high', 'xhigh'] },
 ])
 
+/**
+ * Codex app-server 在 request/context 中会先沿用 1M 的通用默认值，
+ * 但 gpt-5.6-sol 的真实 tokenUsage.contextWindow 是 258400。
+ * 这个提示只用于首个 usage 到达前稳定 DSH 的分母；真实 usage 仍然优先。
+ */
+export function knownCodexContextWindow(modelId: string | undefined): number | undefined {
+  return modelId?.trim().toLowerCase() === 'gpt-5.6-sol' ? 258400 : undefined
+}
+
 export const GROK_CATALOG = staticCatalog('grok', 'Grok', [
   { id: 'provider-default', name: '跟随 Grok 默认模型', efforts: ['low', 'medium', 'high', 'xhigh'] },
   { id: 'grok-4.6', efforts: ['low', 'medium', 'high', 'xhigh'] },

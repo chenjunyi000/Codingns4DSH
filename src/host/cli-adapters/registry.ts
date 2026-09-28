@@ -17,6 +17,7 @@ import type {
 } from './driver.js'
 import { CodingNsCliSessionStore } from './session-store.js'
 import { readLegacyImportedAdapterPreferences } from './legacy-session-settings.js'
+import { knownCodexContextWindow } from './model-catalog.js'
 import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
 import type { CodingNsSettings, CodingNsCliAdapterPreference } from '../../shared/contracts/config.js'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
@@ -343,9 +344,11 @@ export class CodingNsCliAdapterRegistry {
       // 每轮都写入稳定的适配器身份。旧日志只有通用 codingns-external 标记，
       // 这条 request/context 是升级后自动迁移时唯一可靠的回填依据。
       try {
+        const contextWindow = input.adapterId === 'codex' ? knownCodexContextWindow(input.modelId) : undefined
         this.nativeSessions?.appendRequestContext?.(input.sessionId, {
           provider: input.adapterId,
           model: input.modelId ?? input.adapterId,
+          ...(contextWindow === undefined ? {} : { contextWindow, confirmed: true, source: 'catalog' as const }),
         })
       } catch { /* 原生历史写入失败不应阻断外部 Agent */ }
       if (suspended !== undefined && suspended.adapterId !== input.adapterId) {
