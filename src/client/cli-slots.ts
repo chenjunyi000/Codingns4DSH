@@ -51,6 +51,8 @@ function installComposerStyles(): void {
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.right"] > .codingns4dsh-model-root{min-width:0;max-width:min(360px,45cqw);flex:1 1 min(360px,45cqw)}',
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > select{width:100%;min-width:0;max-width:min(150px,45cqw);flex:1 1 min(150px,45cqw);overflow:hidden;white-space:nowrap}',
     '[data-composer-card] > div:has([data-slot="conversation.input.right"]) [data-slot="conversation.input.model"] > button{width:100%;min-width:0;max-width:min(360px,45cqw);overflow:hidden;white-space:nowrap}',
+    // 移动端工具栏空间有限，适配器按钮沿用模型选择器的紧凑图标形态。
+    '@media (max-width: 768px){.codingns4dsh-agent-trigger > .codingns4dsh-agent-label{display:none}.codingns4dsh-agent-trigger > svg{display:none!important}.codingns4dsh-agent-trigger{padding-left:4px;padding-right:4px;gap:0}[data-composer-card] > div:has([data-slot="conversation.input.right"]) > div:has(> [data-slot="conversation.input.right"]),[data-composer-card] [data-slot="conversation.input.right"],.uV2eYG_standardControls,.uV2eYG_trailing{gap:0!important;column-gap:0!important}}',
     // ContextMeter 在 pressure 尚未合并时会暂时返回 null；dock 保留同样的行高，数值回来时只更新内容。
     '[data-composer-card] + div{box-sizing:border-box;min-height:26px;align-items:center}',
     '[data-composer-card] + div svg[viewBox="0 0 14 14"] circle:last-child{transition:stroke-dasharray .18s ease,stroke .18s ease}',
@@ -179,7 +181,7 @@ function AgentSlot(props: CliSlotProps): ReactElement {
   const [selection, update] = useSelection(sessionId, props.rpc)
   const [agents, setAgents] = useState<readonly CodingNsCliAdapterDescriptor[]>([{ id: 'dsh', name: 'DeepSeek Harness', installed: true, enabled: true, version: null, command: null }])
   const [open, setOpen] = useState(false)
-  const locked = session !== undefined && (!session.blank || Boolean(session.promptAttempted) || Boolean(session.running) || (session.queue?.length ?? 0) > 0)
+  const locked = isSessionLocked(session)
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -213,7 +215,7 @@ function AgentSlot(props: CliSlotProps): ReactElement {
       currentIcon === undefined
         ? createElement(ProviderIconFallback, { name: current.name, size: 20 })
         : createElement('img', { src: currentIcon, alt: '', 'aria-hidden': true, style: applyProviderIconShape(current.id, agentTriggerIconStyle) }),
-      createElement('span', { style: agentTriggerLabelStyle }, current.name),
+      createElement('span', { className: 'codingns4dsh-agent-label', style: agentTriggerLabelStyle }, current.name),
       createElement(NativeDropdownChevron, { open, locked }),
     ),
     open && !locked && createElement('div', { role: 'menu', 'aria-label': t('cli.selectAgent'), style: agentMenuStyle },
@@ -462,6 +464,12 @@ const modelLoadingMenuStyle = { minHeight: 56, padding: '0 12px', display: 'flex
 function defaultEffort(efforts: readonly string[]): string | undefined {
   if (efforts.length === 0) return undefined
   return efforts.length > 2 ? efforts[efforts.length - 2] : efforts[efforts.length - 1]
+}
+
+/** 会话离开空白新建态后，适配器选择器不可再修改。 */
+function isSessionLocked(session: SessionSnapshot | undefined): boolean {
+  return session !== undefined
+    && (!session.blank || Boolean(session.promptAttempted) || Boolean(session.running) || (session.queue?.length ?? 0) > 0)
 }
 
 export { AgentSlot, ModelSlot }
