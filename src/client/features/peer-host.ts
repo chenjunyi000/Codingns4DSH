@@ -11,6 +11,8 @@ export const peerHostFeature: CodingNsClientFeatureModule = {
     name: 'peerHost',
     version: '0.1.0',
     enabledByDefault: false,
+    // PeerHost 暂停启用，待 Host-to-Host/relay 在真实 DSH 环境完成验收后再开放。
+    disabled: true,
     dependencies: [],
     runtime: 'client',
     requires: [
@@ -19,7 +21,7 @@ export const peerHostFeature: CodingNsClientFeatureModule = {
     ],
     ui: {
       label: '管理其他 DSH Host',
-      description: '管理局域网和中转 PeerHost，并按 Host 作用域聚合工作区与会话。',
+      description: 'PeerHost 暂时停用，待 Host-to-Host 能力完成验收后再启用。',
       order: 50,
       defaultOpen: false,
     },
@@ -39,10 +41,19 @@ export const peerHostFeature: CodingNsClientFeatureModule = {
       aggregateError = error
       try { endpoint = await management.webSocketEndpoint() } catch { endpoint = null }
     }
+    let socketFactory: ReturnType<typeof createPeerHostWebSocketFactory> | undefined
+    if (endpoint !== null) {
+      try {
+        socketFactory = createPeerHostWebSocketFactory(endpoint)
+      } catch {
+        endpoint = null
+        aggregateError = new Error('PeerHost 实时通道端点不可用')
+      }
+    }
     const session = startPeerHostNativeSession({
       controller: context.services.peerHostSession,
       client: context.services.peerHost,
-      ...(endpoint === null ? {} : { socketFactory: createPeerHostWebSocketFactory(endpoint) }),
+      ...(socketFactory === undefined ? {} : { socketFactory }),
     })
     context.resources.add(() => session.close())
     const navigation = startPeerHostNativeNavigation({
@@ -61,7 +72,9 @@ export const peerHostFeature: CodingNsClientFeatureModule = {
     if (results !== null) navigation.refresh(results)
     else navigation.setStatus({
       status: 'degraded',
-      reason: aggregateError instanceof Error ? aggregateError.message : 'PeerHost 聚合摘要暂不可用',
+      reason: aggregateError instanceof Error && aggregateError.message === 'PeerHost 实时通道端点不可用'
+        ? aggregateError.message
+        : 'PeerHost 聚合摘要暂不可用',
     })
   },
 }

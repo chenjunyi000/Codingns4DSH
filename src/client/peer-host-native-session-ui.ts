@@ -62,8 +62,11 @@ export function startPeerHostNativeNavigation(options: PeerHostNativeNavigationO
     const state = overrideState ?? resolveNavigationState(dom)
     report(state)
     removeNodes(dom, PEER_HOST_NAVIGATION_ATTRIBUTE)
+    // 清理旧版本曾插入的状态节点；降级信息不应残留在 DSH 原生工作区树顶部。
+    removeNodes(dom, PEER_HOST_STATUS_ATTRIBUTE)
     if (state.status !== 'ready') {
-      renderStatus(dom, state)
+      // 原生工作区树属于 DSH 宿主；降级信息只通过 controller.state/onStatus
+      // 暴露，不能把插件错误节点插入宿主导航顶部，避免污染单 Host UI。
       return
     }
     const tree = findNativeTree(dom)
@@ -279,18 +282,6 @@ function renderHost(dom: Document, host: HostNavigationHostItem, onSelect: PeerH
     }
   }
   return section
-}
-
-function renderStatus(dom: Document, state: PeerHostNativeUiState): void {
-  const node = dom.createElement('div')
-  node.setAttribute(PEER_HOST_STATUS_ATTRIBUTE, '')
-  node.setAttribute('role', 'status')
-  node.textContent = `PeerHost：${state.reason}`
-  node.style.padding = '6px 10px'
-  node.style.fontSize = '12px'
-  node.style.color = 'var(--dsw-alias-label-secondary, currentColor)'
-  const tree = dom.querySelector<HTMLElement>('[role="tree"]')
-  tree?.prepend(node)
 }
 
 function createSessionPanel(dom: Document, scope: HostScope): HTMLElement {

@@ -2,17 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createPeerHostManagementApi } from '../data/build/dist/client/peer-host-management-api.js'
 import { startPeerHostManagementPanel } from '../data/build/dist/client/peer-host-management-panel.js'
-import { createPeerHostScopedClient } from '../data/build/dist/client/peer-host-scoped-client.js'
+import { createPeerHostScopedClient, createPeerHostWebSocketFactory } from '../data/build/dist/client/peer-host-scoped-client.js'
 import type { PeerHostProxyResponse } from '../data/build/dist/client/peer-host-scoped-client.js'
 import { toPeerHostClientRecord } from '../data/build/dist/host/features/peer-host.js'
 import { HostRouter } from '../data/build/dist/client/host-router.js'
 import { PeerHostSessionController } from '../data/build/dist/client/peer-host-session-controller.js'
+import { CODINGNS_RPC_CHANNEL } from '../data/build/dist/shared/contracts/transport.js'
 
 test('PeerHost 管理 API 只向 Host RPC 发送目标 ID 和一次性登录参数', async () => {
-  const calls: Array<{ endpoint: string; payload: unknown }> = []
+  const calls: Array<{ channel: string; endpoint: string; payload: unknown }> = []
   const rpc = {
-    async call(_channel: string, endpoint: string, payload: unknown) {
-      calls.push({ endpoint, payload })
+    async call(channel: string, endpoint: string, payload: unknown) {
+      calls.push({ channel, endpoint, payload })
       if (endpoint === 'peerHost/list') return { ok: true as const, value: [] }
       if (endpoint === 'peerHost/login') return { ok: true as const, value: { peerHostId: 'peer-1', status: 'logged_in', expiresAt: 123 } }
       if (endpoint === 'peerHost/remove') return { ok: true as const, value: null }
@@ -25,6 +26,7 @@ test('PeerHost 管理 API 只向 Host RPC 发送目标 ID 和一次性登录参�
   await api.remove('peer-1')
 
   assert.deepEqual(calls.map((call) => call.endpoint), ['peerHost/list', 'peerHost/login', 'peerHost/remove'])
+  assert.deepEqual(calls.map((call) => call.channel), ['/codingns', '/codingns', '/codingns'])
   assert.deepEqual(calls[1]?.payload, { peerHostId: 'peer-1', username: 'alice', password: 'password-secret' })
   assert.equal(JSON.stringify(calls[0]?.payload).includes('token'), false)
   assert.equal(JSON.stringify(calls[2]?.payload), JSON.stringify({ peerHostId: 'peer-1' }))
@@ -98,6 +100,25 @@ test('PeerHost 作用域客户端为会话请求绑定完整 HostScope，不接�
   await assert.rejects(client.request(scope, 'https://target.example/api/sessions'), /固定 API 路径/u)
 })
 
+test('PeerHost 作用域请求使用统一 RPC 通道并兼容 HTTP 回退', async () => {
+  const calls: Array<[string, string]> = []
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 1 }
+  const client = createPeerHostScopedClient({
+    async call(channel: string, endpoint: string) {
+      calls.push([channel, endpoint])
+      if (channel === CODINGNS_RPC_CHANNEL) throw new Error('HTTP 404')
+      return { ok: true as const, value: { status: 200, headers: [], body: '{}' } }
+    },
+  })
+
+  const response = await client.loadSessionHistory(scope)
+  assert.equal(response.status, 200)
+  assert.deepEqual(calls, [
+    [CODINGNS_RPC_CHANNEL, 'peerHost/request'],
+    ['/api', 'codingns/peerHost/request'],
+  ])
+})
+
 test('Host 返回的 PeerHost DTO 不包含完整路由地址或 fingerprint', () => {
   const value = toPeerHostClientRecord({
     id: 'peer-1', ownerUserId: 'user-1', displayName: '开发机',
@@ -158,6 +179,47 @@ test('PeerHost WebSocket 工具消息自动绑定 HostScope，并拒绝覆盖作
   assert.throws(() => subscription.send('terminal.input', { hostId: 'attacker' }), /不得覆盖作用域字段/u)
   assert.throws(() => subscription.send('admin.secret' as never), /未加入白名单/u)
   subscription.close()
+})
+
+test('PeerHost 浏览器 WebSocket 工厂适配标准 addEventListener 事件', async () => {
+  const runtime = globalThis as typeof globalThis & { WebSocket?: unknown }
+  const previous = runtime.WebSocket
+  class BrowserSocket {
+    static latest: BrowserSocket | undefined
+    readyState = 0
+    readonly sent: string[] = []
+    readonly listeners = new Map<string, Array<(event: unknown) => void>>()
+    readonly url: string
+    constructor(url: string) { this.url = url; BrowserSocket.latest = this }
+    addEventListener(event: string, listener: (value: unknown) => void): void {
+      this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener])
+    }
+    send(value: string): void { this.sent.push(value) }
+    close(): void { this.readyState = 3; this.emit('close', {}) }
+    emit(event: string, value: unknown): void { for (const listener of this.listeners.get(event) ?? []) listener(value) }
+  }
+  Object.defineProperty(runtime, 'WebSocket', { configurable: true, value: BrowserSocket })
+  try {
+    const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 13 }
+    const factory = createPeerHostWebSocketFactory({ host: '127.0.0.1', port: 13080, path: '/api/codingns/peer-host/ws' }, { protocol: 'ws' })
+    const socket = await factory(scope)
+    const browserSocket = BrowserSocket.latest!
+    assert.match(String(browserSocket.url), /targetHostId=peer-1/u)
+    let opened = false
+    let message = ''
+    socket.on('open', () => { opened = true })
+    socket.on('message', (value) => { message = String(value) })
+    browserSocket.readyState = 1
+    browserSocket.emit('open', {})
+    browserSocket.emit('message', { data: 'event-body' })
+    assert.equal(opened, true)
+    assert.equal(message, 'event-body')
+    socket.close()
+    assert.equal(browserSocket.readyState, 3)
+  } finally {
+    if (previous === undefined) delete runtime.WebSocket
+    else Object.defineProperty(runtime, 'WebSocket', { configurable: true, value: previous })
+  }
 })
 
 test('PeerHost 事件流在无 sessionId 作用域下丢弃带会话的旧事件', async () => {

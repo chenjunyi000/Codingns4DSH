@@ -1,4 +1,5 @@
 import type { HostScope, PeerHostWebSocketEndpoint } from '../shared/contracts/peer-host.js'
+import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import type { CodingNsRpcClient } from './features/types.js'
 
 export interface PeerHostEventSocket {
@@ -58,7 +59,23 @@ export function createPeerHostWebSocketFactory(endpoint: PeerHostWebSocketEndpoi
     url.searchParams.set('scopeGeneration', String(scope.scopeGeneration))
     const WebSocketCtor = globalThis.WebSocket
     if (typeof WebSocketCtor !== 'function') throw new Error('当前运行时没有 WebSocket')
-    return new WebSocketCtor(url) as unknown as PeerHostEventSocket
+    return adaptBrowserWebSocket(new WebSocketCtor(url))
+  }
+}
+
+/** 将浏览器标准 WebSocket 事件适配为 Client 事件流使用的轻量接口。 */
+function adaptBrowserWebSocket(socket: WebSocket): PeerHostEventSocket {
+  return {
+    get readyState() { return socket.readyState },
+    send(data: string): void { socket.send(data) },
+    close(code?: number, reason?: string): void { socket.close(code, reason) },
+    on(event, listener): void {
+      if (event === 'message') {
+        socket.addEventListener('message', (message) => listener(message.data, typeof message.data !== 'string'))
+        return
+      }
+      socket.addEventListener(event, (...args: unknown[]) => listener(...args))
+    },
   }
 }
 
@@ -94,13 +111,21 @@ export function createPeerHostScopedClient(rpc: CodingNsRpcClient): PeerHostScop
   const request = async (scope: HostScope, path: string, options: { readonly method?: string; readonly body?: string } = {}): Promise<PeerHostProxyResponse> => {
     assertPeerScope(scope)
     if (!path.startsWith('/api/') || path.includes('://')) throw new TypeError('PeerHost 代理路径必须是固定 API 路径')
-    const result = await rpc.call('codingns', 'peerHost/request', {
+    const payload = {
       peerHostId: scope.targetHostId,
       scope,
       path,
       ...(options.method === undefined ? {} : { method: options.method }),
       ...(options.body === undefined ? {} : { body: options.body }),
-    })
+    }
+    let result
+    try {
+      result = await rpc.call(CODINGNS_RPC_CHANNEL, 'peerHost/request', payload)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!/HTTP (?:404|405)\b/u.test(message)) throw error
+      result = await rpc.call('/api', 'codingns/peerHost/request', payload)
+    }
     if (!result.ok) throw new Error(result.error.message)
     return result.value as PeerHostProxyResponse
   }
@@ -136,8 +161,14 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
   assertPeerScope(scope)
   const maxReconnectAttempts = normalizeReconnectAttempts(options.maxReconnectAttempts)
   const reconnectDelaysMs = normalizeReconnectDelays(options.reconnectDelaysMs)
-  let socket = await socketFactory(scope)
-  await waitForSocketOpen(socket)
+  const initialSocket = await socketFactory(scope)
+  try {
+    await waitForSocketOpen(initialSocket)
+  } catch (error) {
+    closeSocket(initialSocket, 1011, 'PeerHost WebSocket 打开失败')
+    throw error
+  }
+  let socket = initialSocket
   let closed = false
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let reconnectAttempt = 0

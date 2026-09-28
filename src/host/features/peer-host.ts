@@ -47,6 +47,8 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
       name: 'peerHost',
       version: '0.1.0',
       enabledByDefault: false,
+      // 与 Client 保持一致；历史配置中的 true 也不能让未验收能力启动。
+      disabled: true,
       dependencies: [],
       runtime: 'host',
       requires: [

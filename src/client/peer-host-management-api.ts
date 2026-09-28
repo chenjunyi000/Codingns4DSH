@@ -1,4 +1,5 @@
 import type { AggregateHostResult, PeerHostClientRecord, PeerHostDiagnosticSnapshot, PeerHostRoute, PeerHostWebSocketEndpoint } from '../shared/contracts/peer-host.js'
+import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import type { CodingNsRpcClient } from './features/types.js'
 
 export interface PeerHostCreateRequest {
@@ -35,7 +36,14 @@ export interface PeerHostManagementApi {
 /** PeerHost 管理 RPC 封装；客户端不接受目标凭据字段。 */
 export function createPeerHostManagementApi(rpc: CodingNsRpcClient): PeerHostManagementApi {
   const call = async <T>(endpoint: string, payload: unknown): Promise<T> => {
-    const result = await rpc.call('codingns', endpoint, payload)
+    let result
+    try {
+      result = await rpc.call(CODINGNS_RPC_CHANNEL, endpoint, payload)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!/HTTP (?:404|405)\b/u.test(message)) throw error
+      result = await rpc.call('/api', `codingns/${endpoint}`, payload)
+    }
     if (!result.ok) throw new Error(result.error.message)
     return result.value as T
   }
