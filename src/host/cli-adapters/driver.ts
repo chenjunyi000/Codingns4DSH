@@ -46,6 +46,8 @@ export interface CodingNsCliDriver {
   readonly descriptor: Omit<CodingNsCliAdapterDescriptor, 'installed' | 'enabled' | 'version' | 'command'>
   /** 驱动是否已经自行维护 Provider turn 的 step 边界。 */
   readonly supportsSegmentedTurns?: boolean
+  /** 丢弃等待下一个 DSH step 的 Provider 运行；只有自行分段的驱动需要实现。 */
+  discardSegmentedTurn?(sessionId: string): void
   detect(): Promise<Pick<CodingNsCliAdapterDescriptor, 'installed' | 'version' | 'command'>>
   listModels(): Promise<CodingNsCliModelCatalog>
   probeSession?(input: CodingNsCliSessionProbeInput): Promise<CodingNsCliSessionProbeResult>

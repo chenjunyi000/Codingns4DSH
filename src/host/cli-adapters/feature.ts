@@ -142,8 +142,9 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           const messages = Array.isArray(value?.messages) ? value.messages.filter(isMessage) : []
           const cwd = resolveSessionCwd(context.services.nativeSessions, sessionId, value)
           // 只有 Provider 驱动明确维护了稳定的 turn 分段，才把工具边界映射为 DSH step。
-          // OpenCode、Command Code 会在同一轮连续产出工具和 usage，强行切 step 会让
-          // token-meter 在下一条 usage 到达前失去投影，表现为上下文组件反复卸载。
+          // Command Code、Codex 会在下一个 assistant 消息处结束当前 step；未声明分段
+          // 支持的驱动（如 OpenCode）仍把整轮保持在一个 step，避免 token-meter 在下一
+          // 条 usage 到达前失去投影。
           const input = {
             sessionId,
             messages,

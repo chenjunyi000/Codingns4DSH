@@ -13,6 +13,19 @@ export interface JsonRpcMessage {
   readonly [key: string]: unknown
 }
 
+/** 保留 JSON-RPC 错误的稳定字段，供适配器识别可恢复错误。 */
+export class JsonRpcRequestError extends Error {
+  readonly code: number | undefined
+  readonly data: unknown
+
+  constructor(code: number | undefined, data: unknown) {
+    super('JSON-RPC 请求失败')
+    this.name = 'JsonRpcRequestError'
+    this.code = code
+    this.data = data
+  }
+}
+
 export interface JsonRpcProcessOptions {
   readonly command: string
   readonly args?: readonly string[]
@@ -199,7 +212,10 @@ export class JsonRpcProcess {
           const pending = this.pending.get(value.id as number | string)
           if (pending === undefined) continue
           // Provider 错误可能带命令行、路径或凭据片段，只向上层暴露稳定错误，不回传原文。
-          if (isRecord(value.error)) pending.reject(new Error('JSON-RPC 请求失败'))
+          if (isRecord(value.error)) pending.reject(new JsonRpcRequestError(
+            typeof value.error.code === 'number' ? value.error.code : undefined,
+            value.error.data,
+          ))
           else pending.resolve(value.result)
           continue
         }

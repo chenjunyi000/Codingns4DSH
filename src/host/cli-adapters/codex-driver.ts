@@ -1,9 +1,10 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { CodingNsAgentEvent, CodingNsAgentQuestionResponse, CodingNsCliModelCatalog, CodingNsAgentPermissionResponse, CodingNsCliTurnInput } from '../../shared/contracts/cli-adapter.js'
 import type { CodingNsCliDriver, CodingNsCliSessionProbeInput, CodingNsCliSessionProbeResult } from './driver.js'
-import { JsonRpcProcess, type JsonRpcMessage } from './json-rpc-process.js'
+import { JsonRpcProcess, JsonRpcRequestError, type JsonRpcMessage } from './json-rpc-process.js'
 import { detectBinary, emptyCatalog, isRecord, textValue, usageChunk } from './rpc-driver-utils.js'
 import { CODEX_CATALOG, isProviderDefaultModel } from './model-catalog.js'
 import { probeStoredSession, readFirstJsonRecord } from './session-probe.js'
@@ -40,13 +41,21 @@ interface CodexSession {
   readonly cwd: string | undefined
   modelId: string | undefined
   contextWindow: number | undefined
+  contextTokens: number | undefined
   threadId: string
   turnId: string | null
   providerSessionId: string
   readonly pendingPermissions: Map<string, PendingCodexPermission>
   readonly pendingQuestions: Map<string, (value: unknown) => void>
   segmentedTurn: CodexSegmentedTurn | undefined
+  compacting: Promise<void> | undefined
+  pendingCompactionEvents: CodingNsAgentEvent[]
 }
+
+// 只有 Provider 已明确报告超过窗口时才主动压缩；接近上限仍交给 Codex
+// 自身的 auto-compact，避免对正常的高占用回合重复发起压缩。
+const CODEX_COMPACTION_THRESHOLD = 1
+const CODEX_COMPACTION_TIMEOUT_MS = 60_000
 
 interface PendingCodexPermission {
   readonly resolve: (value: unknown) => void
@@ -135,6 +144,8 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         session.threadId = readId(thread) ?? input.providerSessionId ?? input.sessionId
         session.providerSessionId = session.threadId
       }
+      await this.ensureContextCapacity(session, input)
+      yield* drainCompactionEvents(session)
       yield { type: 'session-binding', providerSessionId: session.providerSessionId }
       const eventQueue = createCodexTurnEventQueue()
       let activeTurnId: string | null = null
@@ -176,16 +187,15 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       if (input.signal?.aborted) onAbort()
       else input.signal?.addEventListener('abort', onAbort, { once: true })
       try {
-        const response = await rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
+        const response = await this.startTurn(session, input)
         const responseTurnId = readTurnId(response)
         if (responseTurnId !== null) {
           activeTurnId = responseTurnId
           session.turnId = responseTurnId
         }
         turnStartResolved = true
-        // 响应前缓存的通知可能来自 thread/resume 的旧历史。没有 turnId 的工具
-        // 事件无法证明属于本次回合，因此只能丢弃；有明确 turnId 的事件仍按
-        // 原有规则处理。
+        // 响应前缓存的通知可能来自 thread/resume 的旧历史。没有 turnId 的事件
+        // 无法证明属于本次回合，因此只能丢弃；有明确 turnId 的事件仍按原有规则处理。
         for (const message of notificationsBeforeTurnStart.splice(0)) acceptNotification(message, false)
         // 某些 app-server 会直接在 turn/start 响应中返回终态。父仓库把它
         // 归一化成 turn/completed，这里复用同一规则，避免永久等待通知。
@@ -214,6 +224,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       } else {
         yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : terminalReason ?? 'stop' }
       }
+      session.turnId = null
     } finally { /* app-server 在会话结束前保持连接。 */ }
   }
 
@@ -236,7 +247,12 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         session.threadId = readId(thread) ?? input.providerSessionId ?? input.sessionId
         session.providerSessionId = session.threadId
       }
+      // 分段 step 仍属于同一个 Provider turn；恢复它时不能插入 compact turn。
+      const hasSuspendedTurn = session.segmentedTurn !== undefined
+      if (!hasSuspendedTurn) await this.ensureContextCapacity(session, input)
+      if (!hasSuspendedTurn) yield* drainCompactionEvents(session)
       active = session.segmentedTurn ?? await this.startSegmentedTurn(session, input)
+      yield* drainCompactionEvents(session)
       const isNew = session.segmentedTurn === undefined
       if (isNew) session.segmentedTurn = active
       if (isNew) yield { type: 'session-binding', providerSessionId: session.providerSessionId }
@@ -298,7 +314,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     if (input.signal?.aborted) onAbort()
     else input.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const response = await session.rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
+      const response = await this.startTurn(session, input)
       const responseTurnId = readTurnId(response)
       if (responseTurnId !== null) {
         activeTurnId = responseTurnId
@@ -326,6 +342,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         if (next.done) {
           if (input.signal?.aborted) throw new Error('请求已取消')
           active.done = true
+          session.turnId = null
           active.removeAbortListener()
           active.removeNotificationListener()
           yield { type: 'finish', reason: active.terminalReason ?? 'stop' }
@@ -366,6 +383,119 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     active.removeNotificationListener()
     active.queue.close()
     if (session.segmentedTurn === active) session.segmentedTurn = undefined
+  }
+
+  /** 在下一轮开始前主动压缩，避免把已满的线程直接交给 turn/start。 */
+  private async ensureContextCapacity(session: CodexSession, input: CodingNsCliTurnInput): Promise<void> {
+    if (session.contextWindow === undefined || session.contextTokens === undefined) return
+    if (session.contextTokens <= session.contextWindow * CODEX_COMPACTION_THRESHOLD) return
+    await this.compactThread(session, input)
+  }
+
+  /** turn/start 遇到上下文超限时压缩一次并重试，兼容关闭自动压缩的 Codex 配置。 */
+  private async startTurn(session: CodexSession, input: CodingNsCliTurnInput): Promise<unknown> {
+    try {
+      return await session.rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
+    } catch (error) {
+      if (!isContextWindowError(error)) throw error
+      await this.compactThread(session, input)
+      return session.rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
+    }
+  }
+
+  /** thread/compact/start 立即返回，真正完成由 contextCompaction turn 的终态通知表示。 */
+  private async compactThread(session: CodexSession, input: CodingNsCliTurnInput): Promise<void> {
+    if (session.compacting !== undefined) return session.compacting
+    const compacting = this.waitForCompaction(session, input)
+    session.compacting = compacting
+    try {
+      await compacting
+      session.contextTokens = 0
+    } finally {
+      if (session.compacting === compacting) session.compacting = undefined
+    }
+  }
+
+  private async waitForCompaction(session: CodexSession, input: CodingNsCliTurnInput): Promise<void> {
+    const compactionId = `codex-compaction-${randomUUID()}`
+    session.pendingCompactionEvents.push({ type: 'context-compaction', phase: 'start', compactionId })
+    let compactTurnId: string | null = null
+    let sawCompaction = false
+    let summary: string | undefined
+    let shadowedTokenCount: number | undefined
+    let shadowedItemCount: number | undefined
+    let resolveDone: (() => void) | undefined
+    let rejectDone: ((error: Error) => void) | undefined
+    const done = new Promise<void>((resolve, reject) => { resolveDone = resolve; rejectDone = reject })
+    const onNotification = (message: JsonRpcMessage): void => {
+      const params = isRecord(message.params) ? message.params : null
+      if (readScopedId(params, ['threadId', 'thread_id'], 'thread') !== session.threadId) return
+      if (message.method === 'thread/compacted') {
+        const details = compactionDetails(params)
+        summary = details.summary ?? summary
+        shadowedTokenCount = details.shadowedTokenCount ?? shadowedTokenCount
+        shadowedItemCount = details.shadowedItemCount ?? shadowedItemCount
+        resolveDone?.()
+        return
+      }
+      if (message.method === 'item/started') {
+        const item = isRecord(params?.item) ? params.item : null
+        if (item?.type === 'contextCompaction') {
+          sawCompaction = true
+          compactTurnId = readTurnId(message)
+        }
+        return
+      }
+      if (message.method === 'item/completed') {
+        const item = isRecord(params?.item) ? params.item : null
+        if (item?.type === 'contextCompaction') {
+          const details = compactionDetails(item)
+          summary = details.summary ?? summary
+          shadowedTokenCount = details.shadowedTokenCount ?? shadowedTokenCount
+          shadowedItemCount = details.shadowedItemCount ?? shadowedItemCount
+        }
+        return
+      }
+      if (message.method !== 'turn/completed') return
+      const turnId = readTurnId(message)
+      if (sawCompaction && compactTurnId !== null && turnId !== compactTurnId) return
+      if (!sawCompaction && compactTurnId === null) return
+      const turn = isRecord(params?.turn) ? params.turn : null
+      if (turn?.status === 'failed' || turn?.status === 'interrupted' || turn?.status === 'cancelled') {
+        rejectDone?.(new Error('Codex 上下文压缩失败'))
+      } else {
+        resolveDone?.()
+      }
+    }
+    const removeListener = session.rpc.addNotificationListener(onNotification)
+    const timer = setTimeout(() => rejectDone?.(new Error('Codex 上下文压缩超时')), CODEX_COMPACTION_TIMEOUT_MS)
+    timer.unref?.()
+    try {
+      await session.rpc.request('thread/compact/start', { threadId: session.threadId }, { signal: input.signal, killOnAbort: false })
+      await done
+      if (summary !== undefined || shadowedTokenCount !== undefined || shadowedItemCount !== undefined) {
+        session.pendingCompactionEvents.push({
+          type: 'context-compaction',
+          phase: 'summary',
+          compactionId,
+          ...(summary === undefined ? {} : { summary }),
+          ...(shadowedTokenCount === undefined ? {} : { shadowedTokenCount }),
+          ...(shadowedItemCount === undefined ? {} : { shadowedItemCount }),
+        })
+      }
+      session.pendingCompactionEvents.push({ type: 'context-compaction', phase: 'end', compactionId })
+    } catch (error) {
+      session.pendingCompactionEvents.push({
+        type: 'context-compaction',
+        phase: 'end',
+        compactionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    } finally {
+      clearTimeout(timer)
+      removeListener()
+    }
   }
 
   /** 将新输入 steer 到当前 Codex turn。 */
@@ -437,12 +567,15 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       cwd: input.cwd,
       modelId: input.modelId,
       contextWindow: undefined as number | undefined,
+      contextTokens: undefined as number | undefined,
       threadId: '',
       turnId: null as string | null,
       providerSessionId: input.providerSessionId ?? input.sessionId,
       pendingPermissions: new Map<string, PendingCodexPermission>(),
       pendingQuestions: new Map<string, (value: unknown) => void>(),
       segmentedTurn: undefined as CodexSegmentedTurn | undefined,
+      compacting: undefined as Promise<void> | undefined,
+      pendingCompactionEvents: [] as CodingNsAgentEvent[],
     }
     this.processes.add(rpc)
     this.sessions.set(input.sessionId, session)
@@ -468,7 +601,9 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
 }
 
 function stabilizeCodexUsage(session: CodexSession, event: CodingNsAgentEvent): CodingNsAgentEvent {
-  if (event.type !== 'usage' || event.contextWindow === undefined) return event
+  if (event.type !== 'usage') return event
+  if (event.contextTokens !== undefined) session.contextTokens = event.contextTokens
+  if (event.contextWindow === undefined) return event
   if (session.contextWindow === undefined) {
     session.contextWindow = event.contextWindow
     return event
@@ -476,7 +611,7 @@ function stabilizeCodexUsage(session: CodexSession, event: CodingNsAgentEvent): 
   if (session.contextWindow === event.contextWindow) return event
   // 同一 Codex thread/model 的 usage 通知可能带有全局默认窗口或迟到旧值。
   // 它不能覆盖首个已确认窗口，否则 DSH 会把 256K 错显示成 1M，并跳过压缩。
-  const contextTokens = event.contextTokens ?? event.inputTokens + (event.cacheReadTokens ?? 0) + (event.cacheWriteTokens ?? 0)
+  const contextTokens = event.contextTokens ?? event.inputTokens
   return {
     ...event,
     contextWindow: session.contextWindow,
@@ -537,6 +672,37 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
   const method = typeof message.method === 'string' ? message.method : ''
   const type = typeof item.type === 'string' ? item.type : ''
   const text = textValue(params.delta ?? params.text ?? params.content ?? params.message)
+  if (type === 'contextCompaction') {
+    const details = compactionDetails(item)
+    const compactionId = firstToolText(item.id, params.itemId)
+    const phase = method.includes('started') || method.includes('start')
+      ? 'start'
+      : method.includes('completed') || method.includes('compacted') || method.includes('summary')
+        ? 'summary'
+        : 'end'
+    return {
+      type: 'context-compaction',
+      phase,
+      ...(compactionId === undefined ? {} : { compactionId }),
+      ...(details.summary === undefined ? {} : { summary: details.summary }),
+      ...(details.shadowedTokenCount === undefined ? {} : { shadowedTokenCount: details.shadowedTokenCount }),
+      ...(details.shadowedItemCount === undefined ? {} : { shadowedItemCount: details.shadowedItemCount }),
+    }
+  }
+  if (method === 'thread/compacted') {
+    const details = compactionDetails(params)
+    return {
+      type: 'context-compaction',
+      phase: 'end',
+      ...(details.summary === undefined ? {} : { summary: details.summary }),
+      ...(details.shadowedTokenCount === undefined ? {} : { shadowedTokenCount: details.shadowedTokenCount }),
+      ...(details.shadowedItemCount === undefined ? {} : { shadowedItemCount: details.shadowedItemCount }),
+    }
+  }
+  if (method === 'turn/completed' && isContextCompactionTurn(params.turn)) {
+    const compactionId = readTurnId(message)
+    return { type: 'context-compaction', phase: 'end', ...(compactionId === null ? {} : { compactionId }) }
+  }
   if (isQuestionEvent(`${method} ${type}`)) {
     const requestId = readRequestId(message) ?? readRequestId(params)
     const questions = readAgentQuestions(params.questions ?? item.questions ?? params)
@@ -598,6 +764,38 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
   return codexUsageChunk(params)
 }
 
+function* drainCompactionEvents(session: CodexSession): Generator<CodingNsAgentEvent> {
+  while (session.pendingCompactionEvents.length > 0) {
+    const event = session.pendingCompactionEvents.shift()
+    if (event !== undefined) yield event
+  }
+}
+
+interface CodexCompactionDetails {
+  readonly summary?: string
+  readonly shadowedTokenCount?: number
+  readonly shadowedItemCount?: number
+}
+
+function compactionDetails(value: unknown): CodexCompactionDetails {
+  if (!isRecord(value)) return {}
+  const nested = isRecord(value.compaction) ? value.compaction : isRecord(value.item) ? value.item : value
+  const summary = textValue(nested.summary ?? nested.summaryText ?? nested.compactionSummary)
+  const shadowedTokenCount = optionalToken(nested.shadowedTokenCount ?? nested.shadowed_tokens ?? nested.compactedTokens)
+  const shadowedItemCount = optionalToken(nested.shadowedItemCount ?? nested.shadowed_items ?? nested.compactedItems)
+  return {
+    ...(summary === null || summary.trim() === '' ? {} : { summary: summary.trim() }),
+    ...(shadowedTokenCount === undefined ? {} : { shadowedTokenCount }),
+    ...(shadowedItemCount === undefined ? {} : { shadowedItemCount }),
+  }
+}
+
+function isContextCompactionTurn(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const kind = String(value.type ?? value.kind ?? value.name ?? '').toLowerCase()
+  return kind.includes('contextcompaction') || kind.includes('compaction')
+}
+
 interface CodexPermissionDetails {
   readonly kind: string
   readonly toolName?: string
@@ -645,7 +843,7 @@ function fileChangeToolInput(item: Record<string, any>): unknown {
   }
 }
 
-/** Codex app-server 的 tokenUsage 使用未缓存输入和缓存输入两个独立桶。 */
+/** Codex app-server 的 inputTokens 是含缓存读取的完整输入，cachedInputTokens 是其中已命中的子集。 */
 function codexUsageChunk(params: Record<string, any>): CodingNsAgentEvent | null {
   const tokenUsage = isRecord(params.tokenUsage) ? params.tokenUsage : isRecord(params.token_usage) ? params.token_usage : null
   if (tokenUsage === null) return usageChunk(params)
@@ -658,11 +856,10 @@ function codexUsageChunk(params: Record<string, any>): CodingNsAgentEvent | null
         : isRecord(tokenUsage.total)
           ? tokenUsage.total
           : tokenUsage
-  const uncachedInputTokens = optionalToken(latest.inputTokens ?? latest.input_tokens)
+  const inputTokens = optionalToken(latest.inputTokens ?? latest.input_tokens)
   const cacheReadTokens = optionalToken(latest.cachedInputTokens ?? latest.cached_input_tokens)
   const usage = usageChunk({
-    inputTokens: uncachedInputTokens ?? 0,
-    ...(uncachedInputTokens === undefined ? {} : { uncachedInputTokens }),
+    inputTokens: inputTokens ?? 0,
     ...(latest.outputTokens === undefined && latest.output_tokens === undefined ? {} : { outputTokens: latest.outputTokens ?? latest.output_tokens }),
     ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
     ...(latest.totalTokens === undefined && latest.total_tokens === undefined ? {} : { totalTokens: latest.totalTokens ?? latest.total_tokens }),
@@ -682,7 +879,7 @@ function codexUsageChunk(params: Record<string, any>): CodingNsAgentEvent | null
       ?? params.context_window,
   )
   const contextWindow = contextWindowValue !== undefined && contextWindowValue > 0 ? contextWindowValue : undefined
-  const contextTokens = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+  const contextTokens = usage.inputTokens
   return {
     ...usage,
     ...(contextWindow === undefined ? {} : {
@@ -759,11 +956,26 @@ function isCodexNotificationForTurn(
   const notificationThreadId = readScopedId(params, ['threadId', 'thread_id'], 'thread')
   const notificationTurnId = readTurnId(message)
   if (notificationThreadId !== null && notificationThreadId !== threadId) return false
-  // turn/start 响应前的无 turnId 工具通知无法证明属于本次回合，通常是
-  // thread/resume 的迟到历史；响应后则把它交给当前开放的 DSH step 处理。
-  if (notificationTurnId === null && !allowUnidentifiedTool
-    && (isCodexToolNotification(message) || isCodexUsageNotification(message))) return false
+  // 权限/问题审批是 Codex 发起的 JSON-RPC 请求，必须先交给交互层，不能因
+  // 它的 turnId 尚未出现在 turn/start 响应中而丢弃。
+  if (message.id !== undefined && message.id !== null) return true
+  // 响应返回前 activeTurnId 为空；带 turnId 的旧通知不能提前关闭新回合队列。
+  if (turnId === null && notificationTurnId !== null) return false
+  // turn/start 响应前的无 turnId 通知无法证明属于本次回合，尤其不能让迟到的
+  // 无标识 turn/completed 直接关闭新回合；响应后再交给当前开放的 DSH step。
+  if (notificationTurnId === null && !allowUnidentifiedTool) return false
   return turnId === null || notificationTurnId === null || notificationTurnId === turnId
+}
+
+function isContextWindowError(error: unknown): boolean {
+  if (error instanceof JsonRpcRequestError) return hasContextWindowError(error.data)
+  return hasContextWindowError(error)
+}
+
+function hasContextWindowError(value: unknown): boolean {
+  if (typeof value === 'string') return /context[_-]?window[_-]?exceeded|context window exceeded/iu.test(value)
+  if (!isRecord(value)) return false
+  return Object.entries(value).some(([key, child]) => /context.?window.?exceeded/iu.test(key) || hasContextWindowError(child))
 }
 
 function readCodexTerminalReason(message: JsonRpcMessage): 'stop' | 'cancel' | 'error' | null {
@@ -774,7 +986,7 @@ function readCodexTerminalReason(message: JsonRpcMessage): 'stop' | 'cancel' | '
   if (message.method !== 'turn/completed') return null
   const params = isRecord(message.params) ? message.params : null
   const turn = isRecord(params?.turn) ? params.turn : null
-  if (turn?.status === 'failed') return 'error'
+  if (turn?.status === 'failed' || hasContextWindowError(turn?.error)) return 'error'
   if (turn?.status === 'interrupted' || turn?.status === 'cancelled') return 'cancel'
   return 'stop'
 }
@@ -798,22 +1010,6 @@ function isCodexToolEvent(method: string, type: string): boolean {
   if (method.includes('command') || method.includes('tool') || method.includes('agent')) return true
   const normalized = type.replace(/[_-]/gu, '').toLowerCase()
   return ['commandexecution', 'filechange', 'mcptoolcall', 'functioncall', 'customtoolcall', 'dynamictoolcall'].includes(normalized)
-}
-
-function isCodexToolNotification(message: JsonRpcMessage): boolean {
-  // 带 id 的消息是 Codex 发起的 JSON-RPC 服务请求（例如权限审批），
-  // 必须交给 serverRequestHandler，不能被当成实时工具通知过滤掉。
-  if (message.id !== undefined && message.id !== null) return false
-  const params = isRecord(message.params) ? message.params : null
-  const item = isRecord(params?.item) ? params.item : params
-  const method = typeof message.method === 'string' ? message.method : ''
-  const type = typeof item?.type === 'string' ? item.type : ''
-  return isCodexToolEvent(method, type)
-}
-
-function isCodexUsageNotification(message: JsonRpcMessage): boolean {
-  const method = typeof message.method === 'string' ? message.method.toLowerCase() : ''
-  return method.includes('tokenusage') || method.includes('token_usage') || method.includes('usage/updated')
 }
 
 function codexTurnStartParams(input: CodingNsCliTurnInput, threadId: string): Record<string, unknown> {

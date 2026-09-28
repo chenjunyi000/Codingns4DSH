@@ -6,6 +6,7 @@ import readline from 'node:readline'
 import type {
   CodingNsCliModelCatalog,
   CodingNsAgentEvent,
+  CodingNsAgentToolEvent,
   CodingNsCliTurnInput,
 } from '../../shared/contracts/cli-adapter.js'
 import type { CodingNsCliDriver, CodingNsCliSessionProbeInput, CodingNsCliSessionProbeResult } from './driver.js'
@@ -98,6 +99,47 @@ const CATALOG_EFFORTS: ReadonlyMap<string, readonly string[]> = new Map([
   ['xai/grok-4.7', ['low', 'medium', 'high', 'xhigh']],
 ])
 
+/** 一个 `-p` 运行的事件队列；进程常驻，DSH step 之间只暂停消费。 */
+interface CommandCodeEventQueue {
+  next(): Promise<IteratorResult<CodingNsAgentEvent>>
+  push(event: CodingNsAgentEvent): void
+  close(): void
+}
+
+/** Command Code 的 `--output-format json` 在一个进程里跑完整个 agent 循环。 */
+interface CommandCodeTurn {
+  readonly sessionId: string
+  readonly child: ChildProcessWithoutNullStreams
+  readonly transcriptPath: string
+  readonly queue: CommandCodeEventQueue
+  /** 当前 assistant 消息身份；正文/推理增量必须携带它，公共投影层才能切块。 */
+  currentMessageId: string | undefined
+  /** 只有工具真正完成后才允许在下一个 assistant 消息处结束 DSH step。 */
+  sawCompletedTool: boolean
+  /** 已提前取出、等待下一个 DSH step 继续消费的事件。 */
+  pendingChunk: CodingNsAgentEvent | undefined
+  /** 运行已经产出终态事件（可能仍在队列里等待消费）。 */
+  terminal: boolean
+  /** 消费者已经收到 finish；此后不能再被续段复用。 */
+  finished: boolean
+  aborted: boolean
+  failure: Error | null
+  disposed: boolean
+}
+
+/** 单次运行内的消息标识与增量补齐状态。 */
+interface CommandCodeStreamState {
+  messageSequence: number
+  messageId: string | null
+  emittedText: string
+  emittedReasoning: string
+  sawText: boolean
+  perRequestUsageSeen: boolean
+  turnUsageSeen: boolean
+  sessionId: string | null
+  aborted: () => boolean
+}
+
 export interface CommandCodeDriverOptions {
   readonly homeDirectory?: string
   readonly binaries?: readonly string[]
@@ -106,8 +148,12 @@ export interface CommandCodeDriverOptions {
 }
 
 /**
- * Command Code 驱动：沿用附件中的 `--session + -p + --output-format json` 方式。
- * 它只负责 CLI 进程和事件转换，不把 Command Code 私有事件泄漏给上层。
+ * Command Code 驱动：沿用 `--session + -p + --output-format json` 的 NDJSON 事件流。
+ *
+ * 与 Codex 驱动保持同一套消息优化：正文/推理增量携带 assistant 消息身份，工具完成后
+ * 的下一条 assistant 消息之前结束当前 DSH step，因此一个 Provider 运行会被切成多个
+ * step，而不是把整轮正文堆积到最后一条结算消息里。驱动只输出公共事件契约，工具历史、
+ * usage 和原生组件映射全部交给公共消息投影层。
  */
 export class CommandCodeDriver implements CodingNsCliDriver {
   readonly descriptor = {
@@ -116,6 +162,8 @@ export class CommandCodeDriver implements CodingNsCliDriver {
     protocol: 'command',
     capabilities: ['models', 'stream', 'resume', 'interrupt', 'tool-events', 'reasoning', 'usage'] as const,
   } as const
+  /** 驱动自己维护 Provider turn 边界，Host 可以把工具边界映射为 DSH step。 */
+  readonly supportsSegmentedTurns = true
   private readonly homeDirectory: string
   private readonly binaries: readonly string[]
   private readonly runSpawnSync: typeof spawnSync
@@ -123,6 +171,7 @@ export class CommandCodeDriver implements CodingNsCliDriver {
   private cachedBinary: string | null = null
   private cachedEnvironment: Record<string, string | undefined> | undefined
   private readonly processes = new Set<ChildProcessWithoutNullStreams>()
+  private readonly turns = new Map<string, CommandCodeTurn>()
 
   constructor(options: CommandCodeDriverOptions = {}) {
     this.homeDirectory = options.homeDirectory ?? join(homedir(), '.commandcode')
@@ -212,6 +261,49 @@ export class CommandCodeDriver implements CodingNsCliDriver {
     const binary = this.cachedBinary ?? (await this.detect()).command
     if (binary === null) throw new Error('Command Code 未安装')
 
+    const segmented = input.splitToolSteps === true
+    const turn = segmented ? this.acquireTurn(input, binary) : this.startTurn(input, binary)
+    let suspended = false
+    const onAbort = (): void => { turn.aborted = true; this.disposeTurn(turn) }
+    input.signal?.addEventListener('abort', onAbort, { once: true })
+    if (input.signal?.aborted) onAbort()
+    try {
+      yield* this.consumeTurn(turn, input, segmented, () => { suspended = true })
+    } finally {
+      input.signal?.removeEventListener('abort', onAbort)
+      // 只有驱动自己为下一个 DSH step 挂起时才保留进程；正常结束、取消和调用方
+      // 提前关闭流都必须回收 CLI 进程与临时 transcript。
+      if (!suspended) this.disposeTurn(turn)
+    }
+  }
+
+  dispose(): void {
+    for (const turn of [...this.turns.values()]) this.disposeTurn(turn)
+    this.turns.clear()
+    for (const child of this.processes) terminateChildProcess(child)
+    this.processes.clear()
+    this.cachedBinary = null
+  }
+
+  /** 丢弃等待下一个 DSH step 的 `-p` 运行，避免旧进程继续占用新一轮输出。 */
+  discardSegmentedTurn(sessionId: string): void {
+    const turn = this.turns.get(sessionId)
+    if (turn !== undefined) this.disposeTurn(turn)
+  }
+
+  /** 只有 Host 显式声明续段时才复用常驻进程；新的用户回合必须重新启动。 */
+  private acquireTurn(input: CodingNsCliTurnInput, binary: string): CommandCodeTurn {
+    const existing = this.turns.get(input.sessionId)
+    if (existing !== undefined) {
+      if (input.resumeSegmentedTurn === true && !existing.disposed && !existing.finished) return existing
+      this.disposeTurn(existing)
+    }
+    const turn = this.startTurn(input, binary)
+    this.turns.set(input.sessionId, turn)
+    return turn
+  }
+
+  private startTurn(input: CodingNsCliTurnInput, binary: string): CommandCodeTurn {
     const transcriptPath = join(tmpdir(), `codingns4dsh-cc-${safeId(input.sessionId)}.jsonl`)
     writeTranscript(transcriptPath, input)
     const args = ['--session', transcriptPath, '-p', input.prompt, '--output-format', 'json', '--tools-all', '--yolo']
@@ -220,121 +312,346 @@ export class CommandCodeDriver implements CodingNsCliDriver {
 
     const child = this.runSpawn(binary, args, { cwd: input.cwd ?? process.cwd(), env: this.cachedEnvironment ?? commandEnvironment(binary), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WINDOWS })
     this.processes.add(child)
-    let finished = false
-    const onAbort = (): void => { terminateChildProcess(child) }
-    input.signal?.addEventListener('abort', onAbort, { once: true })
     // 必须消费 stderr，错误内容不能回传给 DSH，避免泄露命令参数或文件片段。
-    child.stderr.on('data', () => undefined)
+    child.stderr?.on('data', () => undefined)
+    const turn: CommandCodeTurn = {
+      sessionId: input.sessionId,
+      child,
+      transcriptPath,
+      queue: createEventQueue(),
+      currentMessageId: undefined,
+      sawCompletedTool: false,
+      pendingChunk: undefined,
+      terminal: false,
+      finished: false,
+      aborted: false,
+      failure: null,
+      disposed: false,
+    }
+    // 未监听 error 的 ChildProcess 会把 spawn 失败升级成宿主进程异常。
+    if (typeof (child as { on?: unknown }).on === 'function') {
+      child.on('error', (error: Error) => {
+        turn.failure ??= error
+        turn.queue.close()
+      })
+    }
+    void this.pumpTurn(turn)
+    return turn
+  }
 
+  /** 常驻读取 stdout：NDJSON 转成公共事件，进程结束后关闭队列。 */
+  private async pumpTurn(turn: CommandCodeTurn): Promise<void> {
+    const state = createStreamState(() => turn.aborted)
     try {
-      const lines = readline.createInterface({ input: child.stdout })
+      const lines = readline.createInterface({ input: turn.child.stdout })
       try {
         for await (const line of lines) {
           if (!line.trim()) continue
           const item = parseJson(line)
           if (item === null) continue
           const event = item.type === 'event' && isRecord(item.event) ? item.event : item
-          const eventType = textValue(event.type).toLowerCase()
-          const chunks = commandCodeEventChunks(event, input.signal?.aborted ?? false)
-          for (const chunk of chunks) {
-            if (chunk.type === 'finish') finished = true
-            yield chunk
+          for (const chunk of commandCodeEventChunks(event, state)) {
+            if (chunk.type === 'finish') turn.terminal = true
+            turn.queue.push(chunk)
           }
-          if (eventType === 'result' && !finished) finished = true
         }
       } finally {
         lines.close()
       }
-      if (!finished) {
-        if (input.signal?.aborted) yield { type: 'finish', reason: 'cancel' }
-        else throw new Error('Command Code 执行失败')
-      }
+    } catch (error) {
+      turn.failure ??= error instanceof Error ? error : new Error(String(error))
     } finally {
-      input.signal?.removeEventListener('abort', onAbort)
-      this.processes.delete(child)
-      terminateChildProcess(child)
-      try { rmSync(transcriptPath, { force: true }) } catch { /* 临时文件清理尽力而为 */ }
+      turn.queue.close()
+      this.processes.delete(turn.child)
     }
   }
 
-  dispose(): void {
-    for (const child of this.processes) terminateChildProcess(child)
-    this.processes.clear()
-    this.cachedBinary = null
+  private async *consumeTurn(
+    turn: CommandCodeTurn,
+    input: CodingNsCliTurnInput,
+    segmented: boolean,
+    suspend: () => void,
+  ): AsyncIterable<CodingNsAgentEvent> {
+    while (true) {
+      let chunk: CodingNsAgentEvent
+      if (turn.pendingChunk !== undefined) {
+        chunk = turn.pendingChunk
+        turn.pendingChunk = undefined
+      } else {
+        const next = await turn.queue.next()
+        if (next.done) {
+          if (turn.failure !== null) throw turn.failure
+          if (turn.terminal) return
+          if (turn.aborted || input.signal?.aborted === true) {
+            yield { type: 'finish', reason: 'cancel' }
+            return
+          }
+          throw new Error('Command Code 执行失败')
+        }
+        chunk = next.value
+      }
+
+      // 一个 `-p` 运行会在同一进程里连续跑多个 agent turn。把新 assistant 消息的
+      // 首个正文留给下一次 llm/stream，当前流只返回边界，确保 DSH 先创建新 step。
+      if (segmented
+        && (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta')
+        && chunk.messageId !== undefined) {
+        const previousMessageId = turn.currentMessageId
+        if (previousMessageId !== undefined
+          && previousMessageId !== chunk.messageId
+          && turn.sawCompletedTool) {
+          turn.pendingChunk = chunk
+          turn.currentMessageId = chunk.messageId
+          turn.sawCompletedTool = false
+          suspend()
+          yield { type: 'step-boundary' }
+          return
+        }
+        turn.currentMessageId = chunk.messageId
+      }
+      if (chunk.type === 'tool-event' && (chunk.status === 'completed' || chunk.status === 'failed')) {
+        turn.sawCompletedTool = true
+      }
+      if (chunk.type === 'finish') turn.finished = true
+      yield chunk
+    }
+  }
+
+  private disposeTurn(turn: CommandCodeTurn): void {
+    if (turn.disposed) return
+    turn.disposed = true
+    turn.queue.close()
+    if (this.turns.get(turn.sessionId) === turn) this.turns.delete(turn.sessionId)
+    this.processes.delete(turn.child)
+    terminateChildProcess(turn.child)
+    try { rmSync(turn.transcriptPath, { force: true }) } catch { /* 临时文件清理尽力而为 */ }
   }
 }
 
-function commandCodeEventChunks(event: Record<string, unknown>, cancelled: boolean): CodingNsAgentEvent[] {
+function createStreamState(aborted: () => boolean): CommandCodeStreamState {
+  return {
+    messageSequence: 0,
+    messageId: null,
+    emittedText: '',
+    emittedReasoning: '',
+    sawText: false,
+    perRequestUsageSeen: false,
+    turnUsageSeen: false,
+    sessionId: null,
+    aborted,
+  }
+}
+
+function createEventQueue(): CommandCodeEventQueue {
+  const values: CodingNsAgentEvent[] = []
+  const waiters: Array<(result: IteratorResult<CodingNsAgentEvent>) => void> = []
+  let closed = false
+  const next = (): Promise<IteratorResult<CodingNsAgentEvent>> => {
+    const value = values.shift()
+    if (value !== undefined) return Promise.resolve({ done: false, value })
+    if (closed) return Promise.resolve({ done: true, value: undefined })
+    return new Promise((resolve) => waiters.push(resolve))
+  }
+  return {
+    next,
+    push(event) {
+      if (closed) return
+      const waiter = waiters.shift()
+      if (waiter !== undefined) waiter({ done: false, value: event })
+      else values.push(event)
+    },
+    close() {
+      if (closed) return
+      closed = true
+      while (waiters.length > 0) waiters.shift()?.({ done: true, value: undefined })
+    },
+  }
+}
+
+/**
+ * Command Code NDJSON → 公共 Agent 事件。
+ *
+ * 关键约定（对照本机 1.66.0 真实事件流）：
+ * - `turn_start` / `message_start` 标识新的 assistant 消息，正文和推理增量都带上它；
+ * - `tool_*` 使用 `toolCallId` 作为稳定调用 ID，同一调用的 queued/running/completed
+ *   只能投影成一个 DSH 工具节点；
+ * - `model_request_end` 的 usage 是当前请求的上下文占用；`run_end`/最终 `result`
+ *   的 usage 是整个运行的累计值，只在完全没有单请求 usage 时兜底。
+ */
+function commandCodeEventChunks(event: Record<string, unknown>, state: CommandCodeStreamState): CodingNsAgentEvent[] {
   const chunks: CodingNsAgentEvent[] = []
   const type = textValue(event.type).trim().toLowerCase()
-  const sessionId = textValue(event.sessionId ?? event.session_id ?? recordValue(event.session)?.id ?? recordValue(event.result)?.sessionId).trim()
-  if (sessionId) chunks.push({ type: 'session-binding', providerSessionId: sessionId })
 
-  if (type === 'thinking_delta' || type === 'thinking-delta') {
-    const text = textValue(event.delta ?? event.thinking ?? event.content)
-    if (text) chunks.push({ type: 'reasoning-delta', text })
-  } else if (type === 'text_delta' || type === 'text-delta') {
-    const text = textValue(event.delta ?? event.text ?? event.content)
-    if (text) chunks.push({ type: 'text-delta', text })
-  } else if (type === 'message' || type === 'message_update' || type === 'message-update') {
-    appendMessageSnapshots(chunks, event)
+  const sessionId = readSessionId(event)
+  if (sessionId !== null && sessionId !== state.sessionId) {
+    state.sessionId = sessionId
+    chunks.push({ type: 'session-binding', providerSessionId: sessionId })
+  }
+
+  switch (type) {
+    case 'turn_start':
+    case 'turn-start':
+      beginMessage(state)
+      break
+    case 'message_start':
+    case 'message-start':
+      // 正常一轮只有一个模型请求；没有 turn_start 的旧版本由这里补消息身份。
+      if (state.messageId === null) beginMessage(state)
+      break
+    case 'text_delta':
+    case 'text-delta': {
+      const text = textValue(event.delta ?? event.text ?? event.content)
+      if (text) {
+        ensureMessage(state)
+        state.emittedText += text
+        state.sawText = true
+        chunks.push(textDelta(text, state))
+      }
+      break
+    }
+    case 'thinking_delta':
+    case 'thinking-delta': {
+      const text = textValue(event.delta ?? event.thinking ?? event.content)
+      if (text) {
+        ensureMessage(state)
+        state.emittedReasoning += text
+        chunks.push(reasoningDelta(text, state))
+      }
+      break
+    }
+    case 'message':
+    case 'message_update':
+    case 'message-update':
+    case 'message_end':
+    case 'message-end':
+      // 只补齐增量流没有覆盖到的正文，避免累计快照被重复追加。
+      appendContentFallback(chunks, event.content ?? recordValue(event.message)?.content, state)
+      break
+    case 'model_request_end':
+    case 'model-request-end': {
+      const usage = usageChunk(recordValue(event.usage))
+      if (usage !== null) {
+        state.perRequestUsageSeen = true
+        state.turnUsageSeen = true
+        chunks.push(usage)
+      }
+      break
+    }
+    case 'turn_end':
+    case 'turn-end': {
+      // 旧版本可能只在 turn_end 带 usage；与 model_request_end 去重，不重复结算。
+      if (!state.turnUsageSeen) {
+        const usage = usageChunk(recordValue(event.usage))
+        if (usage !== null) {
+          state.perRequestUsageSeen = true
+          state.turnUsageSeen = true
+          chunks.push(usage)
+        }
+      }
+      break
+    }
+    case 'result': {
+      if (!state.perRequestUsageSeen) {
+        const usage = usageChunk(recordValue(event.usage))
+        if (usage !== null) chunks.push(usage)
+      }
+      if (!state.sawText) {
+        const finalText = textValue(event.finalText ?? recordValue(event.result)?.finalText ?? (typeof event.result === 'string' ? event.result : undefined))
+        if (finalText) {
+          ensureMessage(state)
+          state.sawText = true
+          state.emittedText += finalText
+          chunks.push(textDelta(finalText, state))
+        }
+      }
+      chunks.push({ type: 'finish', reason: state.aborted() ? 'cancel' : resultReason(event) })
+      break
+    }
+    default:
+      break
   }
 
   if (isToolStart(type)) {
     const tool = readToolChunk(event, type === 'tool_queued' || type === 'tool_started' ? 'started' : 'running')
     if (tool !== null) chunks.push(tool)
   } else if (isToolResult(type)) {
-    const tool = readToolChunk(event, type.includes('error') || type.includes('fail') || type.includes('denied') ? 'failed' : 'completed')
-    if (tool !== null) chunks.push(tool)
-  }
-
-  const resultRecord = recordValue(event.result)
-  const usage = recordValue(event.usage) ?? recordValue(resultRecord?.usage)
-  const usageEvent = usageChunk(usage)
-  if (usageEvent !== null) chunks.push(usageEvent)
-  if (type === 'result') {
-    const finalText = textValue(event.finalText ?? resultRecord?.finalText ?? (typeof event.result === 'string' ? event.result : undefined) ?? event.output ?? event.text)
-    if (finalText) chunks.push({ type: 'text-snapshot', text: finalText })
-    chunks.push({ type: 'finish', reason: cancelled ? 'cancel' : 'stop' })
+    const failed = type.includes('error') || type.includes('fail') || type.includes('denied') || type.includes('blocked')
+    const tool = readToolChunk(event, failed ? 'failed' : 'completed')
+    if (tool !== null) {
+      chunks.push(tool)
+      // 工具完成后的正文属于下一条 assistant 消息。即使 CLI 没有发送
+      // turn_start/message_start，也要让公共投影层看到消息身份切换。
+      if (tool.status === 'completed' || tool.status === 'failed') resetMessageIdentity(state)
+    }
   }
   return chunks
 }
 
-function appendMessageSnapshots(chunks: CodingNsAgentEvent[], event: Record<string, unknown>): void {
-  const payload = recordValue(event.message ?? event.data) ?? event
-  if (Array.isArray(payload.content)) {
-    const snapshots = new Map<'reasoning' | 'text', string[]>()
-    for (const block of payload.content) {
-      const value = recordValue(block)
-      if (value === null) continue
-      const blockType = textValue(value.type).toLowerCase()
-      const channel = blockType.includes('thinking') || blockType.includes('reasoning') ? 'reasoning' : 'text'
-      const text = channel === 'reasoning'
-        ? textValue(value.thinking ?? value.reasoning ?? value.text ?? value.content)
-        : textValue(value.text ?? value.content)
-      if (!text) continue
-      const values = snapshots.get(channel) ?? []
-      values.push(text)
-      snapshots.set(channel, values)
-    }
-    for (const [channel, values] of snapshots) chunks.push({ type: `${channel}-snapshot`, text: values.join('') })
-    return
-  }
-  const reasoning = textValue(payload.thinking ?? payload.reasoning)
-  if (reasoning) chunks.push({ type: 'reasoning-snapshot', text: reasoning })
-  const text = textValue(payload.text ?? payload.content ?? event.text ?? event.content)
-  if (text) chunks.push({ type: 'text-snapshot', text })
+function beginMessage(state: CommandCodeStreamState): void {
+  state.messageSequence += 1
+  state.messageId = `command-code-message-${state.messageSequence}`
+  state.emittedText = ''
+  state.emittedReasoning = ''
+  state.turnUsageSeen = false
 }
 
-function readToolChunk(event: Record<string, unknown>, status: 'started' | 'running' | 'completed' | 'failed'): CodingNsAgentEvent | null {
-  const callId = textValue(event.callId ?? event.call_id ?? event.toolUseId ?? event.tool_use_id ?? event.id)
+/** 丢弃当前消息身份；下一条正文增量会懒加载新的身份。 */
+function resetMessageIdentity(state: CommandCodeStreamState): void {
+  state.messageId = null
+  state.emittedText = ''
+  state.emittedReasoning = ''
+}
+
+function ensureMessage(state: CommandCodeStreamState): void {
+  if (state.messageId === null) beginMessage(state)
+}
+
+function textDelta(text: string, state: CommandCodeStreamState): CodingNsAgentEvent {
+  return { type: 'text-delta', text, ...(state.messageId === null ? {} : { messageId: state.messageId }) }
+}
+
+function reasoningDelta(text: string, state: CommandCodeStreamState): CodingNsAgentEvent {
+  return { type: 'reasoning-delta', text, ...(state.messageId === null ? {} : { messageId: state.messageId }) }
+}
+
+/** 用完整的 assistant content 补齐缺失的正文/推理增量（只发送尚未发送的尾部）。 */
+function appendContentFallback(chunks: CodingNsAgentEvent[], content: unknown, state: CommandCodeStreamState): void {
+  if (!Array.isArray(content)) return
+  let text = ''
+  let reasoning = ''
+  for (const block of content) {
+    const value = recordValue(block)
+    if (value === null) continue
+    const blockType = textValue(value.type).toLowerCase()
+    const isReasoning = blockType.includes('thinking') || blockType.includes('reasoning')
+      || typeof value.thinking === 'string' || typeof value.reasoning === 'string'
+    if (isReasoning) reasoning += textValue(value.thinking ?? value.reasoning ?? value.text ?? value.content)
+    else text += textValue(value.text ?? value.content)
+  }
+  if (text.length > state.emittedText.length) {
+    const delta = text.slice(state.emittedText.length)
+    ensureMessage(state)
+    state.emittedText = text
+    state.sawText = true
+    chunks.push(textDelta(delta, state))
+  }
+  if (reasoning.length > state.emittedReasoning.length) {
+    const delta = reasoning.slice(state.emittedReasoning.length)
+    ensureMessage(state)
+    state.emittedReasoning = reasoning
+    chunks.push(reasoningDelta(delta, state))
+  }
+}
+
+function readToolChunk(event: Record<string, unknown>, status: 'started' | 'running' | 'completed' | 'failed'): CodingNsAgentToolEvent | null {
+  const callId = firstToolText(event.callId, event.call_id, event.toolCallId, event.tool_call_id, event.toolUseId, event.tool_use_id, event.id)
   const fn = recordValue(event.function)
-  const toolName = textValue(event.name ?? event.toolName ?? event.tool ?? fn?.name) || 'tool'
-  const error = textValue(event.error ?? event.reason)
+  const toolName = textValue(event.name ?? event.toolName ?? event.tool_name ?? event.tool ?? fn?.name) || 'tool'
+  const error = textValue(event.error ?? event.reason ?? event.message)
   const output = textValue(event.output ?? event.result ?? event.content)
   const input = event.input ?? fn?.arguments ?? event.arguments
   const agentId = firstToolText(event.agentId, event.agent_id)
-  const detail = serializeToolValue(event.detail ?? event.metadata)
+  const detail = serializeToolValue(event.detail ?? event.metadata ?? event.description)
   if (!callId && !toolName) return null
   return {
     type: 'tool-event',
@@ -355,7 +672,21 @@ function isToolStart(type: string): boolean {
 }
 
 function isToolResult(type: string): boolean {
-  return ['tool_completed', 'tool_result', 'tool_return', 'tool_failed', 'tool_error', 'tool_denied', 'function_result'].includes(type)
+  return ['tool_completed', 'tool_result', 'tool_return', 'tool_failed', 'tool_error', 'tool_denied', 'tool_hook_blocked', 'function_result'].includes(type)
+}
+
+function resultReason(event: Record<string, unknown>): 'stop' | 'cancel' | 'error' {
+  const resultRecord = recordValue(event.result)
+  const stopReason = textValue(event.stopReason ?? resultRecord?.stopReason).toLowerCase()
+  const subtype = textValue(event.subtype).toLowerCase()
+  if (event.error !== undefined || subtype === 'error' || stopReason.includes('error') || stopReason.includes('fail')) return 'error'
+  if (stopReason.includes('interrupt') || stopReason.includes('cancel') || stopReason === 'aborted') return 'cancel'
+  return 'stop'
+}
+
+function readSessionId(event: Record<string, unknown>): string | null {
+  const value = textValue(event.sessionId ?? event.session_id ?? recordValue(event.session)?.id ?? recordValue(event.result)?.sessionId).trim()
+  return value === '' ? null : value
 }
 
 function textValue(value: unknown): string {

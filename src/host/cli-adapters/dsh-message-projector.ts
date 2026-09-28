@@ -25,6 +25,33 @@ export interface CodingNsDshMessageProjectorOptions {
 export type CodingNsDshStreamChunk = Readonly<Record<string, unknown>>
 
 /**
+ * 把驱动的 Provider 口径 usage 映射成 DSH `TokenUsage` 的互斥桶口径。
+ *
+ * DSH 约定 `inputTokens` 只含未缓存输入，计费输入 = inputTokens + 缓存读写，而
+ * 驱动层已经用 `usageChunk` 按各 Provider 的字段语义折算出 `uncachedInputTokens`
+ * （Codex、Command Code 的 inputTokens 含缓存命中，Anthropic 风格的 input 不含）。
+ * 这里必须以该字段为准；直接把驱动事件里的 `inputTokens` 当成未缓存输入写进 DSH，
+ * 会让 token-meter 把缓存读取重复计入分母：缓存命中率被腰斩，上下文占用翻倍。
+ */
+function toDshTokenUsage(event: Extract<CodingNsAgentEvent, { type: 'usage' }>): {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens?: number
+  readonly cacheWriteTokens?: number
+  readonly totalTokens?: number
+} {
+  // 没有缓存分桶时 `inputTokens` 本身就是全部输入，也就是未缓存输入。
+  const inputTokens = event.uncachedInputTokens ?? event.inputTokens
+  return {
+    inputTokens: Math.max(0, inputTokens),
+    outputTokens: event.outputTokens,
+    ...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
+    ...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
+    ...(event.totalTokens === undefined ? {} : { totalTokens: event.totalTokens }),
+  }
+}
+
+/**
  * 所有外部 Agent 共用的 DSH 消息投影器。
  *
  * 驱动只产生 CodingNsAgentEvent。本类统一完成快照去重、通道索引、工具历史、
@@ -99,13 +126,9 @@ export class CodingNsDshMessageProjector {
    * 提前向 LLM 流发送第二个 usage，只写入 assistant/attempt 供上下文计量投影使用。
    */
   private recordUsageSample(event: Extract<CodingNsAgentEvent, { type: 'usage' }>): void {
+    // assistant/attempt 同样是 DSH 会话记录，usage 必须按 DSH 的互斥桶口径落盘。
     const usage: CodingNsNativeUsageSample = {
-      inputTokens: event.inputTokens,
-      outputTokens: event.outputTokens,
-      ...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
-      ...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
-      ...(event.uncachedInputTokens === undefined ? {} : { uncachedInputTokens: event.uncachedInputTokens }),
-      ...(event.totalTokens === undefined ? {} : { totalTokens: event.totalTokens }),
+      ...toDshTokenUsage(event),
       ...(event.cacheHitRate === undefined ? {} : { cacheHitRate: event.cacheHitRate }),
       ...(event.contextWindow === undefined ? {} : { contextWindow: event.contextWindow }),
       ...(event.contextTokens === undefined ? {} : { contextTokens: event.contextTokens }),
@@ -148,22 +171,15 @@ export class CodingNsDshMessageProjector {
         await this.requestQuestions(event)
         return []
       case 'usage':
-        return [{
-          type: 'usage',
-          usage: {
-            inputTokens: event.inputTokens,
-            outputTokens: event.outputTokens,
-            ...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
-            ...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
-            ...(event.uncachedInputTokens === undefined ? {} : { uncachedInputTokens: event.uncachedInputTokens }),
-            ...(event.totalTokens === undefined ? {} : { totalTokens: event.totalTokens }),
-            ...(event.cacheHitRate === undefined ? {} : { cacheHitRate: event.cacheHitRate }),
-            ...(event.contextWindow === undefined ? {} : { contextWindow: event.contextWindow }),
-            ...(event.contextTokens === undefined ? {} : { contextTokens: event.contextTokens }),
-            ...(event.contextUsageRatio === undefined ? {} : { contextUsageRatio: event.contextUsageRatio }),
-          },
-        }]
+        return [{ type: 'usage', usage: toDshTokenUsage(event) }]
       case 'session-binding':
+        return []
+      case 'context-compaction':
+        this.options.nativeSessions?.appendCompactionEvent?.(this.options.sessionId, {
+          ...event,
+          provider: event.provider ?? this.options.adapterId,
+          model: event.model ?? this.options.modelId ?? this.options.adapterId,
+        })
         return []
       case 'finish':
         const closed = [
@@ -174,6 +190,8 @@ export class CodingNsDshMessageProjector {
         this.toolHistory.finalize(event.reason, failureMessage)
         closed.push({ type: 'finish', reason: toDshFinishReason(event.reason, failureMessage) })
         return closed
+      default:
+        return assertNeverNormalizedEvent(event)
     }
   }
 
@@ -258,6 +276,10 @@ export class CodingNsDshMessageProjector {
     if (response === null) throw new Error('DSH 原生问题组件不可用或问题已取消')
     await responder(response)
   }
+}
+
+function assertNeverNormalizedEvent(value: never): never {
+  throw new Error(`未支持的 DSH 事件类型: ${String((value as { readonly type?: unknown }).type ?? 'unknown')}`)
 }
 
 function toDshFinishReason(reason: 'stop' | 'cancel' | 'error', failureMessage?: string): Record<string, unknown> {

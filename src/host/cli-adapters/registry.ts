@@ -63,10 +63,15 @@ export class CodingNsCliAdapterRegistry {
   private readonly modelTimers = new Map<CodingNsCliAdapterId, ReturnType<typeof setTimeout>>()
   private readonly modelGenerations = new Map<CodingNsCliAdapterId, number>()
   private readonly requestedModelCatalogs = new Set<CodingNsCliAdapterId>()
-  /** 已切到下一个 DSH step、但仍在继续产出 Provider 流的驱动迭代器。 */
+  /**
+   * 已切到下一个 DSH step、但仍在继续产出 Provider 流的运行。
+   *
+   * 通用切分由 Registry 持有活迭代器；驱动自行分段的适配器（Codex、Command Code）
+   * 把进程和段状态留在驱动内，这里只登记续段意图，用 null 迭代器区分两者。
+   */
   private readonly segmentedTurns = new Map<string, {
     readonly adapterId: CodingNsCliAdapterId
-    readonly iterator: AsyncIterator<CodingNsAgentEvent>
+    readonly iterator: AsyncIterator<CodingNsAgentEvent> | null
   }>()
   private cacheGeneration = 0
   private disposed = false
@@ -330,6 +335,10 @@ export class CodingNsCliAdapterRegistry {
       }
       const suspended = this.segmentedTurns.get(input.sessionId)
       const resumingSegmentedTurn = suspended?.adapterId === input.adapterId
+      // 驱动自行分段时，续段必须由 Host 显式声明；驱动不能靠猜输入形状决定是否
+      // 复用旧进程，否则注入失败后的新用户消息会被拼进上一次运行。
+      const resumingDriverTurn = resumingSegmentedTurn && suspended !== undefined && suspended.iterator === null
+      if (resumingDriverTurn) this.segmentedTurns.delete(input.sessionId)
       this.sessions.set(input.sessionId, current)
       this.sessionStore?.upsert(input.sessionId, {
         ...current,
@@ -353,11 +362,17 @@ export class CodingNsCliAdapterRegistry {
       } catch { /* 原生历史写入失败不应阻断外部 Agent */ }
       if (suspended !== undefined && suspended.adapterId !== input.adapterId) {
         this.segmentedTurns.delete(input.sessionId)
-        await closeAgentIterator(suspended.iterator)
+        if (suspended.iterator !== null) await closeAgentIterator(suspended.iterator)
+        try { this.drivers.get(suspended.adapterId)?.discardSegmentedTurn?.(input.sessionId) } catch { /* 切换适配器不能被旧驱动清理失败阻断 */ }
       }
-      const iterator = suspended?.adapterId === input.adapterId
-        ? (this.segmentedTurns.delete(input.sessionId), suspended.iterator)
-        : driver.executeTurn(input)[Symbol.asyncIterator]()
+      // 通用切分要在复用时立刻撤销登记，否则耗尽后的旧迭代器会被下一条用户消息再次消费。
+      let iterator: AsyncIterator<CodingNsAgentEvent>
+      if (resumingSegmentedTurn && suspended !== undefined && suspended.iterator !== null) {
+        this.segmentedTurns.delete(input.sessionId)
+        iterator = suspended.iterator
+      } else {
+        iterator = driver.executeTurn({ ...input, ...(resumingDriverTurn ? { resumeSegmentedTurn: true } : {}) })[Symbol.asyncIterator]()
+      }
       while (true) {
         const next = await iterator.next()
         if (next.done) break
@@ -391,6 +406,10 @@ export class CodingNsCliAdapterRegistry {
         // 直接交给 Feature，不能再次按工具完成事件切一遍。
         if (event.type === 'step-boundary') {
           await closeAgentIterator(iterator)
+          // 驱动自己持有 Provider 进程与段状态：这里只登记续段意图，下一次
+          // llm/stream 再显式要求驱动恢复；注入失败时 discardSegmentedTurn
+          // 会同时丢弃 Registry 意图和驱动内的进程。
+          this.segmentedTurns.set(input.sessionId, { adapterId: input.adapterId, iterator: null })
           yield event
           return
         }
@@ -490,7 +509,9 @@ export class CodingNsCliAdapterRegistry {
     const suspended = this.segmentedTurns.get(sessionId)
     if (suspended === undefined) return
     this.segmentedTurns.delete(sessionId)
-    void closeAgentIterator(suspended.iterator)
+    if (suspended.iterator !== null) void closeAgentIterator(suspended.iterator)
+    // 驱动自行分段时进程留在驱动内，必须显式通知它结束悬挂的 Provider 运行。
+    try { this.drivers.get(suspended.adapterId)?.discardSegmentedTurn?.(sessionId) } catch { /* 取消流程不能被清理失败阻断 */ }
   }
 
   async dispose(): Promise<void> {
@@ -504,7 +525,7 @@ export class CodingNsCliAdapterRegistry {
     this.modelFailures.clear()
     this.modelGenerations.clear()
     this.requestedModelCatalogs.clear()
-    await Promise.all([...this.segmentedTurns.values()].map(({ iterator }) => closeAgentIterator(iterator)))
+    await Promise.all([...this.segmentedTurns.values()].map(({ iterator }) => iterator === null ? Promise.resolve() : closeAgentIterator(iterator)))
     this.segmentedTurns.clear()
     await Promise.all([...this.drivers.values()].map((driver) => driver.dispose?.()))
   }

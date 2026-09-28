@@ -258,7 +258,7 @@ test('Codex app-server 解析 tokenUsage.last 并传递上下文窗口占用', a
         if (request.method === 'turn/start') {
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'codex-usage-turn', status: 'inProgress' } } })}\n`)
           setImmediate(() => {
-            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'codex-usage-thread', tokenUsage: { last: { input_tokens: 32000, cached_input_tokens: 8000, output_tokens: 120, total_tokens: 40120 }, contextWindow: 258400 } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'codex-usage-thread', tokenUsage: { last: { input_tokens: 32000, cached_input_tokens: 8000, output_tokens: 120, total_tokens: 32120 }, contextWindow: 258400 } } })}\n`)
             stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'codex-usage-thread', turn: { id: 'codex-usage-turn', status: 'completed' } } })}\n`)
           })
           return
@@ -272,8 +272,8 @@ test('Codex app-server 解析 tokenUsage.last 并传递上下文窗口占用', a
   for await (const chunk of driver.executeTurn({ sessionId: 'codex-usage', messages: [], prompt: '统计用量' })) chunks.push(chunk)
   assert.deepEqual(chunks.filter((chunk) => chunk.type === 'usage'), [{
     type: 'usage', inputTokens: 32000, outputTokens: 120, cacheReadTokens: 8000,
-    uncachedInputTokens: 32000, totalTokens: 40120, cacheHitRate: 20,
-    contextWindow: 258400, contextTokens: 40000, contextUsageRatio: 0.154799,
+    uncachedInputTokens: 24000, totalTokens: 32120, cacheHitRate: 25,
+    contextWindow: 258400, contextTokens: 32000, contextUsageRatio: 0.123839,
   }])
   driver.dispose()
 })
@@ -317,6 +317,106 @@ test('Codex 同一会话第二轮的冲突 usage 窗口不会覆盖首轮 256K',
   assert.equal(first.find((chunk) => chunk.type === 'usage')?.contextWindow, 258400)
   assert.equal(second.find((chunk) => chunk.type === 'usage')?.contextWindow, 258400)
   assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(second.at(-1)?.reason, 'stop')
+  driver.dispose()
+})
+
+test('Codex 上下文超限时自动压缩并重试第二轮', async () => {
+  const methods: string[] = []
+  let turnStarts = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        methods.push(request.method)
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'compact-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'thread/compact/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          setImmediate(() => {
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/started', params: { threadId: 'compact-thread', turn: { id: 'compact-turn', status: 'inProgress' } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/started', params: { threadId: 'compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'compact-item' } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'compact-thread', turn: { id: 'compact-turn', status: 'completed' } } })}\n`)
+          })
+          return
+        }
+        if (request.method !== 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        turnStarts += 1
+        if (turnStarts === 2) {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32000, data: { codexErrorInfo: 'contextWindowExceeded' } } })}\n`)
+          return
+        }
+        const turnId = `compact-turn-${turnStarts}`
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+        setImmediate(() => {
+          const usage = turnStarts === 1
+            ? { input_tokens: 99, output_tokens: 1, total_tokens: 100 }
+            : { input_tokens: 12, output_tokens: 1, total_tokens: 13 }
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'compact-thread', tokenUsage: { last: usage, contextWindow: 100 } } })}\n`)
+          if (turnStarts > 1) stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'compact-thread', turnId, itemId: 'compact-message', delta: '压缩后继续' } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'compact-thread', turn: { id: turnId, status: 'completed' } } })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'compact-session', messages: [], prompt: '第一轮' })) first.push(chunk)
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'compact-session', messages: [], prompt: '第二轮' })) second.push(chunk)
+
+  assert.equal(methods.filter((method) => method === 'thread/compact/start').length, 1)
+  assert.equal(methods.filter((method) => method === 'turn/start').length, 3)
+  assert.deepEqual(second.filter((chunk) => chunk.type === 'context-compaction').map((chunk) => chunk.phase), ['start', 'end'])
+  assert.equal(second.find((chunk) => chunk.type === 'text-delta')?.text, '压缩后继续')
+  assert.equal(second.at(-1)?.reason, 'stop')
+  driver.dispose()
+})
+
+test('Codex 第二轮不会被响应前迟到的旧 turn/completed 直接结束', async () => {
+  let turnCount = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'stale-thread' } } })}\n`)
+          return
+        }
+        if (request.method !== 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        turnCount += 1
+        const turnId = `stale-turn-${turnCount}`
+        if (turnCount === 2) stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'stale-thread', turn: { status: 'completed' } } })}\n`)
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+        setImmediate(() => {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'stale-thread', turnId, itemId: turnId, delta: '第二轮有效回复' } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'stale-thread', turn: { id: turnId, status: 'completed' } } })}\n`)
+        })
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+  for await (const _chunk of driver.executeTurn({ sessionId: 'stale-session', messages: [], prompt: '第一轮' })) { /* 消费第一轮 */ }
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'stale-session', messages: [], prompt: '第二轮' })) second.push(chunk)
+  assert.equal(second.find((chunk) => chunk.type === 'text-delta')?.text, '第二轮有效回复')
   assert.equal(second.at(-1)?.reason, 'stop')
   driver.dispose()
 })

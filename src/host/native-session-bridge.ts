@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
+  CodingNsAgentEvent,
   CodingNsAgentQuestion,
   CodingNsAgentQuestionResponse,
 } from '../shared/contracts/cli-adapter.js'
@@ -85,12 +86,18 @@ export interface CodingNsNativeRequestContext {
   readonly source?: 'provider' | 'catalog'
 }
 
-/** 外部 Provider 已报告的用量采样；写入 assistant/attempt，不加入模型可见 surface。 */
+/**
+ * 外部 Provider 已报告的用量采样；写入 assistant/attempt，不加入模型可见 surface。
+ *
+ * 记录进 DSH 会话后必须使用 DSH 的互斥桶口径：`inputTokens` 只含未缓存输入，
+ * 计费输入 = inputTokens + 缓存读写。调用方（公共投影层）负责从 Provider 口径折算。
+ */
 export interface CodingNsNativeUsageSample {
   readonly inputTokens: number
   readonly outputTokens: number
   readonly cacheReadTokens?: number
   readonly cacheWriteTokens?: number
+  /** 未缓存输入的显式副本；与互斥桶口径的 inputTokens 取值相同，仅作兼容保留。 */
   readonly uncachedInputTokens?: number
   readonly totalTokens?: number
   readonly cacheHitRate?: number
@@ -98,6 +105,9 @@ export interface CodingNsNativeUsageSample {
   readonly contextTokens?: number
   readonly contextUsageRatio?: number
 }
+
+/** 公共消息投影层传递的 Provider 上下文压缩活动。 */
+export type CodingNsNativeCompactionEvent = Extract<CodingNsAgentEvent, { type: 'context-compaction' }>
 
 export interface CodingNsNativeSessionController {
   create?(request: { readonly sessionId?: string; readonly cwd?: string }): Promise<{ readonly sessionId: string }>
@@ -140,6 +150,8 @@ export interface CodingNsNativeSessionBridge {
   appendRequestContext?(sessionId: string, context: CodingNsNativeRequestContext): boolean
   /** 在当前步骤即时记录外部 Provider 用量；该事件不进入模型可见 surface。 */
   appendUsageSample?(sessionId: string, usage: CodingNsNativeUsageSample): boolean
+  /** 将 Provider 压缩生命周期写入 DSH 原生 compaction 事件；不可用时安静降级。 */
+  appendCompactionEvent?(sessionId: string, event: CodingNsNativeCompactionEvent): boolean
   /** 判断指定会话是否真的具备下一步注入能力。 */
   canInjectNextStep?(sessionId: string): boolean
   /** 在当前 Agent turn 的下一个合法 step 注入插件上下文，不唤醒空闲 Agent。 */
@@ -176,6 +188,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     ? (ctx as unknown as { on(name: string, listener: (...args: unknown[]) => unknown): () => unknown }).on.bind(ctx)
     : undefined
   const externalHandles = new Map<string, CodingNsNativeToolCallHandle>()
+  const compactionStates = new Map<string, NativeCompactionState>()
   const confirmedContextWindows = new Map<string, number>()
   // Agent.inject() 只是把消息放进队列，新的 DSH step 会在稍后的事件循环中
   // 才创建。此期间 activeStep 仍然指向旧 step，工具追加必须暂缓，否则会把
@@ -357,6 +370,68 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
       return false
     }
   }
+  const appendNativeCompactionEvent = (sessionId: string, event: CodingNsNativeCompactionEvent): boolean => {
+    const session = appendableSession(store?.get(sessionId))
+    if (session === null) return false
+    try {
+      if (event.phase === 'start') {
+        if (compactionStates.has(sessionId)) return true
+        const compactionId = event.compactionId?.trim() || `codingns-compaction-${randomUUID()}`
+        const position = activeStep(session)
+        session.append('compaction/start', {
+          compactionId,
+          turn: position?.turn ?? null,
+        })
+        compactionStates.set(sessionId, {
+          compactionId,
+          turn: position?.turn ?? null,
+          summaryAppended: false,
+        })
+        return true
+      }
+      const state = compactionStates.get(sessionId)
+      if (state === undefined) return false
+      if ((event.phase === 'summary' || event.phase === 'end' && event.summary !== undefined) && !state.summaryAppended) {
+        const range = compactionSurfaceRange(session)
+        if (range !== null) {
+          const summary = boundCompactionSummary(event.summary)
+          session.append('compaction/summary', {
+            compactionId: state.compactionId,
+            summary: [{ type: 'text', text: summary }],
+            shadowedRange: { start: range.start, end: range.end },
+            shadowedSeqs: range.seqs,
+            shadowedTokenCount: safeCount(event.shadowedTokenCount),
+            provider: event.provider?.trim() || 'codingns-external',
+            model: event.model?.trim() || 'external-agent',
+          })
+          // DSH 前端的 compaction 节点由紧随 summary 的 checkpoint 替换事件生成。
+          session.append('user/message', {
+            id: `codingns-compaction-${state.compactionId}`,
+            role: 'user',
+            content: [{ type: 'text', text: summary }],
+            source: { kind: 'plugin', plugin: 'compact' },
+          }, {
+            surfaceOp: { op: 'replace', startSeq: range.start, endSeq: range.end },
+            sourceEventSeqs: range.seqs,
+          })
+          state.summaryAppended = true
+        }
+        return true
+      }
+      if (event.phase === 'end') {
+        session.append('compaction/end', {
+          compactionId: state.compactionId,
+          turn: state.turn,
+          ...(event.error?.trim() ? { error: event.error.trim().slice(0, 512) } : !state.summaryAppended ? { error: 'Provider 未返回可投影的压缩摘要。' } : {}),
+        })
+        compactionStates.delete(sessionId)
+      }
+      return true
+    } catch {
+      // 原生服务缺失或版本不支持 compaction 事件时，不能阻断 Provider 回合。
+      return false
+    }
+  }
   const injectNativeNextStep = (sessionId: string, summary = '外部工具已完成，继续处理当前任务。'): boolean => {
     const agent = nativeAgent(ctx, sessionId)
     if (agent === null || typeof (agent as { inject?: unknown }).inject !== 'function') return false
@@ -430,6 +505,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     },
     appendUsageSample(sessionId, usage) {
       return appendNativeUsageSample(sessionId, usage)
+    },
+    appendCompactionEvent(sessionId, event) {
+      return appendNativeCompactionEvent(sessionId, event)
     },
     canInjectNextStep(sessionId) {
       return canInjectNativeNextStep(sessionId)
@@ -535,6 +613,14 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
 interface AppendableSession {
   snapshotEvents(): readonly unknown[]
   append(type: string, data: unknown, options?: unknown): unknown
+  readonly surface?: { readonly nodes?: readonly number[] }
+  eventAt?(seq: number): unknown
+}
+
+interface NativeCompactionState {
+  readonly compactionId: string
+  readonly turn: number | null
+  summaryAppended: boolean
 }
 
 interface RequestContextSnapshot {
@@ -631,6 +717,49 @@ function activeStep(session: AppendableSession): { turn: number; step: number } 
 
 function eventSeq(value: unknown): number | null {
   return isRecord(value) ? finiteInteger(value.seq) : null
+}
+
+interface CompactionSurfaceRange {
+  readonly start: number
+  readonly end: number
+  readonly seqs: readonly number[]
+}
+
+function compactionSurfaceRange(session: AppendableSession): CompactionSurfaceRange | null {
+  let nodes: readonly number[] = []
+  try {
+    if (Array.isArray(session.surface?.nodes)) nodes = session.surface.nodes
+    if (nodes.length === 0) {
+      nodes = session.snapshotEvents().flatMap((candidate) => {
+        if (!isRecord(candidate) || typeof candidate.seq !== 'number' || candidate.type === 'system/message') return []
+        const op = candidate.surfaceOp
+        return op === 'append' ? [candidate.seq] : []
+      })
+    }
+    const events = session.snapshotEvents()
+    let usable = nodes.filter((seq) => {
+      const event = session.eventAt?.(seq) ?? events[seq]
+      return !(isRecord(event) && event.type === 'system/message')
+    })
+    // 当前回合刚追加的 user/message 不是历史压缩对象，保留它避免把用户本轮
+    // 输入一并替换；旧 assistant/tool 节点仍可作为压缩范围。
+    const last = usable.at(-1)
+    const lastEvent = last === undefined ? undefined : session.eventAt?.(last) ?? events[last]
+    if (last !== undefined && isRecord(lastEvent) && lastEvent.type === 'user/message') usable = usable.slice(0, -1)
+    if (usable.length === 0) return null
+    return { start: usable[0]!, end: usable.at(-1)!, seqs: usable }
+  } catch {
+    return null
+  }
+}
+
+function boundCompactionSummary(summary: string | undefined): string {
+  const value = summary?.trim() || 'Codex 已压缩较早的上下文。'
+  return value.slice(0, 120)
+}
+
+function safeCount(value: number | undefined): number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : 0
 }
 
 function finiteInteger(value: unknown): number | null {

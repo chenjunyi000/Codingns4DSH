@@ -83,6 +83,93 @@ test('用量带上下文窗口时写入 DSH request/context 元数据', async ()
   }])
 })
 
+test('Codex 压缩活动通过公共投影器写入原生消息组件而不进入文本流', async () => {
+  const events = []
+  const projector = new CodingNsDshMessageProjector({
+    adapterId: 'codex',
+    modelId: 'gpt-5.3-codex',
+    sessionId: 'session-compaction',
+    nativeSessions: {
+      appendCompactionEvent(sessionId, event) {
+        events.push({ sessionId, event })
+        return true
+      },
+    },
+  })
+
+  assert.deepEqual(await projector.push({ type: 'context-compaction', phase: 'start', compactionId: 'compact-1' }), [])
+  assert.deepEqual(await projector.push({ type: 'context-compaction', phase: 'summary', compactionId: 'compact-1', summary: '保留任务目标和已完成修改。' }), [])
+  assert.deepEqual(await projector.push({ type: 'context-compaction', phase: 'end', compactionId: 'compact-1' }), [])
+  assert.deepEqual(events, [
+    { sessionId: 'session-compaction', event: { type: 'context-compaction', phase: 'start', compactionId: 'compact-1', provider: 'codex', model: 'gpt-5.3-codex' } },
+    { sessionId: 'session-compaction', event: { type: 'context-compaction', phase: 'summary', compactionId: 'compact-1', summary: '保留任务目标和已完成修改。', provider: 'codex', model: 'gpt-5.3-codex' } },
+    { sessionId: 'session-compaction', event: { type: 'context-compaction', phase: 'end', compactionId: 'compact-1', provider: 'codex', model: 'gpt-5.3-codex' } },
+  ])
+})
+
+test('Provider 把缓存折叠进 inputTokens 时 DSH usage 只保留未缓存输入', async () => {
+  const samples = []
+  const projector = new CodingNsDshMessageProjector({
+    adapterId: 'codex',
+    modelId: 'gpt-5.3-codex',
+    sessionId: 'session-usage-buckets',
+    nativeSessions: {
+      appendUsageSample(sessionId, usage) { samples.push({ sessionId, usage }); return true },
+    },
+  })
+
+  // Codex app-server / Command Code 的口径：inputTokens 已包含缓存读取。
+  assert.deepEqual(await projector.push({
+    type: 'usage',
+    inputTokens: 182936,
+    outputTokens: 126,
+    cacheReadTokens: 182016,
+    cacheWriteTokens: 0,
+    uncachedInputTokens: 920,
+    totalTokens: 183062,
+    cacheHitRate: 99.4971,
+    contextWindow: 258400,
+    contextTokens: 182936,
+    contextUsageRatio: 0.707957,
+  }), [])
+  const finish = await projector.push({ type: 'finish', reason: 'stop' })
+
+  // DSH TokenUsage 只接受 inputTokens/outputTokens/缓存桶/totalTokens，且 inputTokens 只含未缓存输入。
+  assert.deepEqual(finish, [
+    {
+      type: 'usage',
+      usage: {
+        inputTokens: 920,
+        outputTokens: 126,
+        cacheReadTokens: 182016,
+        cacheWriteTokens: 0,
+        totalTokens: 183062,
+      },
+    },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ])
+  // DSH token-meter 的计费输入 = 未缓存 + 缓存读写，必须等于 Provider 的完整输入。
+  const billedInput = 920 + 182016 + 0
+  assert.equal(billedInput, 182936)
+  assert.equal(Number((182016 / billedInput * 100).toFixed(4)), 99.4971)
+
+  // 非 surface 采样写入 DSH 会话记录，同样使用互斥桶口径。
+  assert.deepEqual(samples, [{
+    sessionId: 'session-usage-buckets',
+    usage: {
+      inputTokens: 920,
+      outputTokens: 126,
+      cacheReadTokens: 182016,
+      cacheWriteTokens: 0,
+      totalTokens: 183062,
+      cacheHitRate: 99.4971,
+      contextWindow: 258400,
+      contextTokens: 182936,
+      contextUsageRatio: 0.707957,
+    },
+  }])
+})
+
 test('Provider usage 到达时先写入非 surface 采样，ContextMeter 不等待 finish', async () => {
   const samples = []
   const contexts = []

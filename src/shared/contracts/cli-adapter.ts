@@ -109,6 +109,11 @@ export interface CodingNsCliTurnInput {
   readonly rawStoreRef?: string
   /** 仅由 Host 的 DSH 分段桥接使用；让支持的 Provider 在工具完成处结束当前 step。 */
   readonly splitToolSteps?: boolean
+  /**
+   * 仅由 Host 的 DSH 分段桥接使用；显式说明这次调用是在续接上一次被切分的
+   * Provider 运行，而不是新的用户回合。驱动据此复用常驻进程。
+   */
+  readonly resumeSegmentedTurn?: boolean
 }
 
 export interface CodingNsAgentPermissionResponse {
@@ -195,11 +200,16 @@ export type CodingNsAgentEvent =
   | CodingNsAgentToolEvent
   | {
       readonly type: 'usage'
-      /** Command Code 的 inputTokens 是包含缓存读写的完整输入。 */
+      /**
+       * Provider 上报的输入口径：Codex、Command Code 的 inputTokens 已包含缓存读写，
+       * Anthropic 风格的 input 不含缓存。公共投影层按 `uncachedInputTokens` 折算成
+       * DSH 的互斥桶口径（inputTokens 只含未缓存输入）后再交给 token-meter。
+       */
       readonly inputTokens: number
       readonly outputTokens: number
       readonly cacheReadTokens?: number
       readonly cacheWriteTokens?: number
+      /** 未缓存输入；Provider 给出缓存分桶时由 `usageChunk` 计算。 */
       readonly uncachedInputTokens?: number
       readonly totalTokens?: number
       /** 缓存读取 / 完整输入，百分比取值 0 到 100。 */
@@ -223,4 +233,16 @@ export type CodingNsAgentEvent =
       readonly type: 'question-request'
       readonly requestId: string
       readonly questions: readonly CodingNsAgentQuestion[]
+    }
+  | {
+      /** Provider 上下文压缩生命周期；由公共消息投影层写入 DSH 原生事件。 */
+      readonly type: 'context-compaction'
+      readonly phase: 'start' | 'summary' | 'end'
+      readonly compactionId?: string
+      readonly provider?: string
+      readonly model?: string
+      readonly summary?: string
+      readonly shadowedItemCount?: number
+      readonly shadowedTokenCount?: number
+      readonly error?: string
     }

@@ -132,11 +132,10 @@ test('Command Code 驱动写入历史 transcript、转换 JSON 事件并清理�
   assert.match(transcript, /之前的问题/u)
   assert.doesNotMatch(transcript, /现在的问题/u)
   assert.deepEqual(chunks, [
-    { type: 'reasoning-delta', text: '思考' },
-    { type: 'text-delta', text: '结果' },
+    { type: 'reasoning-delta', text: '思考', messageId: 'command-code-message-1' },
+    { type: 'text-delta', text: '结果', messageId: 'command-code-message-1' },
     { type: 'tool-event', toolName: 'read_directory', callId: 'call-1', input: '{"path":"."}', status: 'running' },
     { type: 'usage', inputTokens: 2, outputTokens: 3 },
-    { type: 'text-snapshot', text: '结果' },
     { type: 'finish', reason: 'stop' },
   ])
   assert.equal(killed, true)
@@ -158,9 +157,82 @@ test('Command Code usage 保留缓存桶，并按完整输入计算未缓存输�
   for await (const chunk of driver.executeTurn({ sessionId: 'cache-session', messages: [], prompt: '测试' })) chunks.push(chunk)
   assert.deepEqual(chunks, [
     { type: 'usage', inputTokens: 100, outputTokens: 20, cacheReadTokens: 40, cacheWriteTokens: 5, uncachedInputTokens: 55, totalTokens: 120, cacheHitRate: 40 },
-    { type: 'text-snapshot', text: '完成' },
+    { type: 'text-delta', text: '完成', messageId: 'command-code-message-1' },
     { type: 'finish', reason: 'stop' },
   ])
+})
+
+test('Command Code 按 assistant 消息切换 DSH step 并只结算每次请求的 usage', async () => {
+  const driver = new CommandCodeDriver({
+    binaries: ['command-code'],
+    spawnSync: ((command: string, args: string[]) => args[0] === '--version'
+      ? { status: 0, stdout: 'command-code 1.66.0', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' }) as never,
+    spawn: (() => ({
+      stdout: Readable.from(commandCodeStreamLines()),
+      stderr: { on() { return this } },
+      kill() { return true },
+    })) as never,
+  })
+  assert.equal(driver.supportsSegmentedTurns, true)
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented-cc', messages: [], prompt: '先运行 pwd', splitToolSteps: true })) first.push(chunk)
+  assert.deepEqual(first, [
+    { type: 'session-binding', providerSessionId: 'cc-session-1' },
+    { type: 'text-delta', text: '先检查', messageId: 'command-code-message-1' },
+    { type: 'usage', inputTokens: 100, outputTokens: 10, cacheReadTokens: 40, cacheWriteTokens: 0, uncachedInputTokens: 60, totalTokens: 110, cacheHitRate: 40 },
+    { type: 'tool-event', toolName: 'shell_command', callId: 'call-a', input: '{"command":"pwd"}', status: 'started' },
+    { type: 'tool-event', toolName: 'shell_command', callId: 'call-a', detail: 'pwd', status: 'running' },
+    { type: 'tool-event', toolName: 'shell_command', callId: 'call-a', output: '[{"type":"text","text":"/workspace"}]', outputMode: 'snapshot', status: 'completed' },
+    { type: 'step-boundary' },
+  ])
+
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented-cc', messages: [], prompt: '继续', splitToolSteps: true, resumeSegmentedTurn: true })) second.push(chunk)
+  assert.deepEqual(second, [
+    { type: 'reasoning-delta', text: '整理结论', messageId: 'command-code-message-2' },
+    { type: 'text-delta', text: '完成', messageId: 'command-code-message-2' },
+    { type: 'usage', inputTokens: 180, outputTokens: 5, cacheReadTokens: 150, cacheWriteTokens: 0, uncachedInputTokens: 30, totalTokens: 185, cacheHitRate: 83.3333 },
+    { type: 'finish', reason: 'stop' },
+  ])
+  driver.dispose()
+})
+
+test('Command Code 未被 Host 声明为续段时不会复用上一次运行的进程', async () => {
+  let spawns = 0
+  const kills: number[] = []
+  const driver = new CommandCodeDriver({
+    binaries: ['command-code'],
+    spawnSync: ((command: string, args: string[]) => args[0] === '--version'
+      ? { status: 0, stdout: 'command-code 1.66.0', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' }) as never,
+    spawn: (() => {
+      spawns += 1
+      const index = spawns
+      return {
+        stdout: Readable.from(index === 1 ? commandCodeStreamLines() : [`${JSON.stringify({ type: 'result', subtype: 'success', stopReason: 'end_turn', finalText: '新回合', usage: { inputTokens: 7, outputTokens: 3 } })}\n`]),
+        stderr: { on() { return this } },
+        kill() { kills.push(index); return true },
+      }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'stale-cc', messages: [], prompt: '执行', splitToolSteps: true })) first.push(chunk)
+  assert.equal(first.at(-1)?.type, 'step-boundary')
+
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'stale-cc', messages: [], prompt: '新的用户回合', splitToolSteps: true })) second.push(chunk)
+  assert.equal(spawns, 2)
+  // 第一个（被挂起的）进程必须在启动新回合前就被终止，不能被旧流继续写入。
+  assert.deepEqual(kills, [1, 2])
+  assert.deepEqual(second, [
+    { type: 'usage', inputTokens: 7, outputTokens: 3 },
+    { type: 'text-delta', text: '新回合', messageId: 'command-code-message-1' },
+    { type: 'finish', reason: 'stop' },
+  ])
+  driver.dispose()
 })
 
 test('Command Code 订阅服务只返回脱敏窗口并统一毫秒重置时间', async () => {
@@ -495,23 +567,24 @@ test('Command Code 真实会话模式中的多工具边界和 reasoning 改写�
   })) chunks.push(...await projector.push(event))
 
   const durableChunks = chunks.filter((chunk) => chunk.codingnsExternalTool === undefined)
+  // 每条 assistant 消息自成一段：推理改写只输出新增后缀，下一条消息不会被拼进上一条的正文块。
   assert.deepEqual(durableChunks.filter(({ type }) => type === 'reasoning-delta'), [
     { type: 'reasoning-delta', index: 0, text: 'stage A' },
-    { type: 'reasoning-delta', index: 0, text: 'stage B' },
-    { type: 'reasoning-delta', index: 0, text: ' plus' },
-    { type: 'reasoning-delta', index: 0, text: 'stage C' },
-    { type: 'reasoning-delta', index: 0, text: ' done' },
+    { type: 'reasoning-delta', index: 4, text: 'stage B' },
+    { type: 'reasoning-delta', index: 4, text: ' plus' },
+    { type: 'reasoning-delta', index: 8, text: 'stage C' },
+    { type: 'reasoning-delta', index: 8, text: ' done' },
   ])
   assert.deepEqual(durableChunks.filter(({ type }) => type === 'text-delta'), [
     { type: 'text-delta', index: 1, text: "I'll check." },
-    { type: 'text-delta', index: 1, text: 'Now build.' },
-    { type: 'text-delta', index: 1, text: 'Found' },
+    { type: 'text-delta', index: 5, text: 'Now build.' },
+    { type: 'text-delta', index: 9, text: 'Found' },
   ])
   assert.deepEqual(durableChunks.filter(({ type }) => type === 'usage'), [
     { type: 'usage', usage: { inputTokens: 11, outputTokens: 21 } },
   ])
   assert.deepEqual(durableChunks.slice(-2), [
-    { type: 'block-end', index: 1, block: { type: 'text', text: "I'll check.Now build.Found" } },
+    { type: 'block-end', index: 9, block: { type: 'text', text: 'Found' } },
     { type: 'finish', reason: { kind: 'stop' } },
   ])
 })
@@ -579,6 +652,56 @@ test('Registry 为普通适配器在工具完成处切分 step 并继续消费�
     { type: 'text-delta', text: '最终正文' },
     { type: 'finish', reason: 'stop' },
   ])
+
+  // 续段消费完成后必须撤销登记：下一条用户消息不能复用已经耗尽的旧迭代器。
+  const third = []
+  for await (const event of registry.execute(input)) third.push(event)
+  assert.equal(starts, 2)
+  assert.deepEqual(third.map(({ type }) => type), ['text-delta', 'tool-event', 'tool-event', 'step-boundary'])
+  await registry.dispose()
+})
+
+test('自行分段的驱动只在切分边界后收到续段意图，丢弃时同步清理驱动状态', async () => {
+  const resumes: Array<boolean | undefined> = []
+  const discarded: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    supportsSegmentedTurns: true,
+    discardSegmentedTurn(sessionId: string) { discarded.push(sessionId) },
+    async detect() { return { installed: true, version: '1.0.0', command: 'fake' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input: { readonly resumeSegmentedTurn?: boolean }) {
+      resumes.push(input.resumeSegmentedTurn)
+      if (input.resumeSegmentedTurn !== true) {
+        yield { type: 'tool-event', toolName: 'shell', callId: 'call-1', status: 'completed' } as const
+        yield { type: 'step-boundary' } as const
+        return
+      }
+      yield { type: 'text-delta', text: '收尾正文' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const input = { adapterId: 'codex' as const, sessionId: 'resume-protocol', messages: [], prompt: '执行', splitToolSteps: true }
+
+  const first = []
+  for await (const event of registry.execute(input)) first.push(event)
+  assert.deepEqual(first.map(({ type }) => type), ['tool-event', 'step-boundary'])
+
+  const second = []
+  for await (const event of registry.execute(input)) second.push(event)
+  assert.deepEqual(second.map(({ type }) => type), ['text-delta', 'finish'])
+  assert.deepEqual(resumes, [undefined, true])
+
+  // 再次切分后由 Host 丢弃：必须通知驱动结束悬挂运行，且下一次执行重新开始。
+  const third = []
+  for await (const event of registry.execute(input)) third.push(event)
+  assert.equal(third.at(-1)?.type, 'step-boundary')
+  registry.discardSegmentedTurn('resume-protocol')
+  assert.deepEqual(discarded, ['resume-protocol'])
+
+  const fourth = []
+  for await (const event of registry.execute(input)) fourth.push(event)
+  assert.equal(resumes.at(-1), undefined)
   await registry.dispose()
 })
 
@@ -877,13 +1000,15 @@ test('Codex 在原生会话不可注入下一步时不启用分段模式', async
   await features.disable('cliAdapters')
 })
 
-test('OpenCode 和 Command Code 不按工具完成切分 DSH step', async () => {
+test('OpenCode 不按工具完成切分 DSH step，Command Code 与 Codex 一样允许分段', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
   const splitToolSteps = new Map<string, boolean | undefined>()
   const injected: string[] = []
   const drivers = ['opencode', 'command-code'].map((adapterId) => ({
     descriptor: { id: adapterId, name: adapterId },
+    // 真实 CommandCodeDriver 声明 supportsSegmentedTurns；这里用假驱动复现该契约。
+    ...(adapterId === 'command-code' ? { supportsSegmentedTurns: true } : {}),
     async detect() { return { installed: true, version: '1.0.0', command: adapterId } },
     async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
     async *executeTurn(input: { readonly splitToolSteps?: boolean }) {
@@ -930,7 +1055,7 @@ test('OpenCode 和 Command Code 不按工具完成切分 DSH step', async () => 
     assert.equal(chunks.at(-1)?.type, 'finish')
   }
 
-  assert.deepEqual([...splitToolSteps.entries()], [['opencode', undefined], ['command-code', undefined]])
+  assert.deepEqual([...splitToolSteps.entries()], [['opencode', undefined], ['command-code', true]])
   assert.deepEqual(injected, [])
   await features.disable('cliAdapters')
 })
@@ -1136,6 +1261,62 @@ test('CLI 功能模块只把快照新增后缀转换成 DSH delta 并只输出�
   await features.disable('cliAdapters')
 })
 
+test('CLI 功能模块把 Provider 折叠进 inputTokens 的缓存折算成 DSH 互斥桶', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const samples: unknown[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn() {
+      // Codex / Command Code 口径：inputTokens 已包含缓存读取，未缓存输入单列。
+      yield { type: 'usage', inputTokens: 182936, outputTokens: 126, cacheReadTokens: 182016, cacheWriteTokens: 0, uncachedInputTokens: 920, totalTokens: 183062 } as const
+      yield { type: 'text-delta', text: '完成' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      appendUsageSample(sessionId, usage) { samples.push({ sessionId, usage }); return true },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  await table.resolve('cli/session/set')?.handler('session/set', { sessionId: 'usage-buckets', adapterId: 'codex' })
+
+  const chunks = []
+  for await (const chunk of listener!({ sessionId: 'usage-buckets', messages: [{ role: 'user', content: '执行' }] }, async function* () {})) chunks.push(chunk)
+
+  // DSH 计费输入 = 未缓存 + 缓存读写 = Provider 的完整输入 182936，命中率 99.4971%。
+  assert.deepEqual(chunks.filter(({ type }) => type === 'usage'), [{
+    type: 'usage',
+    usage: { inputTokens: 920, outputTokens: 126, cacheReadTokens: 182016, cacheWriteTokens: 0, totalTokens: 183062 },
+  }])
+  assert.deepEqual(samples, [{
+    sessionId: 'usage-buckets',
+    usage: { inputTokens: 920, outputTokens: 126, cacheReadTokens: 182016, cacheWriteTokens: 0, totalTokens: 183062 },
+  }])
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  await features.disable('cliAdapters')
+})
+
 test('CLI 功能模块从 DSH 会话头传递工作目录并把统一工具事件交给公共原生投影层', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
@@ -1200,3 +1381,36 @@ test('CLI 功能模块从 DSH 会话头传递工作目录并把统一工具事�
   }])
   await features.disable('cliAdapters')
 })
+
+/**
+ * 本机 Command Code 1.66.0 的 `--output-format json` 事件序列：
+ * 一个进程连续跑两个 agent turn，第一个 turn 调用工具，第二个 turn 收尾。
+ */
+function commandCodeStreamLines(): string[] {
+  const event = (value: unknown): string => `${JSON.stringify({ type: 'event', event: value })}\n`
+  const requestUsage = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 40, cacheWriteTokens: 0 }
+  const finalUsage = { inputTokens: 180, outputTokens: 5, cacheReadTokens: 150, cacheWriteTokens: 0 }
+  return [
+    event({ type: 'run_start', sessionId: 'cc-session-1' }),
+    event({ type: 'turn_start', turnNumber: 1 }),
+    event({ type: 'message_start' }),
+    event({ type: 'text_delta', delta: '先检查' }),
+    event({ type: 'message_update', content: [{ type: 'text', text: '先检查' }] }),
+    event({ type: 'model_request_end', model: 'm', usage: requestUsage, stopReason: 'tool_use' }),
+    event({ type: 'message_end', content: [{ type: 'text', text: '先检查' }] }),
+    event({ type: 'tool_queued', toolCallId: 'call-a', toolName: 'shell_command', input: { command: 'pwd' } }),
+    event({ type: 'tool_running', toolCallId: 'call-a', toolName: 'shell_command', description: 'pwd' }),
+    event({ type: 'tool_completed', toolCallId: 'call-a', toolName: 'shell_command', result: [{ type: 'text', text: '/workspace' }] }),
+    event({ type: 'turn_end', turnNumber: 1, hadToolCalls: true, usage: requestUsage }),
+    event({ type: 'turn_start', turnNumber: 2 }),
+    event({ type: 'message_start' }),
+    event({ type: 'thinking_delta', delta: '整理结论' }),
+    event({ type: 'text_delta', delta: '完成' }),
+    event({ type: 'message_update', content: [{ type: 'thinking', thinking: '整理结论' }, { type: 'text', text: '完成' }] }),
+    event({ type: 'model_request_end', model: 'm', usage: finalUsage, stopReason: 'end_turn' }),
+    event({ type: 'message_end', content: [{ type: 'thinking', thinking: '整理结论' }, { type: 'text', text: '完成' }] }),
+    event({ type: 'turn_end', turnNumber: 2, hadToolCalls: false, usage: finalUsage }),
+    event({ type: 'run_end', result: { finalText: '完成', stopReason: 'end_turn', turnCount: 2, usage: { inputTokens: 280, outputTokens: 15, cacheReadTokens: 190, cacheWriteTokens: 0 } } }),
+    `${JSON.stringify({ type: 'result', subtype: 'success', sessionId: 'cc-session-1', stopReason: 'end_turn', usage: { inputTokens: 280, outputTokens: 15, cacheReadTokens: 190, cacheWriteTokens: 0 }, durationMs: 123, finalText: '完成' })}\n`,
+  ]
+}
