@@ -209,6 +209,70 @@ test('PeerHost 事件流断线后只按有限次数重连，关闭作用域会�
   assert.equal(calls, 2)
 })
 
+test('PeerHost 事件流等待 CONNECTING socket 打开，并在重连后重放幂等订阅', async () => {
+  type TestSocket = { readyState: number; sent: string[]; close: () => void; on: (event: string, listener: (...args: any[]) => void) => void; emit: (event: string, ...args: any[]) => void }
+  const makeSocket = (initialState: number): TestSocket => {
+    const listeners = new Map<string, Array<(...args: any[]) => void>>()
+    const socket: TestSocket = {
+      readyState: initialState,
+      sent: [],
+      send(value) { socket.sent.push(value) },
+      close() { socket.readyState = 3; socket.emit('close') },
+      on(event, listener) { listeners.set(event, [...(listeners.get(event) ?? []), listener]) },
+      emit(event, ...args) { for (const listener of listeners.get(event) ?? []) listener(...args) },
+    }
+    return socket
+  }
+  const sockets: TestSocket[] = []
+  const factory = async () => {
+    const socket = makeSocket(0)
+    sockets.push(socket)
+    return socket
+  }
+  const client = createPeerHostScopedClient({ async call() { return { ok: true as const, value: { status: 200, headers: [], body: '{}' } } } })
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 11 }
+  const pending = client.openEventStream(scope, factory, () => undefined, { maxReconnectAttempts: 1, reconnectDelaysMs: [0] })
+  sockets[0]!.readyState = 1
+  sockets[0]!.emit('open')
+  const subscription = await pending
+  subscription.send('session.subscribe')
+  sockets[0]!.readyState = 3
+  sockets[0]!.emit('close')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(sockets.length, 2)
+  sockets[1]!.readyState = 1
+  sockets[1]!.emit('open')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.deepEqual(JSON.parse(sockets[1]!.sent[0]!), { type: 'session.subscribe', ...scope })
+  subscription.close()
+})
+
+test('PeerHost 事件流关闭时会清理尚未打开的重连 socket', async () => {
+  type TestSocket = { readyState: number; closeCount: number; close: () => void; on: (event: string, listener: (...args: any[]) => void) => void; emit: (event: string, ...args: any[]) => void }
+  const makeSocket = (initialState: number): TestSocket => {
+    const listeners = new Map<string, Array<(...args: any[]) => void>>()
+    const socket: TestSocket = {
+      readyState: initialState,
+      closeCount: 0,
+      close() { socket.closeCount += 1; socket.readyState = 3; socket.emit('close') },
+      on(event, listener) { listeners.set(event, [...(listeners.get(event) ?? []), listener]) },
+      emit(event, ...args) { for (const listener of listeners.get(event) ?? []) listener(...args) },
+    }
+    return socket
+  }
+  const first = makeSocket(1)
+  const second = makeSocket(0)
+  let calls = 0
+  const client = createPeerHostScopedClient({ async call() { return { ok: true as const, value: { status: 200, headers: [], body: '{}' } } } })
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 12 }
+  const subscription = await client.openEventStream(scope, async () => { calls += 1; return calls === 1 ? first : second }, () => undefined, { maxReconnectAttempts: 1, reconnectDelaysMs: [0] })
+  first.readyState = 3
+  first.emit('close')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  subscription.close()
+  assert.equal(second.closeCount, 1)
+})
+
 test('PeerHost 会话控制器切换作用域后拒绝旧历史结果并清理旧订阅', async () => {
   let resolveHistory: ((value: unknown) => void) | undefined
   let closeCount = 0

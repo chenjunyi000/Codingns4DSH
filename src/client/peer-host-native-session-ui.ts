@@ -172,6 +172,8 @@ export function startPeerHostNativeSession(options: PeerHostNativeSessionOptions
         subscription = await options.controller.subscribe(scope, options.socketFactory, (event) => {
           if (isActive(scope)) appendEvent(panel, event)
         })
+        // 建立连接后立即登记会话订阅；ScopedClient 会在重连后只重放此类幂等订阅。
+        subscription.send('session.subscribe')
         panel.appendChild(createToolControls(dom!, async (kind, body) => {
           try {
             if (!isActive(scope) || subscription === undefined) return
@@ -183,7 +185,7 @@ export function startPeerHostNativeSession(options: PeerHostNativeSessionOptions
             else if (kind === 'rightTool.refresh') subscription.rightToolRefresh(parseJsonObject(body))
             else subscription.rightToolClose(parseJsonObject(body))
           } catch (error) {
-            appendNotice(panel, `工具操作失败：${error instanceof Error ? error.message : String(error)}`)
+            if (isActive(scope)) appendNotice(panel, `工具操作失败：${error instanceof Error ? error.message : String(error)}`)
           }
         }))
       } else {

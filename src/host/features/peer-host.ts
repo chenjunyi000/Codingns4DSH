@@ -216,6 +216,7 @@ function parseWebSocketScope(rawUrl: string | undefined): HostScope {
   const url = new URL(rawUrl, 'http://peer-host.invalid')
   const allowed = new Set(['hostId', 'targetHostId', 'workspaceId', 'sessionId', 'scopeGeneration'])
   for (const key of url.searchParams.keys()) if (!allowed.has(key)) throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 查询参数未加入白名单')
+  for (const key of allowed) if (url.searchParams.getAll(key).length > 1) throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 作用域参数不得重复')
   const hostId = requiredString(url.searchParams.get('hostId'), 'hostId')
   const targetHostId = requiredString(url.searchParams.get('targetHostId'), 'targetHostId')
   const workspaceId = requiredString(url.searchParams.get('workspaceId'), 'workspaceId')

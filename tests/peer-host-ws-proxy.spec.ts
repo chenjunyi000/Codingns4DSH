@@ -33,14 +33,15 @@ async function setup() {
   return { service, client, remote: remote!, store }
 }
 
-test('WebSocket 只转发完整作用域的双端白名单消息，并过滤未知远端消息', async () => {
+test('WebSocket 只转发完整作用域的双端白名单消息，并向当前连接报告未知远端消息', async () => {
   const { client, remote } = await setup()
   client.emit('message', JSON.stringify({ type: 'session.send', ...scope, text: 'hello' }), false)
   assert.equal(remote.sent.length, 1)
   remote.emit('message', JSON.stringify({ type: 'session.delta', ...scope, message: 'reply' }), false)
   assert.equal(client.sent.length, 1)
   remote.emit('message', JSON.stringify({ type: 'admin.secret', ...scope }), false)
-  assert.equal(client.sent.length, 1)
+  assert.equal(client.sent.length, 2)
+  assert.equal(JSON.parse(client.sent[1]!).error_code, 'PEER_HOST_TOOL_UNSUPPORTED')
 })
 
 test('WebSocket 拒绝未知类型、二进制和错误作用域，并绑定双端关闭', async () => {
@@ -60,4 +61,12 @@ test('PeerHost 不可用时不会建立目标 WebSocket', async () => {
   await store.updateStatus('peer-1', 'version_mismatch', 'PEER_HOST_VERSION_MISMATCH')
   const service = new PeerHostWsProxyService(store, { getAccessToken: async () => 'secret' } as never, async () => { throw new Error('should not connect') })
   await assert.rejects(service.open('peer-1', new FakeSocket() as never, scope), /尚未准备好/u)
+})
+
+test('session 消息缺少 sessionId 时拒绝，即使 workspace 作用域字段匹配', async () => {
+  const { client, remote } = await setup()
+  const workspaceScope = { ...scope, sessionId: null }
+  client.emit('message', JSON.stringify({ type: 'session.send', ...workspaceScope, text: 'hello' }), false)
+  assert.equal(remote.sent.length, 0)
+  assert.equal(JSON.parse(client.sent[0]!).error_code, 'PEER_HOST_SCOPE_MISMATCH')
 })

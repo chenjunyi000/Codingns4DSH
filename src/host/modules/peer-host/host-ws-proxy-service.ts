@@ -73,7 +73,7 @@ export class PeerHostWsProxyService {
       if (remote.readyState === OPEN) remote.close(code, reason)
     }
     const sendClientError = (code: PeerHostErrorCode, message: string): void => {
-      if (client.readyState === OPEN) client.send(JSON.stringify({ type: 'error', error_code: code, message }))
+      if (client.readyState === OPEN) client.send(JSON.stringify({ type: 'peerHost.error', ...scope, error_code: code, message }))
     }
     const forward = (socket: PeerHostSocket, raw: string, queue: string[]): void => {
       if (socket.readyState !== OPEN) {
@@ -104,9 +104,15 @@ export class PeerHostWsProxyService {
       forward(remote, data, remoteQueue)
     })
     remote.on('message', (data: unknown, isBinary?: boolean) => {
-      if (isBinary === true || typeof data !== 'string') return
+      if (isBinary === true || typeof data !== 'string') {
+        sendClientError(PEER_HOST_ERROR_CODES.RESPONSE_INVALID, 'PeerHost 目标消息格式无效')
+        return
+      }
       const parsed = parseScopedMessage(data, scope, PEER_HOST_WS_REMOTE_MESSAGE_TYPES)
-      if (parsed.error !== null) return
+      if (parsed.error !== null) {
+        sendClientError(parsed.error.code, parsed.error.message)
+        return
+      }
       forward(client, data, clientQueue)
     })
     client.on('close', () => closeBoth())
@@ -136,7 +142,12 @@ function parseScopedMessage(raw: string, expected: HostScope, allowed: ReadonlyS
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.RESPONSE_INVALID, 'PeerHost WebSocket 消息格式无效') }
   const message = value as Record<string, unknown>
   if (typeof message.type !== 'string' || !allowed.has(message.type)) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.TOOL_UNSUPPORTED, 'PeerHost WebSocket 消息未加入白名单') }
+  if (requiresSession(message.type) && (typeof message.sessionId !== 'string' || message.sessionId.trim() === '')) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost 会话消息缺少 sessionId') }
   const messageSessionId = typeof message.sessionId === 'string' && message.sessionId.trim() !== '' ? message.sessionId : null
   if (message.hostId !== expected.hostId || message.targetHostId !== expected.targetHostId || message.workspaceId !== expected.workspaceId || message.scopeGeneration !== expected.scopeGeneration || messageSessionId !== expected.sessionId) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 消息作用域不匹配') }
   return { error: null }
+}
+
+function requiresSession(type: string): boolean {
+  return type.startsWith('session.')
 }

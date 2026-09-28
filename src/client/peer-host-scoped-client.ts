@@ -124,6 +124,7 @@ const OPEN = 1
 const CLOSED = 3
 const SOCKET_OPEN_TIMEOUT_MS = 15_000
 const PEER_HOST_EVENT_TYPES = new Set([
+  'peerHost.error',
   'system.connected', 'workbench.snapshot', 'workbench.delta', 'fileTree.snapshot',
   'git.snapshot', 'session.subscribed', 'session.backfill', 'session.delta',
   'session.runtime_message', 'session.runtime_status', 'session.activity',
@@ -141,6 +142,7 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let reconnectAttempt = 0
   let connecting = false
+  let pendingSocket: PeerHostEventSocket | undefined
   const replayableSubscriptions = new Map<PeerHostClientMessageType, Readonly<Record<string, unknown>>>()
 
   const close = (): void => {
@@ -149,6 +151,7 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
     if (reconnectTimer !== undefined) clearTimeout(reconnectTimer)
     reconnectTimer = undefined
     closeSocket(socket, 1000, 'PeerHost 作用域已清理')
+    if (pendingSocket !== undefined && pendingSocket !== socket) closeSocket(pendingSocket, 1000, 'PeerHost 作用域已清理')
   }
 
   const send = (type: PeerHostClientMessageType, payload: Readonly<Record<string, unknown>> = {}): void => {
@@ -197,7 +200,9 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
     connecting = true
     try {
       const next = await socketFactory(scope)
+      pendingSocket = next
       await waitForSocketOpen(next)
+      pendingSocket = undefined
       if (closed) {
         closeSocket(next, 1000, 'PeerHost 作用域已清理')
         return
@@ -205,6 +210,7 @@ async function openEventStream(scope: HostScope, socketFactory: PeerHostEventSoc
       reconnectAttempt = 0
       attach(next)
     } catch {
+      pendingSocket = undefined
       scheduleReconnect()
     } finally {
       connecting = false
