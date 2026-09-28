@@ -452,6 +452,9 @@ function validateDescriptor(descriptor: FeatureDescriptor | undefined): asserts 
   if (typeof descriptor.enabledByDefault !== 'boolean') {
     throw new FeatureRegistryError('FEATURE_INVALID_DESCRIPTOR', `Feature ${descriptor.name} has invalid enabledByDefault`, descriptor.name)
   }
+  if (descriptor.disabled !== undefined && typeof descriptor.disabled !== 'boolean') {
+    throw new FeatureRegistryError('FEATURE_INVALID_DESCRIPTOR', `Feature ${descriptor.name} has invalid disabled`, descriptor.name)
+  }
   if (descriptor.runtime !== 'host' && descriptor.runtime !== 'client' && descriptor.runtime !== 'both') {
     throw new FeatureRegistryError('FEATURE_INVALID_DESCRIPTOR', `Feature ${descriptor.name} has invalid runtime`, descriptor.name)
   }

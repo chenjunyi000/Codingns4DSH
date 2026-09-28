@@ -41,6 +41,8 @@ export interface FeatureDescriptor {
   name: string
   version: string
   enabledByDefault: boolean
+  /** 维护期间强制停用；即使历史设置为 true 也不得启动。 */
+  disabled?: boolean
   dependencies: string[]
   runtime: FeatureRuntime
   /** `restart` 表示只保存下次启动意图，当前进程不跟随设置变化启停。 */

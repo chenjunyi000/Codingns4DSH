@@ -25,6 +25,7 @@ import {
 function descriptorOf(name: string, options: {
   enabledByDefault?: boolean
   alwaysEnabled?: boolean
+  disabled?: boolean
 } = {}): FeatureDescriptor {
   return {
     name,
@@ -32,6 +33,7 @@ function descriptorOf(name: string, options: {
     enabledByDefault: options.enabledByDefault ?? false,
     dependencies: [],
     runtime: 'client',
+    ...(options.disabled === true ? { disabled: true } : {}),
     ...(options.alwaysEnabled === true
       ? { ui: { label: name, description: `${name} 说明`, alwaysEnabled: true } }
       : {}),
@@ -89,6 +91,13 @@ test('用户意图覆盖 enabledByDefault，常驻模块无法被关闭', () => 
     }),
     true,
   )
+})
+
+test('维护停用模块忽略历史 enabled 设置', () => {
+  const descriptor = descriptorOf('peerHost', { disabled: true })
+  const settings = { ...DEFAULT_CODINGNS_SETTINGS, modules: { peerHost: true } }
+  assert.equal(isFeatureEnabled(descriptor, settings), false)
+  assert.deepEqual(enabledFeatureNames([descriptor], settings), [])
 })
 
 test('enabledFeatureNames 汇总当前应当启用的模块', () => {

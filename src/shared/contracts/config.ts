@@ -245,6 +245,7 @@ export function isFeatureEnabled(
   descriptor: FeatureDescriptor,
   settings: CodingNsSettings | undefined,
 ): boolean {
+  if (descriptor.disabled === true) return false
   if (descriptor.ui?.alwaysEnabled === true) return true
   return settings?.modules[descriptor.name] ?? descriptor.enabledByDefault
 }

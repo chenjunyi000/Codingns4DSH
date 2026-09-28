@@ -125,10 +125,11 @@ function FeatureCard({ entry, snapshot, services, restartStates, notify }: Featu
   const t = useCodingNsTranslator(services.locale)
   const versionCompatible = isFeatureDshVersionCompatible(module.descriptor, services.dshVersion)
   const requestedEnabled = isFeatureEnabled(module.descriptor, snapshot.value)
-  const enabled = versionCompatible && requestedEnabled
+  const temporarilyDisabled = module.descriptor.disabled === true
+  const enabled = !temporarilyDisabled && versionCompatible && requestedEnabled
   const panel = module.settingsPanel
   // 常驻模块不提供关闭入口；设置未就绪或只读时也不允许切换。
-  const switchDisabled = ui.alwaysEnabled === true || !versionCompatible || snapshot.status === 'loading' || !snapshot.writable
+  const switchDisabled = temporarilyDisabled || ui.alwaysEnabled === true || !versionCompatible || snapshot.status === 'loading' || !snapshot.writable
 
   const toggle = (next: boolean): void => {
     if (!versionCompatible) {
@@ -181,6 +182,9 @@ function FeatureCard({ entry, snapshot, services, restartStates, notify }: Featu
           version: services.dshVersion,
           minimum: module.descriptor.minimumDshVersion ?? '未知版本',
         }))
+        : null,
+      temporarilyDisabled
+        ? createElement('div', { role: 'status', style: { marginBottom: 10, color: dshThemeColor.labelSecondary } }, '该模块当前由维护策略停用，设置不会启动它。')
         : null,
       panel === undefined ? null : createElement(panel, { services, enabled, snapshot, notify }),
     ),
