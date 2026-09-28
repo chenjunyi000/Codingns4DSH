@@ -15,12 +15,15 @@ const scopeHeaders = {
   'x-codingns-scope-generation': '3',
 }
 
-async function setup(fetchImpl: typeof fetch) {
+async function setup(fetchImpl: typeof fetch, onInvalidate: () => void = () => undefined) {
   const credentials = new InMemoryPeerHostCredentialStore()
   const store = new PeerHostStore('user-1', new InMemoryPeerHostRecordStore(), credentials, () => 100, () => 'peer-1')
   await store.create({ displayName: '开发机', route: { kind: 'lan', baseUrl: 'http://127.0.0.1:13080', normalizedOrigin: '' } })
   await store.updateHandshake('peer-1', { status: 'ready', pluginId: '@jingyi0605/codingns4dsh', pluginVersion: '0.1.2', dshVersion: '0.1.6-alpha.2', apiCompatibility: 'peer-host-v1', fingerprint: 'sha256:first', lastCheckedAt: 100, lastErrorCode: null })
-  const sessions = { getAccessToken: async (peerHostId: string) => { assert.equal(peerHostId, 'peer-1'); return 'access-secret' } }
+  const sessions = {
+    getAccessToken: async (peerHostId: string) => { assert.equal(peerHostId, 'peer-1'); return 'access-secret' },
+    invalidate: async (peerHostId: string) => { assert.equal(peerHostId, 'peer-1'); onInvalidate() },
+  }
   return new PeerHostHttpProxyService(store, sessions as never, { fetchImpl })
 }
 
@@ -57,4 +60,13 @@ test('代理不接受任意目标 URL，也不会把上游失败伪装成空列�
   const response = await service.handle('peer-1', new Request('http://evil.test/api/workspaces', { headers: scopeHeaders }))
   assert.equal(response.status, 502)
   assert.equal((await response.json()).error.code, 'PEER_HOST_PROXY_UNREACHABLE')
+})
+
+test('目标 Host 返回 401 时只清理该 PeerHost 登录态', async () => {
+  let invalidated = 0
+  const service = await setup(async () => new Response(JSON.stringify({ error: 'expired' }), { status: 401, headers: { 'content-type': 'application/json' } }), () => { invalidated += 1 })
+  const response = await service.handle('peer-1', new Request('http://current.test/api/workspaces', { headers: scopeHeaders }))
+  assert.equal(response.status, 401)
+  assert.equal((await response.json()).error.code, 'PEER_HOST_SESSION_REQUIRED')
+  assert.equal(invalidated, 1)
 })

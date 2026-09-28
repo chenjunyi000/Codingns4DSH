@@ -15,13 +15,29 @@ import {
 } from '../modules/peer-host/peer-host-store.js'
 import type { PeerHostRoute } from '../../shared/contracts/peer-host.js'
 import type { PeerHostRecord, PeerHostClientRecord } from '../../shared/contracts/peer-host.js'
+import type { HostScope } from '../../shared/contracts/peer-host.js'
+import type { AggregateHostSource } from '../modules/peer-host/peer-host-aggregate-service.js'
+import { PeerHostAggregateService } from '../modules/peer-host/peer-host-aggregate-service.js'
 import { CodingNsRpcError } from '../rpc-table.js'
+import { PeerHostWebSocketGateway, PEER_HOST_WS_PATH, type PeerHostWsGatewayEndpoint } from '../modules/peer-host/peer-host-ws-gateway.js'
+import { PeerHostWsProxyError, PeerHostWsProxyService, type PeerHostRemoteConnector } from '../modules/peer-host/host-ws-proxy-service.js'
+import { createPeerHostRemoteConnector } from '../modules/peer-host/host-ws-connector.js'
+import { createPeerHostRelayConnector, PeerHostReconnectManager, type PeerHostRelayTransportFactory } from '../modules/peer-host/peer-host-relay.js'
+import { PEER_HOST_ERROR_CODES } from '../../shared/contracts/peer-host.js'
+import { FileLanAccessDshLoginStore, resolveLoginProtectionCookieName, verifyLoginProtectionSession } from '../lan-access-dsh.js'
+import { createPeerHostDiagnosticSink, toPeerHostDiagnosticSnapshot } from '../modules/peer-host/peer-host-diagnostics.js'
 
 export interface PeerHostFeatureOptions {
   readonly stateDirectory?: string
   readonly ownerUserId?: string
   readonly encryptionKey?: Uint8Array
   readonly fetchImpl?: typeof fetch
+  /** 测试或已验证的 Host-to-Host WebSocket connector；未注入时保持不可用。 */
+  readonly connectRemote?: PeerHostRemoteConnector
+  /** 仅允许复用已验证的 Host 侧 Relay Transport；缺省时中转保持不可用。 */
+  readonly relayTransport?: PeerHostRelayTransportFactory
+  /** 当前 Host/已验证 PeerHost 的摘要源；未注入时必须保持明确降级。 */
+  readonly aggregateSources?: () => Promise<readonly AggregateHostSource[]>
 }
 
 /** PeerHost Host 模块；配置、握手和目标登录态只在 Host 进程内装配。 */
@@ -58,6 +74,57 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
       })
       const sessions = new PeerHostSessionService(store, credentials, options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
       const httpProxy = new PeerHostHttpProxyService(store, sessions, options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
+      const aggregate = new PeerHostAggregateService()
+      const diagnostics = createPeerHostDiagnosticSink({
+        enabled: process.env.CODINGNS4DSH_DEBUG === '1',
+        sink: (event, snapshot) => console.info('[codingns4dsh:peer-host]', { event, ...snapshot }),
+      })
+      const lanConnector = options.connectRemote ?? createPeerHostRemoteConnector()
+      const relayConnector = createPeerHostRelayConnector({ ...(options.relayTransport === undefined ? {} : { transport: options.relayTransport }) })
+      const connector: PeerHostRemoteConnector = (record, accessToken, scope) => record.route.kind === 'relay'
+        ? relayConnector(record, accessToken, scope)
+        : lanConnector(record, accessToken, scope)
+      const reconnectManager = new PeerHostReconnectManager({
+        connect: connector,
+        onState: async (snapshot) => {
+          const current = await store.get(snapshot.peerHostId)
+          if (current === null || snapshot.state === 'connecting' || snapshot.state === 'reconnecting' || snapshot.state === 'stopped') return
+          if (snapshot.state === 'ready') {
+            if (current.status !== 'ready') await store.updateStatus(snapshot.peerHostId, 'ready', null)
+            return
+          }
+          const errorCode = snapshot.lastErrorCode === PEER_HOST_ERROR_CODES.RELAY_UNAVAILABLE
+            ? PEER_HOST_ERROR_CODES.RELAY_UNAVAILABLE
+            : PEER_HOST_ERROR_CODES.UNREACHABLE
+          await store.updateStatus(snapshot.peerHostId, 'unreachable', errorCode)
+        },
+      })
+      context.resources.add(() => reconnectManager.close())
+      // WS 代理的客户端 socket 无法在关闭后替换远端 socket；因此这里保持一条连接一一绑定，
+      // 重连 manager 仅治理显式的 Host 侧长连接消费者，避免后台重连产生孤立远端连接。
+      const wsProxy = new PeerHostWsProxyService(store, sessions, connector)
+      const loginStore = new FileLanAccessDshLoginStore()
+      const lanSettings = context.services.settings?.get().lanAccessDsh
+      const gateway = new PeerHostWebSocketGateway({
+        listenHost: process.env.CODINGNS4DSH_PEER_HOST_WS_HOST?.trim() || (lanSettings?.autoStart === true ? lanSettings.listenHost : '127.0.0.1'),
+        listenPort: parsePort(process.env.CODINGNS4DSH_PEER_HOST_WS_PORT),
+        path: PEER_HOST_WS_PATH,
+        authorizeUpgrade: (request) => authorizePeerHostUpgrade(loginStore, request),
+        onConnection: (socket, request) => {
+          const scope = parseWebSocketScope(request.url)
+          if (scope.targetHostId === null) {
+            throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 缺少目标 Host')
+          }
+          return wsProxy.open(scope.targetHostId, socket, scope)
+        },
+      })
+      let wsEndpoint: PeerHostWsGatewayEndpoint | null = null
+      try {
+        wsEndpoint = await gateway.start()
+        context.resources.add(() => gateway.close())
+      } catch {
+        console.error('codingns4dsh: PeerHost WebSocket 网关启动失败')
+      }
       if (context.services.registerPeerHostHandshakeRoute !== undefined) {
         const unregisterHandshake = context.services.registerPeerHostHandshakeRoute(async () => Response.json({
           productId: 'CodingNS',
@@ -74,6 +141,11 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
         const input = record(payload)
         switch (action) {
           case 'list': return (await store.list()).map(toPeerHostClientRecord)
+          case 'diagnostics': {
+            const snapshots = (await store.list()).map(toPeerHostDiagnosticSnapshot)
+            for (const snapshot of snapshots) diagnostics.emit('peer-host.snapshot', snapshot)
+            return snapshots
+          }
           case 'create': return toPeerHostClientRecord(await store.create({ displayName: requiredString(input.displayName, 'displayName'), route: parseRoute(input.route) }))
           case 'update': return toPeerHostClientRecord(await store.update(requiredString(input.peerHostId, 'peerHostId'), {
             ...(input.displayName === undefined ? {} : { displayName: requiredString(input.displayName, 'displayName') }),
@@ -91,6 +163,13 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
             password: requiredString(input.password, 'password'),
           })
           case 'logout': return sessions.logout(requiredString(input.peerHostId, 'peerHostId'))
+          case 'wsEndpoint': return wsEndpoint
+          case 'aggregate': {
+            if (options.aggregateSources === undefined) {
+              throw new CodingNsRpcError(PEER_HOST_ERROR_CODES.AGGREGATE_UNAVAILABLE, '当前 Host 尚未提供可验证的工作区摘要源')
+            }
+            return aggregate.load(await options.aggregateSources())
+          }
           case 'request': {
             const peerHostId = requiredString(input.peerHostId, 'peerHostId')
             const scope = parseScope(input.scope)
@@ -107,6 +186,66 @@ export function createPeerHostFeature(options: PeerHostFeatureOptions = {}): Fea
       context.resources.add(unregister)
     },
   }
+}
+
+async function authorizePeerHostUpgrade(loginStore: FileLanAccessDshLoginStore, request: import('node:http').IncomingMessage): Promise<boolean> {
+  const origin = request.headers.origin
+  const host = request.headers.host
+  if (typeof origin === 'string' && typeof host === 'string') {
+    try {
+      const originUrl = new URL(origin)
+      const originHost = normalizeHostName(originUrl.hostname)
+      const requestHost = normalizeHostName(readRequestHost(host))
+      if (originHost !== requestHost) return false
+    } catch { return false }
+  }
+  const config = await loginStore.read()
+  if (config === null || !config.enabled || !config.scopes.lan) return true
+  const token = readCookie(request.headers.cookie, resolveLoginProtectionCookieName())
+  return verifyLoginProtectionSession(loginStore, token, 'lan')
+}
+
+function parseWebSocketScope(rawUrl: string | undefined): HostScope {
+  if (rawUrl === undefined) throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 缺少作用域')
+  const url = new URL(rawUrl, 'http://peer-host.invalid')
+  const allowed = new Set(['hostId', 'targetHostId', 'workspaceId', 'sessionId', 'scopeGeneration'])
+  for (const key of url.searchParams.keys()) if (!allowed.has(key)) throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 查询参数未加入白名单')
+  const hostId = requiredString(url.searchParams.get('hostId'), 'hostId')
+  const targetHostId = requiredString(url.searchParams.get('targetHostId'), 'targetHostId')
+  const workspaceId = requiredString(url.searchParams.get('workspaceId'), 'workspaceId')
+  const sessionId = url.searchParams.get('sessionId')
+  const scopeGeneration = Number(url.searchParams.get('scopeGeneration'))
+  if (!Number.isSafeInteger(scopeGeneration) || scopeGeneration < 0) throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 作用域 generation 无效')
+  return { hostId, targetHostId, workspaceId, sessionId: sessionId?.trim() || null, scopeGeneration }
+}
+
+function readCookie(value: string | undefined, name: string): string | undefined {
+  for (const item of (value ?? '').split(';')) {
+    const separator = item.indexOf('=')
+    if (separator > 0 && item.slice(0, separator).trim() === name) return item.slice(separator + 1).trim()
+  }
+  return undefined
+}
+
+function parsePort(value: string | undefined): number {
+  if (value === undefined || value.trim() === '') return 0
+  const port = Number(value)
+  return Number.isSafeInteger(port) && port >= 0 && port <= 65_535 ? port : 0
+}
+
+function normalizeHostName(value: string): string {
+  const host = value.trim().toLowerCase()
+  if (host === 'localhost' || host === '::1' || host === '::ffff:127.0.0.1') return '127.0.0.1'
+  return host
+}
+
+function readRequestHost(value: string): string {
+  const host = value.trim()
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']')
+    return end > 1 ? host.slice(1, end) : ''
+  }
+  return host.split(':')[0] ?? ''
 }
 
 async function loadPeerHostKey(path: string): Promise<Uint8Array> {

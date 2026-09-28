@@ -7,6 +7,7 @@ import type { CodingNsLocale } from '../locale.js'
 import type { CodingNsSettingsSnapshot, CodingNsSettingsStore } from '../../dsh-capabilities/settings-store.js'
 import type { PeerHostScopedClient } from '../peer-host-scoped-client.js'
 import type { HostRouter } from '../host-router.js'
+import type { PeerHostSessionController } from '../peer-host-session-controller.js'
 
 /** 一次 Codingns4DSH RPC 的结果，与 DSH Connection 的结果形状一致。 */
 export type CodingNsRpcResult =
@@ -28,6 +29,8 @@ export interface CodingNsClientServices {
   readonly peerHost: PeerHostScopedClient
   /** 所有跨 Host 资源共用的 generation 路由器。 */
   readonly hostRouter: HostRouter
+  /** 远端会话的唯一控制入口；与 hostRouter 共享 generation 和清理生命周期。 */
+  readonly peerHostSession: PeerHostSessionController
   /** DSH Typert Remote；归档会话模块只通过运行时探测调用可选方法。 */
   readonly remote?: unknown
   /** Codingns4DSH 自有终端 Remote；调试页不能依赖已停用的 DSH 官方 terminal。 */

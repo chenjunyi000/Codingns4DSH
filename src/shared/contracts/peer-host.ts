@@ -51,6 +51,13 @@ export type PeerHostClientRecord = Omit<PeerHostRecord, 'route'> & {
   readonly route: PeerHostClientRoute
 }
 
+/** 当前 Host 插件自有 WebSocket 入口；不包含任何目标 Host 地址或凭据。 */
+export interface PeerHostWebSocketEndpoint {
+  readonly host: string
+  readonly port: number
+  readonly path: string
+}
+
 /** 所有跨 Host 资源共用的完整作用域。 */
 export interface HostScope {
   readonly hostId: string
@@ -86,6 +93,8 @@ export interface AggregateHostResult {
   readonly hostLabel: string
   readonly availability: 'ready' | 'checking' | 'unreachable' | 'unsupported'
   readonly errorCode: PeerHostErrorCode | null
+  /** 摘要能力不可用时保留可诊断原因，禁止以空工作区伪装成功。 */
+  readonly diagnostic?: string
   readonly workspaces: readonly AggregateWorkspaceSummary[]
 }
 
@@ -105,6 +114,7 @@ export const PEER_HOST_ERROR_CODES = {
   IDENTITY_CHANGED: 'PEER_HOST_IDENTITY_CHANGED',
   UNREACHABLE: 'PEER_HOST_UNREACHABLE',
   RELAY_UNAVAILABLE: 'PEER_HOST_RELAY_UNAVAILABLE',
+  AGGREGATE_UNAVAILABLE: 'PEER_HOST_AGGREGATE_UNAVAILABLE',
   STALE_GENERATION: 'PEER_HOST_STALE_GENERATION',
 } as const
 

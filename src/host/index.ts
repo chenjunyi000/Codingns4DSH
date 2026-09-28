@@ -371,3 +371,10 @@ export {
   type HostSignalingSocket,
 } from './relay-tunnel-runtime.js'
 export * from './terminal/index.js'
+export { PeerHostWebSocketGateway, PEER_HOST_WS_PATH } from './modules/peer-host/peer-host-ws-gateway.js'
+export {
+  createPeerHostRelayConnector,
+  PeerHostReconnectManager,
+  type PeerHostRelayConnectorOptions,
+  type PeerHostRelayTransportFactory,
+  type PeerHostReconnectManagerOptions,

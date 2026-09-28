@@ -195,7 +195,7 @@ const CODINGNS_RPC_ENDPOINTS = [
   'git/status', 'git/init', 'git/diff', 'git/stage', 'git/unstage', 'git/discard', 'git/commit', 'git/commit-diff', 'git/history', 'git/branches', 'git/switch', 'git/fetch', 'git/pull', 'git/push', 'git/undo',
   'fileManagement/session-changes', 'fileManagement/read', 'fileManagement/download', 'fileManagement/write', 'fileManagement/create-file', 'fileManagement/create-directory', 'fileManagement/rename', 'fileManagement/copy', 'fileManagement/move', 'fileManagement/delete', 'fileManagement/git-ignore',
   'lanAccessDsh/addresses', 'lanAccessDsh/detect', 'lanAccessDsh/get', 'lanAccessDsh/settings/get', 'lanAccessDsh/settings/set', 'lanAccessDsh/login/get', 'lanAccessDsh/login/set', 'lanAccessDsh/login/session/open', 'lanAccessDsh/login/session/refresh', 'lanAccessDsh/start', 'lanAccessDsh/stop',
-  'peerHost/list', 'peerHost/create', 'peerHost/update', 'peerHost/remove', 'peerHost/check', 'peerHost/reconnect', 'peerHost/login', 'peerHost/logout', 'peerHost/request',
+  'peerHost/list', 'peerHost/create', 'peerHost/update', 'peerHost/remove', 'peerHost/check', 'peerHost/reconnect', 'peerHost/login', 'peerHost/logout', 'peerHost/request', 'peerHost/wsEndpoint', 'peerHost/aggregate',
   'cli/catalog', 'cli/models', 'cli/adapter/set', 'cli/session/get', 'cli/session/set', 'cli/session/list', 'cli/session/adapter-map', 'cli/session/archive', 'cli/session/steer', 'cli/session/follow-up', 'cli/session/interrupt', 'cli/subscription',
 ] as const
 

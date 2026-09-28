@@ -1,4 +1,4 @@
-import type { PeerHostClientRecord, PeerHostRoute } from '../shared/contracts/peer-host.js'
+import type { AggregateHostResult, PeerHostClientRecord, PeerHostRoute, PeerHostWebSocketEndpoint } from '../shared/contracts/peer-host.js'
 import type { CodingNsRpcClient } from './features/types.js'
 
 export interface PeerHostCreateRequest {
@@ -27,6 +27,8 @@ export interface PeerHostManagementApi {
   reconnect(peerHostId: string): Promise<PeerHostClientRecord>
   login(input: PeerHostLoginRequest): Promise<{ readonly peerHostId: string; readonly status: string; readonly expiresAt: number | null }>
   logout(peerHostId: string): Promise<{ readonly peerHostId: string; readonly status: string; readonly expiresAt: number | null }>
+  webSocketEndpoint(): Promise<PeerHostWebSocketEndpoint | null>
+  aggregate(): Promise<readonly AggregateHostResult[]>
 }
 
 /** PeerHost 管理 RPC 封装；客户端不接受目标凭据字段。 */
@@ -45,5 +47,7 @@ export function createPeerHostManagementApi(rpc: CodingNsRpcClient): PeerHostMan
     reconnect: (peerHostId) => call('peerHost/reconnect', { peerHostId }),
     login: (input) => call('peerHost/login', input),
     logout: (peerHostId) => call('peerHost/logout', { peerHostId }),
+    webSocketEndpoint: () => call('peerHost/wsEndpoint', {}),
+    aggregate: () => call('peerHost/aggregate', {}),
   }
 }

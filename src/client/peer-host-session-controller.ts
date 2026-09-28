@@ -4,6 +4,7 @@ import type {
   PeerHostEventListener,
   PeerHostEventSocketFactory,
   PeerHostEventSubscription,
+  PeerHostEventStreamOptions,
   PeerHostProxyResponse,
   PeerHostScopedClient,
 } from './peer-host-scoped-client.js'
@@ -26,6 +27,26 @@ export class PeerHostSessionController {
 
   current(): HostScope | null {
     return this.router.getCurrent()
+  }
+
+  /**
+   * Host 侧重连成功后重建同一逻辑作用域。
+   * `HostRouter.rebuild` 会先清理旧订阅，再递增 generation；摘要刷新回调只能使用新作用域。
+   */
+  async rebuildAfterReconnect(scope: HostScope, refreshSummary?: (nextScope: HostScope) => Promise<void> | void): Promise<HostScope> {
+    this.assertCurrent(scope)
+    const nextScope = await this.router.rebuild({
+      hostId: scope.hostId,
+      targetHostId: scope.targetHostId,
+      workspaceId: scope.workspaceId,
+      sessionId: scope.sessionId,
+    })
+    if (refreshSummary !== undefined) {
+      this.assertCurrent(nextScope)
+      await refreshSummary(nextScope)
+      this.assertCurrent(nextScope)
+    }
+    return nextScope
   }
 
   async loadHistory(scope: HostScope, cursor?: string): Promise<PeerHostProxyResponse> {
@@ -55,15 +76,32 @@ export class PeerHostSessionController {
     scope: HostScope,
     socketFactory: PeerHostEventSocketFactory,
     listener: PeerHostEventListener,
+    options?: PeerHostEventStreamOptions,
   ): Promise<PeerHostEventSubscription> {
     this.assertCurrent(scope)
-    const subscription = await this.client.openEventStream(scope, socketFactory, listener)
+    const subscription = await this.client.openEventStream(scope, socketFactory, listener, options)
     if (!this.router.isCurrent(scope)) {
       subscription.close()
       throw new Error('PeerHost 作用域已失效')
     }
     const remove = this.router.addDisposer(subscription.close)
-    return { close: () => { subscription.close(); remove() } }
+    let disposed = false
+    const close = (): void => {
+      if (disposed) return
+      disposed = true
+      subscription.close()
+      remove()
+    }
+    return {
+      close,
+      send: subscription.send,
+      terminalInput: subscription.terminalInput,
+      terminalResize: subscription.terminalResize,
+      terminalClose: subscription.terminalClose,
+      rightToolSubscribe: subscription.rightToolSubscribe,
+      rightToolRefresh: subscription.rightToolRefresh,
+      rightToolClose: subscription.rightToolClose,
+    }
   }
 
   private async run(scope: HostScope, operation: () => Promise<PeerHostProxyResponse>): Promise<PeerHostProxyResponse> {
@@ -77,4 +115,3 @@ export class PeerHostSessionController {
     this.router.assertCurrent(scope)
   }
 }
-

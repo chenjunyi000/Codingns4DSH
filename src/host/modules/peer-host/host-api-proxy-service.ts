@@ -51,6 +51,10 @@ export class PeerHostHttpProxyService {
         headers: buildForwardHeaders(request.headers, accessToken),
         ...(body === undefined ? {} : { body }),
       })
+      if (response.status === 401) {
+        await this.sessions.invalidate(peerHostId)
+        throw new PeerHostProxyError(PEER_HOST_ERROR_CODES.SESSION_REQUIRED, '目标 Host 登录态已失效')
+      }
       return await forwardResponse(response, scope)
     } catch (error) {
       return errorResponse(error)

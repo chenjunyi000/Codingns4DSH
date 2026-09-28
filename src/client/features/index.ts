@@ -58,6 +58,8 @@ export { startPeerHostConnectionButton, PEER_HOST_BUTTON_ATTRIBUTE, PEER_HOST_OP
 export { startPeerHostManagementPanel } from '../peer-host-management-panel.js'
 export { createPeerHostManagementApi } from '../peer-host-management-api.js'
 export { createPeerHostScopedClient } from '../peer-host-scoped-client.js'
+export { createPeerHostWebSocketFactory } from '../peer-host-scoped-client.js'
+export { startPeerHostNativeNavigation, startPeerHostNativeSession } from '../peer-host-native-session-ui.js'
 export { PeerHostSessionController } from '../peer-host-session-controller.js'
 export { LoginProtectionPanel } from './login-protection-panel.js'
 export { ReverseProxyPanel } from './reverse-proxy-panel.js'

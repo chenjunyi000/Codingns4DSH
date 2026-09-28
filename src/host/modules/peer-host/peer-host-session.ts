@@ -76,6 +76,13 @@ export class PeerHostSessionService {
     return credential.accessToken
   }
 
+  /** 目标 Host 明确拒绝当前 token 时，只清理该 PeerHost 的登录态。 */
+  async invalidate(peerHostId: string): Promise<void> {
+    await this.credentials.clear(peerHostId)
+    const record = await this.store.get(peerHostId)
+    if (record !== null && record.status === 'ready') await this.store.updateStatus(peerHostId, 'session_required', PEER_HOST_ERROR_CODES.SESSION_REQUIRED)
+  }
+
   async logout(peerHostId: string): Promise<PeerHostSessionView> {
     const record = await this.store.get(peerHostId)
     if (record === null) throw new PeerHostSessionError(PEER_HOST_ERROR_CODES.NOT_FOUND, 'PeerHost 不存在')

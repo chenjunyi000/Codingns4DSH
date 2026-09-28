@@ -2,6 +2,7 @@ import type { HostScope, PeerHostErrorCode, PeerHostRecord } from '../../../shar
 import { PEER_HOST_ERROR_CODES } from '../../../shared/contracts/peer-host.js'
 import { PeerHostSessionService } from './peer-host-session.js'
 import { PeerHostStore } from './peer-host-store.js'
+import { PeerHostConnectorError } from './host-ws-connector.js'
 
 export const PEER_HOST_WS_CLIENT_MESSAGE_TYPES = new Set([
   'workbench.subscribe', 'workbench.refresh', 'fileTree.subscribe', 'fileTree.refresh',
@@ -29,7 +30,7 @@ export interface PeerHostSocket {
   on(event: 'message' | 'close' | 'error', listener: (...args: any[]) => void): void
 }
 
-export type PeerHostRemoteConnector = (record: PeerHostRecord, accessToken: string) => Promise<PeerHostSocket>
+export type PeerHostRemoteConnector = (record: PeerHostRecord, accessToken: string, scope: HostScope) => Promise<PeerHostSocket>
 
 export class PeerHostWsProxyError extends Error {
   constructor(readonly code: PeerHostErrorCode, message: string) {
@@ -50,7 +51,17 @@ export class PeerHostWsProxyService {
     const record = await this.requireReady(peerHostId)
     assertScopeTarget(scope, peerHostId)
     const accessToken = await this.sessions.getAccessToken(peerHostId)
-    const remote = await this.connectRemote(record, accessToken)
+    let remote: PeerHostSocket
+    try {
+      remote = await this.connectRemote(record, accessToken, scope)
+    } catch (error) {
+      if (error instanceof PeerHostConnectorError && error.code === PEER_HOST_ERROR_CODES.SESSION_REQUIRED) {
+        await this.sessions.invalidate(peerHostId)
+        throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SESSION_REQUIRED, '目标 Host 登录态已失效')
+      }
+      if (error instanceof PeerHostConnectorError) throw new PeerHostWsProxyError(error.code, error.message)
+      throw new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.PROXY_UNREACHABLE, '目标 Host 代理连接失败')
+    }
     let closed = false
     const remoteQueue: string[] = []
     const clientQueue: string[] = []
@@ -124,6 +135,7 @@ function parseScopedMessage(raw: string, expected: HostScope, allowed: ReadonlyS
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.RESPONSE_INVALID, 'PeerHost WebSocket 消息格式无效') }
   const message = value as Record<string, unknown>
   if (typeof message.type !== 'string' || !allowed.has(message.type)) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.TOOL_UNSUPPORTED, 'PeerHost WebSocket 消息未加入白名单') }
-  if (message.hostId !== expected.hostId || message.targetHostId !== expected.targetHostId || message.workspaceId !== expected.workspaceId || message.scopeGeneration !== expected.scopeGeneration || (expected.sessionId !== null && message.sessionId !== expected.sessionId)) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 消息作用域不匹配') }
+  const messageSessionId = typeof message.sessionId === 'string' && message.sessionId.trim() !== '' ? message.sessionId : null
+  if (message.hostId !== expected.hostId || message.targetHostId !== expected.targetHostId || message.workspaceId !== expected.workspaceId || message.scopeGeneration !== expected.scopeGeneration || messageSessionId !== expected.sessionId) return { error: new PeerHostWsProxyError(PEER_HOST_ERROR_CODES.SCOPE_MISMATCH, 'PeerHost WebSocket 消息作用域不匹配') }
   return { error: null }
 }

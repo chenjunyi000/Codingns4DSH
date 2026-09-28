@@ -126,9 +126,9 @@
 ### 3.2 实现 WebSocket 代理和消息过滤
 
 - 状态：`DONE`
-- 改动文件：`src/host/modules/peer-host/host-ws-proxy-service.ts`、`tests/peer-host-ws-proxy.spec.ts`
-- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-ws-proxy.spec.ts`（3 项通过）
-- 已知限制：服务已完成双端过滤和有界队列，但尚未注册现有 DSH upgrade 入口；目标 WS URL 的具体握手 adapter 和断线重连留在后续 Host 装配/阶段 7。
+- 改动文件：`src/host/modules/peer-host/host-ws-proxy-service.ts`、`src/host/modules/peer-host/peer-host-ws-gateway.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`tests/peer-host-ws-proxy.spec.ts`、`tests/peer-host-ws-gateway.spec.ts`
+- 验证命令：`pnpm run typecheck && pnpm run build && node --test tests/peer-host-ws-proxy.spec.ts tests/peer-host-ws-gateway.spec.ts`（代理 3 项通过；网关集成测试在禁止监听端口的环境跳过）
+- 已知限制：服务已完成双端过滤、有界队列、插件自有固定路径 upgrade 网关和默认 LAN `/ws` Host-to-Host connector；不修改 DSH WebServer。目标 WS 断线重连留在后续阶段 7，relay connector 在能力验证前保持明确不可用。
 - 对应需求和设计章节：需求 6、7、9、10、11、12；设计 §7、§8、§11
 - 做什么：建立当前 Host 到目标 Host 的双端 WS 连接，过滤客户端/远端消息类型并绑定 HostScope。
 - 做完看到什么：会话、终端、文件树和 Git 实时事件能路由到正确 Host，未知消息不会透传。
@@ -252,9 +252,15 @@
 ### 6.1 路由远端会话历史和实时事件
 
 - 状态：`IN_PROGRESS`
-- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/host-router.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`tests/peer-host-management.spec.ts`
-- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`；`node --experimental-strip-types --check src/client/peer-host-scoped-client.ts src/client/peer-host-session-controller.ts src/host/modules/peer-host/host-api-proxy-service.ts`
-- 已知限制：已建立带 HostScope 的 HTTP 会话请求适配器和会话控制器，可加载历史并在 generation 失效时拒绝旧结果；现有 DSH WebServer 未暴露插件可用的 WebSocket upgrade 注册契约，因此实时事件订阅仅提供严格白名单/作用域适配器，实际升级入口保持显式 unsupported，不伪装成原生三栏聚合；尚未接入现有 DSH 会话导航 store。
+- 当前 Host 摘要 source 增量（2026-09-28）：新增 `PeerHostWorkspaceSessionSummarySource` 与 `createAggregateHostSource`。聚合层不再假设 DSH 私有 `SessionStore/WorkspaceRegistry` 结构；未注入稳定 source 时返回 `availability: unsupported` 和明确 `diagnostic`，不把空工作区伪装成成功。注入 source 后统一生成 `hostId/targetHostId/workspaceId/sessionId/scopeGeneration` 作用域节点。
+- 验证：`pnpm run typecheck`；`pnpm run build`；`node --test tests/peer-host-aggregate.spec.ts`（5 项通过，含 source 不可用诊断和可用 source HostScope 聚合）。
+- 本次增量（2026-09-28）：新增 `src/client/peer-host-native-session-ui.ts` 原生会话 UI adapter。adapter 只在结构探测到 DSH `[data-composer-card]`/conversation 容器时挂载，加载历史并把白名单实时事件写入带完整 HostScope 的当前会话节点；generation 失效由 `PeerHostSessionController` 拒绝旧结果。未探测到稳定容器时显示“原生 conversation 容器不可用”降级状态，不创建 iframe 或伪装三栏。
+- 验证：`pnpm run typecheck`；`pnpm run build`；`node --test tests/peer-host-native-session-ui.spec.ts`（2 项通过）。
+- 已完成增量：新增 Host 侧 LAN Host-to-Host WebSocket connector，固定连接目标 DSH `/ws` 工作台端点，在 Host 出站握手注入目标 access token，并把完整 HostScope 传入代理；connector 不接受 Client URL 或凭据。Client 事件流现已严格校验 `hostId`、`targetHostId`、`workspaceId`、`sessionId`、`scopeGeneration`，切换/关闭时清理订阅；事件发送入口仅允许 WS 白名单消息并自动注入作用域。断线采用有界指数退避重连，重连失败不会无限创建定时器。
+- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/host-router.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/modules/peer-host/host-ws-connector.ts`、`src/host/modules/peer-host/host-ws-proxy-service.ts`、`src/host/modules/peer-host/peer-host-session.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`tests/peer-host-management.spec.ts`、`tests/peer-host-http-proxy.spec.ts`、`tests/peer-host-ws-connector.spec.ts`、`tests/peer-host-ws-proxy.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（10 项通过，含 HostScope 过滤、终端/右侧工具 WS 消息和有限重连）；`node --test tests/peer-host-ws-connector.spec.ts tests/peer-host-ws-proxy.spec.ts tests/peer-host-ws-gateway.spec.ts`；`pnpm run build`
+- 已知限制：已建立带 HostScope 的 HTTP 会话请求适配器、会话控制器、LAN Host-to-Host connector 和插件自有 WebSocket upgrade 入口，可加载历史并在 generation 失效时拒绝旧结果；HTTP 401 与 WS 401/403 会清理该 PeerHost 凭据并转为 `session_required`。原生 DSH 会话导航 store、聊天 UI 和消息写入由独立 UI 适配器接入；本客户端重连沿用当前 generation，generation 重建与摘要刷新必须由上层 HostRouter/会话协调器执行。relay connector 仍保持明确不可用。插件自有网关继续作为当前 Host 的 Client 入口，connector 固定连接目标 DSH `/ws`，不把出口网关当作目标 Host 入站端点。
+- 全量回归（2026-09-28）：`pnpm test` 共 566 项，563 项通过、2 项按环境跳过；唯一失败为既有 `tmux-backend` 真实会话在受限环境关闭 socket 时收到 `Operation not permitted`，与 PeerHost 改动无关。
 - 对应需求和设计章节：需求 7、9、10、11；设计 §6、§7、§8、§10.1
 - 做什么：打开 PeerHost 会话时加载目标历史、订阅实时事件，并将消息写入正确 HostScope。
 - 做完看到什么：中栏显示目标 Host 的历史和新消息，切回当前 Host 后旧流停止。
@@ -267,9 +273,12 @@
 ### 6.2 路由聊天发送、停止和权限回复
 
 - 状态：`IN_PROGRESS`
+- 本次增量（2026-09-28）：原生会话节点提供作用域绑定的发送、停止、权限回复和问题回答控件，所有操作直接调用 `PeerHostSessionController`，不接受客户端 target URL/token；发送 Enter、按钮事件均使用当前 HostScope。
+- 本次增量（2026-09-28）：`PeerHostSessionController` 的四类命令均在请求前后校验当前 generation；补充切换作用域后发送、停止、权限回复和问题回答的旧结果丢弃测试。新增 `rebuildAfterReconnect` 协调接口，重连成功时强制重建 HostRouter generation、清理旧订阅，并在新作用域上执行可选摘要刷新回调。
+- 验证：`pnpm run typecheck`；`pnpm run build`；`node --test tests/peer-host-native-session-ui.spec.ts`（降级路径与无选中会话拒绝通过）。
 - 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/features/peer-host.ts`、`tests/peer-host-management.spec.ts`
-- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`
-- 已知限制：已提供发送、停止、权限回复和问题回答的 HostScope HTTP 薄封装，并由会话控制器统一校验当前作用域；聊天 UI 事件绑定、运行中消息和权限回写尚未替换现有单 Host 入口；实时事件必须等待显式 WebSocket upgrade 契约。
+- 验证命令：`node --test tests/peer-host-management.spec.ts`（13 项通过，含四类聊天命令 stale 丢弃与重连 generation 重建）；`pnpm run typecheck`；`pnpm run build`
+- 已知限制：已提供发送、停止、权限回复和问题回答的 HostScope HTTP 薄封装，并由会话控制器统一校验当前作用域；重连后的摘要刷新由调用方回调负责，控制器不会复制远端消息到当前 Host 持久会话；未登记的 DSH 原生 command 仍保持明确 unsupported。
 - 对应需求和设计章节：需求 9、10、11；设计 §5.2、§6、§7、§10
 - 做什么：让发送消息、停止运行、回答问题和权限回复携带目标 HostScope 并通过 PeerHost 代理执行。
 - 做完看到什么：聊天框操作进入目标 Host，当前 Host 会话不会收到误发消息。
@@ -281,10 +290,11 @@
 
 ### 6.3 路由文件、Git、终端和右侧工具
 
-- 状态：`IN_PROGRESS`
-- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`tests/peer-host-management.spec.ts`
-- 验证命令：`node --test tests/peer-host-management.spec.ts`（7 项通过）；`pnpm run typecheck`；`pnpm run build`；`node --experimental-strip-types --check src/client/peer-host-scoped-client.ts`
-- 已知限制：适配器已覆盖文件读写、Git 状态、终端和右侧工具固定路径，并统一绑定 HostScope；尚未接入现有工具 UI 的状态 store、终端 WebSocket 和右侧栏订阅清理；未登记实时工具不会静默降级，返回稳定 unsupported 错误。
+- 状态：`IN_REVIEW`
+- 本次增量（2026-09-28）：原生会话面板新增作用域绑定的终端订阅、输入、调整大小、关闭和右侧工具订阅/刷新/关闭控件；这些操作通过当前 PeerHost WebSocket 订阅发送，未建立实时通道时明确显示降级，不回退到当前 Host。新增 `peerHost/aggregate` 固定 RPC 入口，Feature 启动时只用 Host 返回的摘要和自有 WS endpoint 装配导航/工具链路。
+- 改动文件：`src/client/peer-host-scoped-client.ts`、`src/client/peer-host-session-controller.ts`、`src/client/peer-host-native-session-ui.ts`、`src/client/peer-host-management-api.ts`、`src/client/features/types.ts`、`src/client/index.ts`、`src/client/features/peer-host.ts`、`src/host/modules/peer-host/host-api-proxy-service.ts`、`src/host/modules/peer-host/peer-host-aggregate-service.ts`、`src/host/features/peer-host.ts`、`src/host/rpc.ts`、`tests/peer-host-management.spec.ts`
+- 验证命令：`node --test tests/peer-host-management.spec.ts tests/peer-host-native-session-ui.spec.ts`（13 项通过）；`pnpm run typecheck`；`pnpm run build`
+- 已知限制：HTTP 适配器已覆盖文件读写、Git 状态、终端和右侧工具固定路径，并统一绑定 HostScope；工具控件仍是 DSH 原生工具 Slot 不可用时的插件节点，不能宣称已替换 DSH 内部工具 Store。未登记消息明确返回 `PEER_HOST_TOOL_UNSUPPORTED`；作用域切换由 HostRouter 清理订阅。
 - 对应需求和设计章节：需求 10、11；设计 §6、§7、§8、§10.2
 - 做什么：将右侧栏打开/刷新/关闭、文件树、Git、终端和已登记工具绑定到目标 HostScope。
 - 做完看到什么：远端文件、Git 状态、终端输出和右侧结果来自目标 Host 的运行时。
@@ -298,7 +308,12 @@
 
 ### 7.1 验证 Host-to-Host 中转能力
 
-- 状态：`TODO`
+- 状态：`BLOCKED`
+- 已完成增量：新增 `peer-host-relay.ts` 的受控 relay connector。它只接受 Host 侧显式注入且 `transportVersion` 匹配的已验证 Transport 工厂，稳定的 `deviceId`/`relayEntryId` 只作为路由标识传递，不解析任意 URL，不持久化短期 ticket；未注入适配器或版本不匹配时返回 `PEER_HOST_RELAY_UNAVAILABLE`，保持 `relay_unavailable/degraded`。
+- 改动文件：`src/host/modules/peer-host/peer-host-relay.ts`、`src/host/modules/peer-host/host-ws-connector.ts`、`src/host/features/peer-host.ts`、`tests/peer-host-relay.spec.ts`
+- 验证命令：`pnpm run build && node --test tests/peer-host-relay.spec.ts`（4 项通过）；`pnpm run typecheck`
+- 已知限制：当前仓库已有的 Relay Transport 是 DSH 二进制 `DshGateway`，尚无经过验证的 Host-to-Host 工作台 JSON/WS 适配层；因此默认和三版本 fixture 仍保持中转不可用，不能将浏览器短期 ticket 或任意公网地址伪装为 PeerHost relay。
+- 阻塞原因：没有可验证的 Host 侧工作台 JSON/WS Relay Transport；在补齐该 Transport 前，relay 必须保持 `relay_unavailable/degraded`，不得标记 ready。
 - 做什么：确认当前中转 Transport 是否支持 Host 到目标 Host 的双向连接、认证转发和断线恢复。
 - 做完看到什么：能力矩阵明确 relay PeerHost 是 ready、degraded 还是 unavailable。
 - 依赖什么：阶段 2、3 的局域网路径；中转 Transport 文档和真实 fixture。
@@ -309,7 +324,12 @@
 
 ### 7.2 实现断线、重连和状态刷新
 
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
+- 已完成增量：新增 `PeerHostReconnectManager`，管理单 PeerHost 的 `connecting/ready/reconnecting/unreachable/relay_unavailable/stopped` 状态，使用有界指数退避和最大尝试次数；断线后下一次连接只提升该作用域 generation，重连成功触发状态回调并返回新的完整 `HostScope` 快照，关闭时清理 timer、socket 和内存中的短期凭据。PeerHost Feature 已注册 manager 资源清理，并通过 connector 入口接入 LAN/受控 relay 生命周期。
+- 本次增量（2026-09-28）：Client `HostRouter.rebuild` 和 `PeerHostSessionController.rebuildAfterReconnect` 已接入重连状态回调边界；重连成功后旧 HostScope disposer/WS 订阅先清理，再递增 Client generation，调用方可在返回的新作用域上刷新摘要并重新订阅。
+- 改动文件：`src/host/modules/peer-host/peer-host-relay.ts`、`src/host/features/peer-host.ts`、`tests/peer-host-relay.spec.ts`
+- 验证命令：`pnpm run build && node --test tests/peer-host-relay.spec.ts`（4 项通过）；`pnpm run typecheck`
+- 已知限制：当前 WebSocket 代理客户端连接关闭后不能在同一个浏览器 socket 上替换远端 socket；manager 负责 Host 侧连接状态和资源治理，UI/session adapter 必须消费新的 `HostScope` 并重新订阅，不能复用旧 generation。relay Transport 未验证时仍保持 `relay_unavailable/degraded`。
 - 做什么：为单个 PeerHost 提供有界重试、手动重连、摘要刷新和可恢复订阅。
 - 做完看到什么：目标不可达显示真实状态，恢复后只刷新该 Host 并恢复允许的会话流。
 - 依赖什么：4.1、4.2、7.1；Host 状态机和 WS 生命周期。
@@ -333,7 +353,9 @@
 
 ### 8.1 三版本和多场景集成测试
 
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
+- 本次增量（2026-09-28）：新增 `tests/peer-host-integration.spec.ts`，串联当前 Host、LAN PeerHost、同名工作区/会话、单个 PeerHost 故障和目标路由隔离；三版本能力 fixture 仍待补齐。
+- 当前验证：待下一轮构建后运行 `node --test tests/peer-host-integration.spec.ts`。
 - 做什么：把当前 Host、局域网 PeerHost、中转 PeerHost、未登录、版本不兼容、fingerprint 变化和断线恢复串成集成 fixture。
 - 做完看到什么：一套可重复测试证明单 Host 行为未被破坏，多 Host 作用域正确。
 - 依赖什么：阶段 1 至 7。

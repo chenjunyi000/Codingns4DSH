@@ -3,6 +3,7 @@ import test from 'node:test'
 import { createPeerHostManagementApi } from '../data/build/dist/client/peer-host-management-api.js'
 import { startPeerHostManagementPanel } from '../data/build/dist/client/peer-host-management-panel.js'
 import { createPeerHostScopedClient } from '../data/build/dist/client/peer-host-scoped-client.js'
+import type { PeerHostProxyResponse } from '../data/build/dist/client/peer-host-scoped-client.js'
 import { toPeerHostClientRecord } from '../data/build/dist/host/features/peer-host.js'
 import { HostRouter } from '../data/build/dist/client/host-router.js'
 import { PeerHostSessionController } from '../data/build/dist/client/peer-host-session-controller.js'
@@ -36,6 +37,20 @@ test('PeerHost 管理 API 将 Host 错误转换为可读异常', async () => {
     },
   })
   await assert.rejects(api.check('peer-1'), /PeerHost 尚未准备好/u)
+})
+
+test('PeerHost 管理 API 通过固定 RPC 获取聚合摘要，不接收目标地址', async () => {
+  const calls: Array<{ endpoint: string; payload: unknown }> = []
+  const api = createPeerHostManagementApi({
+    async call(_channel, endpoint, payload) {
+      calls.push({ endpoint, payload })
+      return { ok: true as const, value: [{ hostId: 'host', targetHostId: null, hostLabel: '当前 Host', availability: 'ready', errorCode: null, workspaces: [] }] }
+    },
+  })
+  const result = await api.aggregate()
+  assert.equal(result[0]?.hostId, 'host')
+  assert.deepEqual(calls, [{ endpoint: 'peerHost/aggregate', payload: {} }])
+  assert.equal(JSON.stringify(calls).includes('baseUrl'), false)
 })
 
 test('PeerHost 管理面板关闭后可重新打开，dispose 会移除事件监听和 DOM', async () => {
@@ -117,6 +132,83 @@ test('PeerHost 事件流只接收同一 HostScope 的白名单事件，并可在
   assert.equal(closed, true)
 })
 
+test('PeerHost WebSocket 工具消息自动绑定 HostScope，并拒绝覆盖作用域', async () => {
+  const sent: string[] = []
+  const socket = {
+    readyState: 1,
+    send(value: string) { sent.push(value) },
+    close() {},
+    on() {},
+  }
+  const client = createPeerHostScopedClient({ async call() { return { ok: true as const, value: { status: 200, headers: [], body: '{}' } } } })
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 8 }
+  const subscription = await client.openEventStream(scope, async () => socket, () => undefined)
+  subscription.terminalInput({ terminalId: 'terminal-1', data: 'ls\n' })
+  subscription.terminalResize({ terminalId: 'terminal-1', cols: 120, rows: 32 })
+  subscription.rightToolSubscribe({ toolId: 'debug' })
+  subscription.rightToolRefresh({ toolId: 'debug' })
+  subscription.rightToolClose({ toolId: 'debug' })
+  assert.deepEqual(sent.map((value) => JSON.parse(value)), [
+    { type: 'terminal.input', ...scope, terminalId: 'terminal-1', data: 'ls\n' },
+    { type: 'terminal.resize', ...scope, terminalId: 'terminal-1', cols: 120, rows: 32 },
+    { type: 'rightTool.subscribe', ...scope, toolId: 'debug' },
+    { type: 'rightTool.refresh', ...scope, toolId: 'debug' },
+    { type: 'rightTool.close', ...scope, toolId: 'debug' },
+  ])
+  assert.throws(() => subscription.send('terminal.input', { hostId: 'attacker' }), /不得覆盖作用域字段/u)
+  assert.throws(() => subscription.send('admin.secret' as never), /未加入白名单/u)
+  subscription.close()
+})
+
+test('PeerHost 事件流在无 sessionId 作用域下丢弃带会话的旧事件', async () => {
+  const listeners = new Map<string, (...args: any[]) => void>()
+  const socket = {
+    readyState: 1,
+    send() {},
+    close() {},
+    on(event: string, listener: (...args: any[]) => void) { listeners.set(event, listener) },
+  }
+  const received: Record<string, unknown>[] = []
+  const client = createPeerHostScopedClient({ async call() { return { ok: true as const, value: { status: 200, headers: [], body: '{}' } } } })
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: null, scopeGeneration: 9 }
+  const subscription = await client.openEventStream(scope, async () => socket, (event) => received.push(event))
+  listeners.get('message')?.(JSON.stringify({ type: 'workbench.snapshot', ...scope, body: 'ok' }))
+  listeners.get('message')?.(JSON.stringify({ type: 'workbench.snapshot', ...scope, sessionId: 'stale-session', body: 'stale' }))
+  assert.equal(received.length, 1)
+  assert.equal(received[0]?.body, 'ok')
+  subscription.close()
+})
+
+test('PeerHost 事件流断线后只按有限次数重连，关闭作用域会取消重连', async () => {
+  const sockets: Array<{ readyState: number; close: () => void; on: (event: string, listener: (...args: any[]) => void) => void }> = []
+  const listeners: Array<Map<string, (...args: any[]) => void>> = []
+  let calls = 0
+  const factory = async () => {
+    const eventListeners = new Map<string, (...args: any[]) => void>()
+    const socket = {
+      readyState: 1,
+      close() { socket.readyState = 3; eventListeners.get('close')?.() },
+      on(event: string, listener: (...args: any[]) => void) { eventListeners.set(event, listener) },
+    }
+    sockets.push(socket)
+    listeners.push(eventListeners)
+    calls += 1
+    return socket
+  }
+  const client = createPeerHostScopedClient({ async call() { return { ok: true as const, value: { status: 200, headers: [], body: '{}' } } } })
+  const scope = { hostId: 'host-local', targetHostId: 'peer-1', workspaceId: 'workspace-1', sessionId: 'session-1', scopeGeneration: 10 }
+  const subscription = await client.openEventStream(scope, factory, () => undefined, { maxReconnectAttempts: 1, reconnectDelaysMs: [0] })
+  sockets[0]!.readyState = 3
+  listeners[0]!.get('close')?.()
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(calls, 2)
+  subscription.close()
+  sockets[1]!.readyState = 3
+  listeners[1]!.get('close')?.()
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(calls, 2)
+})
+
 test('PeerHost 会话控制器切换作用域后拒绝旧历史结果并清理旧订阅', async () => {
   let resolveHistory: ((value: unknown) => void) | undefined
   let closeCount = 0
@@ -138,6 +230,66 @@ test('PeerHost 会话控制器切换作用域后拒绝旧历史结果并清理�
   await controller.subscribe(second, async () => ({ readyState: 1, send() {}, close() { closeCount += 1 }, on() {} }), () => undefined)
   await router.clear()
   assert.equal(closeCount, 1)
+})
+
+test('PeerHost 会话控制器重连后强制递增 generation、清理旧订阅并刷新摘要', async () => {
+  let closeCount = 0
+  const client = {
+    async loadSessionHistory() { return { status: 200, headers: [], body: '{}' } },
+    async sendMessage() { return { status: 200, headers: [], body: '{}' } },
+    async stopSession() { return { status: 200, headers: [], body: '{}' } },
+    async replyPermission() { return { status: 200, headers: [], body: '{}' } },
+    async answerQuestion() { return { status: 200, headers: [], body: '{}' } },
+    async openEventStream() {
+      return {
+        close: () => { closeCount += 1 },
+        send() {}, terminalInput() {}, terminalResize() {}, terminalClose() {},
+        rightToolSubscribe() {}, rightToolRefresh() {}, rightToolClose() {},
+      }
+    },
+  }
+  const router = new HostRouter()
+  const controller = new PeerHostSessionController(router, client as never)
+  const first = await controller.select({ hostId: 'host', targetHostId: 'peer-1', workspaceId: 'w', sessionId: 's-1' })
+  await controller.subscribe(first, async () => ({ readyState: 1, send() {}, close() {}, on() {} }), () => undefined)
+  let refreshed: typeof first | undefined
+  const next = await controller.rebuildAfterReconnect(first, (scope) => { refreshed = scope })
+  assert.equal(next.scopeGeneration, first.scopeGeneration + 1)
+  assert.deepEqual(refreshed, next)
+  assert.equal(closeCount, 1)
+  assert.equal(controller.current()?.scopeGeneration, next.scopeGeneration)
+})
+
+test('PeerHost 会话控制器的发送、停止、权限和问题回答在切换后全部丢弃旧结果', async () => {
+  let resolvePending: ((value: PeerHostProxyResponse) => void) | undefined
+  const pending = (): Promise<PeerHostProxyResponse> => new Promise((resolve) => { resolvePending = resolve })
+  const client = {
+    async loadSessionHistory() { return { status: 200, headers: [], body: '{}' } },
+    sendMessage: pending,
+    stopSession: pending,
+    replyPermission: pending,
+    answerQuestion: pending,
+    async openEventStream() {
+      return {
+        close() {}, send() {}, terminalInput() {}, terminalResize() {}, terminalClose() {},
+        rightToolSubscribe() {}, rightToolRefresh() {}, rightToolClose() {},
+      }
+    },
+  }
+  const controller = new PeerHostSessionController(new HostRouter(), client as never)
+  const operations: Array<(scope: Parameters<PeerHostSessionController['sendMessage']>[0]) => Promise<PeerHostProxyResponse>> = []
+  // 通过控制器公开方法逐一验证，不能绕过当前作用域检查。
+  operations.push((scope) => controller.sendMessage(scope, '{}'))
+  operations.push((scope) => controller.stop(scope))
+  operations.push((scope) => controller.replyPermission(scope, '{}'))
+  operations.push((scope) => controller.answerQuestion(scope, '{}'))
+  for (const [index, operation] of operations.entries()) {
+    const scope = await controller.select({ hostId: 'host', targetHostId: 'peer-1', workspaceId: 'w', sessionId: `s-${index}` })
+    const result = operation(scope)
+    await controller.select({ hostId: 'host', targetHostId: 'peer-1', workspaceId: 'w', sessionId: `next-${index}` })
+    resolvePending?.({ status: 200, headers: [], body: '{}' })
+    await assert.rejects(result, /HostScope 已失效/u)
+  }
 })
 
 class FakeElement {

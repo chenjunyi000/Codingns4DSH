@@ -41,6 +41,7 @@ import { createDshCapabilityRegistry } from '../dsh-capabilities/index.js'
 import { TYPERT_REMOTE } from '../typert.remote-client.js'
 import { createPeerHostScopedClient } from './peer-host-scoped-client.js'
 import { HostRouter } from './host-router.js'
+import { PeerHostSessionController } from './peer-host-session-controller.js'
 export { PeerHostSessionController } from './peer-host-session-controller.js'
 
 export { ensureCryptoRandomUUID } from './lan-access.js'
@@ -60,8 +61,22 @@ export type {
 } from './dsh-h5-bootstrap.js'
 export { RemoteDshWebContext } from './remote-web-context.js'
 export type { RemoteDshWebBoot, RemoteDshWebContextOptions } from './remote-web-context.js'
-export { createPeerHostScopedClient } from './peer-host-scoped-client.js'
-export type { PeerHostProxyResponse, PeerHostScopedClient } from './peer-host-scoped-client.js'
+export { createPeerHostScopedClient, createPeerHostWebSocketFactory } from './peer-host-scoped-client.js'
+export type { PeerHostClientMessageType, PeerHostEventStreamOptions, PeerHostEventSubscription, PeerHostProxyResponse, PeerHostScopedClient } from './peer-host-scoped-client.js'
+export {
+  startPeerHostNativeNavigation,
+  startPeerHostNativeSession,
+  probePeerHostNativeNavigation,
+  probePeerHostNativeSession,
+  PEER_HOST_NAVIGATION_ATTRIBUTE,
+  PEER_HOST_SESSION_ATTRIBUTE,
+  PEER_HOST_STATUS_ATTRIBUTE,
+} from './peer-host-native-session-ui.js'
+export type {
+  PeerHostNativeUiState,
+  PeerHostNativeNavigationController,
+  PeerHostNativeSessionController,
+} from './peer-host-native-session-ui.js'
 export type {
   CodingNsClientFeatureModule,
   CodingNsClientServices,
@@ -131,12 +146,15 @@ export function apply(ctx?: Context): void {
     debugInfo('codingns4dsh: client terminal UI registration begin')
     const disposeTerminalUi = registerCodingNsTerminalUi(settingsCtx, webTerminals, settings)
     debugInfo('codingns4dsh: client terminal UI registration ready')
+    const hostRouter = new HostRouter()
+    const peerHost = createPeerHostScopedClient(connection.rpc)
     const services: CodingNsClientServices = {
       dshVersion,
       settings,
       rpc: connection.rpc,
-      peerHost: createPeerHostScopedClient(connection.rpc),
-      hostRouter: new HostRouter(),
+      peerHost,
+      hostRouter,
+      peerHostSession: new PeerHostSessionController(hostRouter, peerHost),
       remote: settingsCtx.remote,
       terminalRemote,
       slots: settingsCtx.slots,
