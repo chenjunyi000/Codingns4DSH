@@ -10,6 +10,22 @@ export function readLoginProtectionSession(): string | undefined {
   } catch { return memoryToken }
 }
 
+/** 读取当前中继票据的过期时间；票据格式无效时返回 null。 */
+export function readLoginProtectionSessionExpiresAt(): number | null {
+  const token = readLoginProtectionSession()
+  if (token === undefined) return null
+  try {
+    const encoded = token.split('.', 1)[0]
+    if (encoded === undefined) return null
+    const padded = encoded.replace(/-/gu, '+').replace(/_/gu, '/')
+    const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='))
+    const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)))) as { expiresAt?: unknown }
+    return typeof payload.expiresAt === 'number' && Number.isFinite(payload.expiresAt) ? payload.expiresAt : null
+  } catch {
+    return null
+  }
+}
+
 export function writeLoginProtectionSession(token: string | undefined): void {
   memoryToken = token === undefined || token === '' ? undefined : token
   try {

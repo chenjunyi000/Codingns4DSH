@@ -8,6 +8,8 @@ import {
   DEFAULT_LOGIN_PROTECTION_COOKIE_NAME,
   InMemoryLanAccessDshLoginStore,
   createLanAccessDshRpcHandler,
+  refreshLoginProtectionSession,
+  verifyLoginProtectionSession,
   normalizeLanAccessDshConfig,
   normalizeLanAccessDshRpcBody,
   resolveLoginProtectionCookieName,
@@ -232,6 +234,22 @@ test('启用登录保护时同一次 RPC 返回中继会话，避免启用后立
   assert.equal(result.enabled, true)
   assert.deepEqual(result.scopes, { lan: true, relay: true })
   assert.equal(typeof result.relaySession?.token, 'string')
+})
+
+test('登录保护中继票据可在有效期内滚动续签', async () => {
+  const store = new InMemoryLanAccessDshLoginStore()
+  const handler = createLanAccessDshRpcHandler(new LanAccessDshProxy(new FakeRuntime()), undefined, store)
+  const result = await handler('login/set', {
+    enabled: true,
+    username: 'jackson',
+    password: 'password123',
+    timeoutSeconds: 1800,
+    scopes: { lan: true, relay: true },
+  }) as { relaySession: { token: string; expiresAt: string } }
+  const refreshed = await handler('login/session/refresh', { token: result.relaySession.token, scope: 'relay' }) as { token: string; expiresAt: string }
+  assert.notEqual(refreshed.token, result.relaySession.token)
+  assert.ok(Date.parse(refreshed.expiresAt) > Date.parse(result.relaySession.expiresAt) - 1000)
+  assert.equal(await verifyLoginProtectionSession(store, refreshed.token, 'relay'), true)
 })
 
 test('Host 启动时按持久化配置自动启动映射，运行中修改选项不会重启映射', async () => {

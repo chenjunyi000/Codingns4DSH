@@ -77,7 +77,7 @@ export function LoginProtectionPanel({ services, enabled, snapshot, notify }: Fe
     style: { ...dshFormRootStyle, display: 'flex', flexDirection: 'column', gap: 14, opacity: controlsDisabled ? 0.5 : 1 },
     'aria-disabled': controlsDisabled,
   },
-    createElement('p', { style: { margin: 0, color: dshThemeColor.labelSecondary, fontSize: 13, lineHeight: 1.5 } }, '为局域网和中继访问统一增加本地账号验证。本机 127.0.0.1 / ::1 永远不受此保护。密码只在 Host 侧验证，不会进入浏览器设置或 URL。'),
+    createElement('p', { style: { margin: 0, color: dshThemeColor.labelSecondary, fontSize: 13, lineHeight: 1.5 } }, '为局域网和中继访问统一增加本地账号验证。本机 127.0.0.1 / ::1 永远不受此保护。密码只在 Host 侧验证，不会进入浏览器设置或 URL；页面保持打开时，会在会话临近超时时自动续期。'),
     createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 8, color: dshThemeColor.labelSecondary, fontSize: 13 } },
       createElement('input', { type: 'checkbox', checked: active, disabled: controlsDisabled || busy, onChange: (event: { currentTarget: { checked: boolean } }) => setActive(event.currentTarget.checked), style: { accentColor: dshThemeColor.accent } }),
       createElement('span', undefined, '启用登录保护'),

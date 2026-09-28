@@ -4,15 +4,16 @@ import type { DshHostStatus } from '../shared/contracts/host-status.js'
 import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import type { CodingNsRpcClient } from './features/types.js'
 import type { CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
-import { LOGIN_PROTECTION_SESSION_EVENT, readLoginProtectionSession, writeLoginProtectionSession } from './features/login-protection-session.js'
+import { LOGIN_PROTECTION_SESSION_EVENT, readLoginProtectionSession, readLoginProtectionSessionExpiresAt, writeLoginProtectionSession } from './features/login-protection-session.js'
 import { dshThemeColor } from './theme.js'
 
 const SETTINGS_BUTTON_SELECTOR = 'button[aria-label="设置"]'
 const ACCOUNT_ATTRIBUTE = 'data-codingns-account-button'
 const MENU_ATTRIBUTE = 'data-codingns-account-menu'
 const POLL_MS = 5_000
+const LOGIN_REFRESH_POLL_MS = 30_000
 
-interface LocalIdentity { username: string }
+interface LocalIdentity { username: string; expiresAt?: number }
 type ActiveAccount =
   | { kind: 'codingns'; identity: string }
   | { kind: 'local'; identity: string; scope: 'lan' | 'relay' }
@@ -26,6 +27,8 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
   const root = currentDocument
   let disposed = false
   let timer: ReturnType<typeof setInterval> | undefined
+  let loginRefreshTimer: ReturnType<typeof setInterval> | undefined
+  let loginRefreshInFlight = false
   let observer: MutationObserver | undefined
   let observeDom = true
   let resizeObserver: ResizeObserver | undefined
@@ -34,6 +37,7 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
   let closeMenuListener: ((event: MouseEvent) => void) | undefined
   let auth: CodingNsAuthSessionSnapshot = loggedOutSnapshot()
   let local: LocalIdentity | null = null
+  let localSessionExpiresAt: number | null = null
   let localRelay: LocalIdentity | null = readRelayLoginIdentity()
   let status: DshHostStatus | undefined
   let latency: number | undefined
@@ -62,6 +66,7 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
     ])
     if (nextAuth.status === 'fulfilled') auth = nextAuth.value
     local = nextLocal.status === 'fulfilled' ? nextLocal.value : null
+    localSessionExpiresAt = local?.expiresAt ?? null
     localRelay = readRelayLoginIdentity()
     if (nextStatus.status === 'fulfilled') {
       status = nextStatus.value
@@ -169,13 +174,15 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
   }
   root.defaultView?.addEventListener(LOGIN_PROTECTION_SESSION_EVENT, onLoginProtectionSessionChanged)
   timer = setInterval(() => { void refresh() }, POLL_MS)
-  void refresh()
+  loginRefreshTimer = setInterval(() => { void refreshLoginProtection() }, LOGIN_REFRESH_POLL_MS)
+  void refresh().then(() => refreshLoginProtection())
 
   return {
     dispose() {
       if (disposed) return
       disposed = true
       if (timer !== undefined) clearInterval(timer)
+      if (loginRefreshTimer !== undefined) clearInterval(loginRefreshTimer)
       observer?.disconnect()
       resizeObserver?.disconnect()
       root.defaultView?.removeEventListener(LOGIN_PROTECTION_SESSION_EVENT, onLoginProtectionSessionChanged)
@@ -186,6 +193,41 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
       root.querySelectorAll<HTMLElement>(`[${MENU_ATTRIBUTE}]`).forEach((node) => node.remove())
       root.querySelectorAll<HTMLElement>(`button[${ACCOUNT_ATTRIBUTE}]`).forEach((node) => node.remove())
     },
+  }
+
+  /** 在票据临近过期时续签，避免每次轮询都无意义地旋转 token。 */
+  async function refreshLoginProtection(): Promise<void> {
+    if (disposed || loginRefreshInFlight) return
+    const relayToken = readLoginProtectionSession()
+    const relayExpiresAt = readLoginProtectionSessionExpiresAt()
+    const shouldRefreshRelay = relayToken !== undefined && relayExpiresAt !== null && relayExpiresAt - Date.now() <= 120_000
+    const shouldRefreshLan = local !== null && (localSessionExpiresAt === null || localSessionExpiresAt - Date.now() <= 120_000)
+    if (!shouldRefreshRelay && !shouldRefreshLan) return
+    loginRefreshInFlight = true
+    try {
+      if (shouldRefreshLan) {
+        const response = await (root.defaultView?.fetch.bind(root.defaultView) ?? fetch)('/__codingns/session/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        })
+        if (!response.ok) local = null
+        else {
+          const value = await response.json() as { expiresAt?: unknown }
+          localSessionExpiresAt = typeof value.expiresAt === 'number' ? value.expiresAt : null
+        }
+      }
+      if (shouldRefreshRelay && relayToken !== undefined) {
+        const value = await call<{ token: string; expiresAt: string }>('lanAccessDsh/login/session/refresh', { token: relayToken, scope: 'relay' })
+        if (typeof value.token === 'string' && value.token !== '') writeLoginProtectionSession(value.token)
+      }
+    } catch (error) {
+      // 网络短暂失败时保留旧会话，下一轮仍会在旧票据到期前重试。
+      console.warn('codingns4dsh: 登录保护会话刷新失败', error)
+    } finally {
+      loginRefreshInFlight = false
+    }
   }
 
   function removeAccountBar(): void {
@@ -321,7 +363,7 @@ export function startCodingNsAccountBar(rpc: CodingNsRpcClient, dom?: Document, 
   }
 }
 
-async function fetchLocalIdentity(dom: Document): Promise<{ username: string } | null> {
+async function fetchLocalIdentity(dom: Document): Promise<LocalIdentity | null> {
   // Desktop 使用 dsh-app://app，不提供网页侧的本地身份路由。
   // 只有局域网/中转 HTTP 页面才需要查询这个端点；其它协议直接视为未登录，
   // 避免在 Desktop 控制台制造无意义的 404。
@@ -333,9 +375,9 @@ async function fetchLocalIdentity(dom: Document): Promise<{ username: string } |
     headers: { Accept: 'application/json' },
   })
   if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return null
-  const value = await response.json() as { authenticated?: unknown; username?: unknown }
+  const value = await response.json() as { authenticated?: unknown; username?: unknown; expiresAt?: unknown }
   return value.authenticated === true && typeof value.username === 'string'
-    ? { username: value.username }
+    ? { username: value.username, ...(typeof value.expiresAt === 'number' ? { expiresAt: value.expiresAt } : {}) }
     : null
 }
 

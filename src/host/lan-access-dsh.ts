@@ -72,9 +72,20 @@ export async function openLoginProtectionSession(
   const config = await store.read()
   if (config === null || !config.enabled || !config.scopes[scope]) return { token: '', expiresAt: new Date().toISOString() }
   if (username !== config.username || !verifyPassword(password, config)) throw new CodingNsRpcError('CODINGNS_RPC_UNAUTHENTICATED', '本地用户名或密码错误')
-  const expiresAt = Date.now() + config.timeoutSeconds * 1000
-  const payload = encodeSessionPayload({ username: config.username, scope, expiresAt, nonce: randomBytes(16).toString('base64url') })
-  return { token: `${payload}.${signSessionPayload(payload, config)}`, expiresAt: new Date(expiresAt).toISOString() }
+  return issueLoginProtectionSession(config, scope)
+}
+
+/** 在旧票据仍有效时滚动续签；过期票据不能借此恢复登录。 */
+export async function refreshLoginProtectionSession(
+  store: LanAccessDshLoginStore,
+  token: string | undefined,
+  scope: keyof LoginProtectionScopes,
+): Promise<{ token: string; expiresAt: string }> {
+  const config = await store.read()
+  if (config === null || !config.enabled || !config.scopes[scope] || typeof token !== 'string' || !verifySignedSessionToken(token, config, scope)) {
+    throw new CodingNsRpcError('CODINGNS_RPC_UNAUTHENTICATED', '登录保护会话已失效，请重新登录')
+  }
+  return issueLoginProtectionSession(config, scope)
 }
 
 /** 校验中继票据；配置关闭或未覆盖该范围时保持向后兼容，直接放行。 */
@@ -333,9 +344,21 @@ export class LanAccessDshProxy {
       const authenticated = !localAddress && config !== null && config.enabled && config.scopes.lan
         && token !== undefined && !this.revokedSessions.has(token)
         && verifySignedSessionToken(token, config, 'lan')
+      const expiresAt = authenticated && config !== null && token !== undefined ? readLoginProtectionSessionExpiresAt(token, config, 'lan') : null
       return loginJsonResponse(200, authenticated
-        ? { authenticated: true, username: config.username }
+        ? { authenticated: true, username: config.username, ...(expiresAt === null ? {} : { expiresAt }) }
         : { authenticated: false })
+    }
+    if (request.path === '/__codingns/session/refresh' && request.method === 'POST') {
+      const token = readCookie(request.headers.cookie, this.sessionCookieName)
+      if (localAddress || config === null || !config.enabled || !config.scopes.lan || token === undefined || this.revokedSessions.has(token) || !verifySignedSessionToken(token, config, 'lan')) {
+        return loginJsonResponse(401, { authenticated: false })
+      }
+      const session = issueLoginProtectionSession(config, 'lan')
+      this.revokedSessions.delete(session.token)
+      return loginJsonResponse(200, { authenticated: true, username: config.username, expiresAt: session.expiresAt }, {
+        'Set-Cookie': sessionCookie(this.sessionCookieName, session.token, config.timeoutSeconds),
+      })
     }
     if (localAddress || config === null || !config.enabled || !config.scopes.lan) return 'pass'
     if (request.path === '/__codingns/login' && request.method === 'POST') {
@@ -452,6 +475,12 @@ function sessionCookie(name: string, token: string, timeoutSeconds: number): str
   return `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${timeoutSeconds}`
 }
 
+function issueLoginProtectionSession(config: LanAccessDshLoginConfig, scope: keyof LoginProtectionScopes): { token: string; expiresAt: string } {
+  const expiresAt = Date.now() + config.timeoutSeconds * 1000
+  const payload = encodeSessionPayload({ username: config.username, scope, expiresAt, nonce: randomBytes(16).toString('base64url') })
+  return { token: `${payload}.${signSessionPayload(payload, config)}`, expiresAt: new Date(expiresAt).toISOString() }
+}
+
 function clearSessionCookie(name: string): string {
   return `${name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`
 }
@@ -481,8 +510,8 @@ function loginResponse(status: number, body: string, extra: Record<string, strin
   return concatBytes(head, content)
 }
 
-function loginJsonResponse(status: number, value: unknown): Uint8Array {
-  return loginResponse(status, JSON.stringify(value), { 'Content-Type': 'application/json; charset=utf-8' })
+function loginJsonResponse(status: number, value: unknown, extra: Record<string, string> = {}): Uint8Array {
+  return loginResponse(status, JSON.stringify(value), { 'Content-Type': 'application/json; charset=utf-8', ...extra })
 }
 
 function loginPage(): string {
@@ -773,6 +802,10 @@ export function createLanAccessDshRpcHandler(
         const input = parseLoginSessionPayload(payload)
         return openLoginProtectionSession(loginStore, input.username, input.password, input.scope)
       }
+      case 'login/session/refresh': {
+        const input = parseLoginSessionRefreshPayload(payload)
+        return refreshLoginProtectionSession(loginStore, input.token, input.scope)
+      }
       case 'start':
         return proxy.start(parseStartPayload(payload))
       case 'stop':
@@ -792,6 +825,15 @@ function parseLoginSessionPayload(value: unknown): { username: string; password:
   const scope = input.scope
   if (scope !== 'lan' && scope !== 'relay') throw new LanAccessDshError('LAN_ACCESS_DSH_INVALID', '登录会话应用范围无效')
   return { username, password: input.password, scope }
+}
+
+function parseLoginSessionRefreshPayload(value: unknown): { token: string; scope: keyof LoginProtectionScopes } {
+  if (!value || typeof value !== 'object') throw new LanAccessDshError('LAN_ACCESS_DSH_INVALID', '登录会话刷新参数必须是对象')
+  const input = value as Record<string, unknown>
+  const token = requireLoginText(input.token, '会话票据', 32, 4096)
+  const scope = input.scope === 'lan' || input.scope === 'relay' ? input.scope : undefined
+  if (scope === undefined) throw new LanAccessDshError('LAN_ACCESS_DSH_INVALID', '登录会话范围无效')
+  return { token, scope }
 }
 
 function defaultLanAccessDshSettings(): LanAccessDshSettings {
@@ -857,6 +899,14 @@ function verifySignedSessionToken(token: string, config: LanAccessDshLoginConfig
     const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { username?: unknown; scope?: unknown; expiresAt?: unknown; nonce?: unknown }
     return value.username === config.username && value.scope === scope && typeof value.nonce === 'string' && typeof value.expiresAt === 'number' && value.expiresAt > Date.now()
   } catch { return false }
+}
+
+function readLoginProtectionSessionExpiresAt(token: string, config: LanAccessDshLoginConfig, scope: keyof LoginProtectionScopes): number | null {
+  if (!verifySignedSessionToken(token, config, scope)) return null
+  try {
+    const value = JSON.parse(Buffer.from(token.slice(0, token.lastIndexOf('.')), 'base64url').toString('utf8')) as { expiresAt?: unknown }
+    return typeof value.expiresAt === 'number' && Number.isFinite(value.expiresAt) ? value.expiresAt : null
+  } catch { return null }
 }
 function requireLoginText(value: unknown, field: string, min: number, max: number): string {
   if (typeof value !== 'string' || value.trim().length < min || value.trim().length > max || /[\u0000-\u001F\u007F]/u.test(value)) throw new LanAccessDshError('LAN_ACCESS_DSH_INVALID', `${field} 格式无效`)

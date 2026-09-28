@@ -17,6 +17,8 @@ export interface DshH5BootstrapOptions {
   readonly dshDeviceId?: string
   /** 登录保护开启中继范围时使用的短期 Host 签名票据。 */
   readonly loginProtectionToken?: string
+  /** 重连时动态读取最新登录保护票据，避免使用已续签前的旧值。 */
+  readonly getLoginProtectionToken?: () => string | undefined
   readonly signal?: AbortSignal
   readonly boot?: () => void | Promise<void>
 }
@@ -72,27 +74,81 @@ export async function startDshH5Bootstrap(options: DshH5BootstrapOptions): Promi
   const debug = createDshTransportDebugLogger({ side: 'h5', component: 'h5-bootstrap' })
   const devices = await callRpc<DshDeviceListResponse>(options.rpc, 'auth/dsh/device/list', {}, signal)
   const device = chooseDshDevice(devices, options.dshDeviceId)
-  const ticket = await callRpc<DshRelaySignalingTicket>(options.rpc, 'auth/dsh/relayTicket', {
+  const loginProtectionToken = (): string | undefined => options.getLoginProtectionToken?.() ?? options.loginProtectionToken
+  const firstLoginProtectionToken = loginProtectionToken()
+  const firstTicket = await callRpc<DshRelaySignalingTicket>(options.rpc, 'auth/dsh/relayTicket', {
     dshDeviceId: device.dshDeviceId,
-    ...(options.loginProtectionToken === undefined ? {} : { loginProtectionToken: options.loginProtectionToken }),
+    ...(firstLoginProtectionToken === undefined ? {} : { loginProtectionToken: firstLoginProtectionToken }),
   }, signal)
-  const connection = await connectWebRtcClient({
-    signalingTicket: ticket as unknown as RelaySignalingTicketResponse,
-    signalingSocketFactory: (url) => new WebSocket(url) as unknown as SignalingSocketLike,
-    peerConnectionFactory: ({ iceServers, iceTransportPolicy }) => createPeerConnection({ iceServers, iceTransportPolicy }),
-    debug,
-  })
-  const generation = 1
-  const hostScope = resolveDshHostScope(ticket)
-  const session = new DshSession({ carrier: connection.carrier, role: 'client', generation: String(generation), hostScope, dshVersion, debug })
+  let generation = 1
+  let connection = await connectWebRtcClient(createWebRtcClientOptions(firstTicket, debug))
+  let session = new DshSession({ carrier: connection.carrier, role: 'client', generation: String(generation), hostScope: resolveDshHostScope(firstTicket), dshVersion, debug })
+  let reconnecting = false
+  let stopped = false
+  let reconnectRef: ((reconnectSignal?: AbortSignal) => Promise<void>) | undefined
+  let unsubscribeConnectionClosed: (() => void) | undefined
   const transport = new DshCodingNsTransport({
     carrier: connection.carrier,
     generation: { id: generation, host: { home: '/' } },
-    hostScope,
+    hostScope: resolveDshHostScope(firstTicket),
     session,
     requireSessionReady: true,
+    reconnect: (reconnectSignal) => reconnectRef?.(reconnectSignal) ?? Promise.reject(new Error('DSH 重连尚未就绪')),
     debug,
   })
+  const reconnect = async (reconnectSignal?: AbortSignal): Promise<void> => {
+    if (stopped || reconnecting) return
+    reconnecting = true
+    transport.invalidateConnection(new Error('WebRTC connection closed'))
+    session.close('旧 WebRTC generation 已失效')
+    try {
+      for (let attempt = 0; !stopped; attempt += 1) {
+        let nextConnection: Awaited<ReturnType<typeof connectWebRtcClient>> | undefined
+        let nextSession: DshSession | undefined
+        try {
+          const waitMs = Math.min(10_000, 500 * (attempt + 1))
+          if (attempt > 0) await delay(waitMs, reconnectSignal ?? signal)
+          const currentLoginProtectionToken = loginProtectionToken()
+          const ticket = await callRpc<DshRelaySignalingTicket>(options.rpc, 'auth/dsh/relayTicket', {
+            dshDeviceId: device.dshDeviceId,
+            ...(currentLoginProtectionToken === undefined ? {} : { loginProtectionToken: currentLoginProtectionToken }),
+          }, reconnectSignal ?? signal)
+          nextConnection = await connectWebRtcClient(createWebRtcClientOptions(ticket, debug))
+          nextSession = new DshSession({ carrier: nextConnection.carrier, role: 'client', generation: String(generation + 1), hostScope: resolveDshHostScope(ticket), dshVersion, debug })
+          nextSession.start()
+          await waitForSessionReady(nextSession, reconnectSignal ?? signal, 15_000)
+          const previous = connection
+          connection = nextConnection
+          session = nextSession
+          generation += 1
+          attachConnectionClose(nextConnection)
+          transport.replaceConnection(nextConnection.carrier, nextSession, { id: generation, host: { home: '/' } })
+          await previous.close()
+          nextConnection = undefined
+          nextSession = undefined
+          return
+        } catch (error) {
+          await nextSession?.close()
+          await nextConnection?.close()
+          debug.log('bootstrap.reconnect.error', { generation, error: error instanceof Error ? error.message : String(error) })
+          if (stopped || signal?.aborted || reconnectSignal?.aborted) throw error
+        }
+      }
+    } finally {
+      reconnecting = false
+    }
+  }
+  reconnectRef = reconnect
+  const attachConnectionClose = (current: Awaited<ReturnType<typeof connectWebRtcClient>>): void => {
+    unsubscribeConnectionClosed?.()
+    unsubscribeConnectionClosed = current.onClosed((error) => {
+      if (stopped || current !== connection) return
+      const reason = error ?? new Error('WebRTC connection closed')
+      transport.invalidateConnection(reason)
+      session.close(reason.message)
+    })
+  }
+  attachConnectionClose(connection)
   let registration: ReturnType<typeof installDshTransport> | undefined
   try {
     session.start()
@@ -100,13 +156,19 @@ export async function startDshH5Bootstrap(options: DshH5BootstrapOptions): Promi
     registration = installDshTransport({ dshVersion, transport })
     if (options.boot) await options.boot()
     const dispose = async (): Promise<void> => {
+      stopped = true
+      unsubscribeConnectionClosed?.()
+      unsubscribeConnectionClosed = undefined
       registration?.dispose()
       session.close()
       await transport.close()
       await connection.close()
     }
-    return { dshDeviceId: device.dshDeviceId, relayMode: ticket.iceTransportPolicy === 'relay' ? 'relay' : 'direct', registration, dispose }
+    return { dshDeviceId: device.dshDeviceId, relayMode: firstTicket.iceTransportPolicy === 'relay' ? 'relay' : 'direct', registration, dispose }
   } catch (error) {
+    stopped = true
+    unsubscribeConnectionClosed?.()
+    unsubscribeConnectionClosed = undefined
     registration?.dispose()
     session.close()
     await transport.close()
