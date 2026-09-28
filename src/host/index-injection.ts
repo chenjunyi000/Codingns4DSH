@@ -7,9 +7,11 @@ export interface DshIndexInjectionEntry {
 }
 
 /**
- * 为普通 Web 入口声明 Host 所有权，同时保留 Desktop 已注入的完整 Transport。
- * Desktop 的 Transport 可能包含 streamBaseUrl；直接追加同名全局会让后者覆盖
- * 前者，导致远程请求退回 dsh-app://app 并返回 404。
+ * 在启动页声明 Host 所有权，同时保留 Desktop 已经提供的完整 Transport。
+ *
+ * 这里只使用 DSH WebServer 支持的 JSON global 行，不在首页安装全局 setter。
+ * setter 会改变原生 Client 对 Transport 的启动顺序；在 Windows 重启时序下，
+ * 这会把本应由 DSH Client 接管的全局状态变成插件的副作用。
  */
 export function injectDshWebTransportOwnership(table: unknown[]): void {
   const index = table.findIndex((entry) => isTransportInjection(entry))
@@ -20,10 +22,7 @@ export function injectDshWebTransportOwnership(table: unknown[]): void {
 
   const entry = table[index]
   if (!isRecord(entry) || !isRecord(entry.value)) return
-  table[index] = {
-    ...entry,
-    value: { ...entry.value, ownsHost: true },
-  }
+  table[index] = { ...entry, value: { ...entry.value, ownsHost: true } }
 }
 
 function isTransportInjection(value: unknown): value is DshIndexInjectionEntry {

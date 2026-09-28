@@ -809,9 +809,9 @@ function createBridgeScript(): string {
     globalThis.__DSH_TRANSPORT__ = {
       fetch: window.fetch.bind(window),
       openStream: openRemoteStream,
-      // 该 iframe 的所有 DSH 请求都经由已认证的 Codingns4DSH 隧道回到选定 Host。
-      // 必须声明 Host 所有权，否则 ui-settings 会把远程页面降级为 memory
-      // 模式，原生“模型”页无法读取 settings provider。
+      // 仅作为 iframe 内 RemoteWebSocket 的虚拟基址，实际请求仍回到父窗口。
+      streamBaseUrl: resourceBase(),
+      // 声明 Host 所有权，保持原生设置存储可用。
       ownsHost: true,
       generation: parentTransport?.getGeneration?.bind(parentTransport),
       onGenerationChange: parentTransport?.onGenerationChange?.bind(parentTransport),

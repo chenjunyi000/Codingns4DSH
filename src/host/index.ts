@@ -18,7 +18,7 @@ import { installTerminalController } from './terminal/startup.js'
 import { DebugWorkspaceService } from './debug.js'
 import { detectRuntimeDshVersion, DSH_VERSION_INJECTION_NAME } from './dsh-runtime-version.js'
 import { createDshCapabilityRegistry } from '../dsh-capabilities/index.js'
-import { debugInfo } from '../shared/debug.js'
+import { debugInfo, debugWarn } from '../shared/debug.js'
 import { repairLegacySessionLogs } from './session-migration-repair.js'
 import { injectDshWebTransportOwnership } from './index-injection.js'
 
@@ -67,13 +67,19 @@ export function apply(ctx?: Context): void {
       hasWebServer: (hostCtx as Context & { webServer?: unknown }).webServer !== undefined,
     })
     const webServerPort = (hostCtx as Context & { webServer: { port: number } }).webServer.port
-    // 普通 Web 入口需要 ownsHost 才能让非 loopback 地址使用 Host 设置持久化。
-    // Desktop 已经注入完整 Transport 时只合并字段，保留 streamBaseUrl 等路由信息。
+    // 在注入表执行时合并 ownsHost，保留 Desktop 或远程 iframe 已准备好的 Transport。
     const indexInjectionEvents = hostCtx as unknown as { on(name: string, listener: (table: unknown[]) => void): unknown }
     debugInfo('codingns4dsh: host index injection registration begin')
     indexInjectionEvents.on('webserver/index-inject', (table) => {
-      injectDshWebTransportOwnership(table)
-      table.push({ kind: 'global', name: DSH_VERSION_INJECTION_NAME, value: dshVersion })
+      try {
+        injectDshWebTransportOwnership(table)
+        table.push({ kind: 'global', name: DSH_VERSION_INJECTION_NAME, value: dshVersion })
+      } catch (error) {
+        // 首页认证不应因插件注入表异常变成 WebServer 的 HTTP 400。
+        debugWarn('codingns4dsh: host index injection skipped', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     })
     debugInfo('codingns4dsh: host index injection registration ready')
     debugInfo('codingns4dsh: host settings registration begin')

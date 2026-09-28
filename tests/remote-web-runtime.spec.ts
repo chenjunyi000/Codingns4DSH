@@ -135,6 +135,48 @@ test('本地 DSH Web Provider 兼容未包装 args 的旧版 Connection RPC 请�
   assert.deepEqual(envelope.payload?.args, { _request: {} })
 })
 
+test('本地 DSH Web Provider 中转 session/list 时保留会话列表响应', async () => {
+  let requestBody = ''
+  const sessionListResponse = {
+    type: 'server-response',
+    rpcId: 'rpc-session-list',
+    result: {
+      ok: true,
+      value: {
+        items: [{
+          sessionId: 'session-1',
+          updatedAt: 1_800_000_000_000,
+          running: false,
+          blank: false,
+          cwd: '/work',
+          projections: { asOfSeq: 1, values: { title: '工作会话' } },
+        }],
+      },
+    },
+  }
+  const fetcher: typeof fetch = async (input, init) => {
+    if (String(input).endsWith('/api/session/list')) {
+      requestBody = String(init?.body ?? '')
+      return new Response(JSON.stringify(sessionListResponse), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } })
+  }
+  const provider = createLocalDshWebRuntimeProvider({ port: 3080, dshVersion: '0.1.6-alpha.2', fetcher })
+  const session = await provider.openSession({})
+  const response = await provider.request?.(session, {
+    path: '/api/session/list',
+    method: 'POST',
+    body: JSON.stringify({ type: 'client-request', rpcId: 'rpc-session-list', method: 'session/list', payload: { _request: {} } }),
+  })
+
+  assert.equal(response?.status, 200)
+  assert.deepEqual(JSON.parse(response?.body ?? '{}'), sessionListResponse)
+  assert.deepEqual((JSON.parse(requestBody) as { payload?: { args?: unknown } }).payload?.args, { _request: {} })
+})
+
 test('本地 DSH Web Provider 不改写 CodingNS 自有 RPC 的 payload', async () => {
   let requestBody = ''
   const fetcher: typeof fetch = async (_input, init) => {
