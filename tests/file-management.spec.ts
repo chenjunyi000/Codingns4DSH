@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createCodingNsRpcHandler } from '../data/build/dist/host/rpc.js'
@@ -33,6 +33,16 @@ test('文件管理 Host 模块支持编辑、目录操作、复制移动和 Git 
     await call(table, 'fileManagement/write', { path: join(root, 'src', 'README.md'), content: '# 文件\n' })
     const read = await call(table, 'fileManagement/read', { path: join(root, 'src', 'README.md') }) as { content: string }
     assert.equal(read.content, '# 文件\n')
+
+    await writeFile(join(root, 'src', 'archive.bin'), '二进制下载内容', { encoding: 'utf8' })
+    const download = await call(table, 'fileManagement/download', { path: join(root, 'src', 'archive.bin') }) as {
+      fileName: string
+      mimeType: string
+      contentBase64: string
+    }
+    assert.equal(download.fileName, 'archive.bin')
+    assert.equal(download.mimeType, 'application/octet-stream')
+    assert.equal(Buffer.from(download.contentBase64, 'base64').toString('utf8'), '二进制下载内容')
 
     await call(table, 'fileManagement/copy', { paths: [join(root, 'src', 'README.md')], destination: root })
     await call(table, 'fileManagement/move', { paths: [join(root, 'README.md')], destination: join(root, 'src') })

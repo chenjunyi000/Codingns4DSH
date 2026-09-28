@@ -27,6 +27,18 @@ export function createFileManagementFeature(): FeatureModule<CodingNsHostService
             if (typeof info.size === 'number' && info.size > MAX_EDIT_BYTES) throw new CodingNsRpcError('FILE_MANAGEMENT_TOO_LARGE', '文件超过可编辑大小限制')
             return { path: target.absolute, content: await readFile(target.absolute, 'utf8') }
           }
+          case 'download': {
+            const target = resolveTarget(context.services, input)
+            const info = await stat(target.absolute)
+            if (!info.isFile()) throw new CodingNsRpcError('FILE_MANAGEMENT_NOT_FILE', '目标不是普通文件')
+            const content = await readFile(target.absolute)
+            return {
+              path: target.absolute,
+              fileName: basename(target.absolute),
+              mimeType: mimeTypeForPath(target.absolute),
+              contentBase64: Buffer.from(content).toString('base64'),
+            }
+          }
           case 'write': {
             const target = resolveTarget(context.services, input)
             const content = requiredString(input.content, 'content', false)
@@ -210,4 +222,27 @@ function requiredStringArray(value: unknown, field: string): string[] {
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError('文件管理 RPC 参数必须是对象')
   return value as Record<string, unknown>
+}
+
+function mimeTypeForPath(path: string): string {
+  const extension = path.toLowerCase().match(/\.([a-z0-9]+)$/u)?.[1] ?? ''
+  return ({
+    css: 'text/css',
+    csv: 'text/csv',
+    gif: 'image/gif',
+    html: 'text/html',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    js: 'text/javascript',
+    json: 'application/json',
+    md: 'text/markdown',
+    pdf: 'application/pdf',
+    png: 'image/png',
+    svg: 'image/svg+xml',
+    txt: 'text/plain',
+    xml: 'application/xml',
+    yaml: 'application/yaml',
+    yml: 'application/yaml',
+    zip: 'application/zip',
+  } as Record<string, string>)[extension] ?? 'application/octet-stream'
 }

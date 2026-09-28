@@ -68,8 +68,8 @@ export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
       { label: '复制', action: () => { clipboard = { mode: 'copy', paths: [path] } } },
       { label: '剪切', action: () => { clipboard = { mode: 'cut', paths: [path] } } },
       { label: '粘贴', disabled: clipboard === undefined, action: () => void pasteEntry(base, panel) },
-      { label: '复制相对路径', action: () => void copyPath(path, false) },
-      { label: '复制绝对路径', action: () => void copyPath(path, true) },
+      { label: '复制相对路径', action: () => void copyPath(item, false) },
+      { label: '复制绝对路径', action: () => void copyPath(item, true) },
       { label: '添加到 Git 排除', action: () => void runMutation('git-ignore', { paths: [path] }, panel) },
       { label: '删除', action: () => void deleteEntry(path, panel) },
     ]
@@ -125,19 +125,27 @@ export function startFileManagementDom(rpc: CodingNsRpcClient): () => void {
 
   async function downloadFile(target: FileTarget): Promise<void> {
     try {
-      const result = await call('read', target) as { content: string }
-      const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' })
+      const result = await call('download', target) as { contentBase64: string; fileName?: string; mimeType?: string }
+      const blob = new Blob([decodeBase64(result.contentBase64)], { type: result.mimeType ?? 'application/octet-stream' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = leaf(target.path)
+      link.download = result.fileName ?? leaf(target.path)
+      document.body.append(link)
       link.click()
-      URL.revokeObjectURL(link.href)
+      link.remove()
+      // 某些局域网浏览器在 click 返回后才开始消费 Blob URL，不能立即撤销。
+      globalThis.setTimeout(() => URL.revokeObjectURL(link.href), 30_000)
     } catch (error) { showNotice(errorMessage(error)) }
   }
 
-  async function copyPath(path: string, absolute: boolean): Promise<void> {
-    const value = absolute ? path : relativePath(path)
-    try { await navigator.clipboard.writeText(value); showNotice(absolute ? '已复制绝对路径' : '已复制相对路径') } catch { showNotice('复制路径失败') }
+  async function copyPath(item: FileEntryElement, absolute: boolean): Promise<void> {
+    const path = item.dataset.filesPath ?? ''
+    const root = filesRootForEntry(item)
+    const value = absolute ? absolutePath(path, root) : relativePath(path, root)
+    try {
+      await copyTextToClipboard(value)
+      showNotice(absolute ? '已复制绝对路径' : '已复制相对路径')
+    } catch { showNotice('复制路径失败') }
   }
 
   async function runMutation(action: string, payload: Record<string, unknown>, panel: HTMLElement | null): Promise<void> {
@@ -251,6 +259,13 @@ function parseFileTarget(url: string, root: HTMLElement): FileTarget | undefined
     : { path: joinPath(workspaceRoot, path) }
 }
 
+function filesRootForEntry(item: Element): string | undefined {
+  const tree = item.closest<HTMLElement>('[data-files-state="tree"]')
+  const panelRoot = item.closest<HTMLElement>('[data-sidebar-right-panel]')?.querySelector<HTMLElement>('[data-files-root]')
+  const value = tree?.getAttribute('data-files-root')?.trim() || panelRoot?.getAttribute('data-files-root')?.trim()
+  return value === null || value === undefined || value.trim() === '' ? undefined : value.trim()
+}
+
 function isEditableFile(url: string): boolean {
   const path = url.split('/').pop() ?? ''
   const dot = path.lastIndexOf('.')
@@ -261,6 +276,50 @@ function parentPath(path: string): string { const index = Math.max(path.lastInde
 function leaf(path: string): string { return path.split(/[\\/]/u).filter(Boolean).pop() ?? path }
 function isAbsoluteLike(path: string): boolean { return path.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(path) }
 function joinPath(base: string, child: string): string { const separator = base.includes('\\') && !base.includes('/') ? '\\' : '/'; return `${base.replace(/[\\/]$/u, '')}${separator}${child.replace(/^[\\/]+/u, '')}` }
-function relativePath(path: string): string { const root = document.querySelector<HTMLElement>('[data-files-root]')?.getAttribute('data-files-root'); return root === null || root === undefined ? path : path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path.startsWith(`${root}\\`) ? path.slice(root.length + 1) : path }
+function absolutePath(path: string, root: string | undefined): string {
+  if (isAbsoluteLike(path) || root === undefined) return path
+  return joinPath(root, path)
+}
+function relativePath(path: string, root?: string): string {
+  const workspaceRoot = root ?? document.querySelector<HTMLElement>('[data-files-root]')?.getAttribute('data-files-root') ?? undefined
+  if (workspaceRoot === undefined) return path
+  const normalizedPath = path.replaceAll('\\', '/')
+  const normalizedRoot = workspaceRoot.replace(/[\\/]$/u, '').replaceAll('\\', '/')
+  if (normalizedPath === normalizedRoot) return '.'
+  if (normalizedPath.startsWith(`${normalizedRoot}/`)) return normalizedPath.slice(normalizedRoot.length + 1)
+  return path
+}
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // HTTP 局域网页面可能没有 Clipboard 权限，继续使用兼容回退。
+    }
+  }
+  if (copyTextWithExecCommand(text)) return
+  throw new Error('浏览器不允许访问剪贴板')
+}
+function copyTextWithExecCommand(text: string): boolean {
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function' || document.body === null) return false
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '-9999px'
+  textarea.style.left = '-9999px'
+  textarea.style.opacity = '0'
+  document.body.append(textarea)
+  textarea.focus()
+  textarea.select()
+  try { return document.execCommand('copy') } catch { return false } finally { textarea.remove() }
+}
+function decodeBase64(value: string): ArrayBuffer {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return bytes.buffer
+}
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 function showNotice(message: string): void { const notice = document.createElement('div'); notice.textContent = message; notice.style.cssText = 'position:fixed;z-index:2147483647;left:50%;bottom:24px;transform:translateX(-50%);padding:8px 14px;border-radius:6px;background:#2d2f33;color:#fff;box-shadow:0 4px 18px #0008;font:13px system-ui'; document.body.append(notice); globalThis.setTimeout(() => notice.remove(), 2200) }
