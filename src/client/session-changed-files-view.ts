@@ -16,6 +16,14 @@ interface SessionChangedFilesViewProps {
   readonly sessionId: string
   readonly rpc: CodingNsRpcClient
   readonly remote?: unknown
+  readonly reportCount?: (sessionId: string, count: number) => void
+}
+
+interface SessionChangedFilesCounterProps {
+  readonly sessionId: string
+  readonly rpc: CodingNsRpcClient
+  readonly remote?: unknown
+  readonly reportCount: (sessionId: string, count: number) => void
 }
 
 interface DirectoryNode {
@@ -65,11 +73,13 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
       const next = status.changes.filter((item) => touched.has(normalizePath(item.path)) || item.oldPath !== null && touched.has(normalizePath(item.oldPath)))
       setWorkspaceId(resolved)
       setChanges(next)
+      props.reportCount?.(props.sessionId, next.length)
       setSelectedPath((current) => current !== undefined && next.some((item) => item.path === current) ? current : next[0]?.path)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       setChanges([])
       setWorkspaceId(undefined)
+      props.reportCount?.(props.sessionId, 0)
     } finally {
       setLoading(false)
     }
@@ -125,8 +135,10 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
       createElement('strong', { style: { fontSize: 15 } }, '修改文件'),
       createElement('span', { style: countStyle }, `${changes.length} 个文件`),
       createElement('span', { style: { flex: 1 } }),
-      createElement('button', { type: 'button', disabled: loading || busy, onClick: () => void load(), style: buttonStyle }, '刷新'),
-      createElement('button', { type: 'button', disabled: busy || unstaged.length === 0, onClick: () => void stageTargets(unstaged.map((item) => item.path), 'stage'), style: primaryButtonStyle }, '全部暂存'),
+      createElement('button', { type: 'button', disabled: loading || busy, onClick: () => void load(), style: toolbarRefreshButtonStyle, title: '刷新', 'aria-label': '刷新' },
+        createElement(RefreshIcon)),
+      createElement('button', { type: 'button', disabled: busy || unstaged.length === 0, onClick: () => void stageTargets(unstaged.map((item) => item.path), 'stage'), style: toolbarStageButtonStyle, title: '全部暂存', 'aria-label': '全部暂存' },
+        createElement(StageIcon)),
     ),
     error === undefined ? null : createElement('div', { role: 'alert', style: errorStyle }, error),
     createElement('div', { style: contentStyle },
@@ -137,7 +149,8 @@ export function SessionChangedFilesView(props: SessionChangedFilesViewProps): Re
       ),
       createElement('div', { style: diffPaneStyle },
         selectedPath === undefined ? createElement('div', { style: emptyStyle }, '选择文件查看 Diff')
-          : createElement('pre', { style: diffStyle }, diff?.content || '当前文件没有可显示的 Diff'),
+          : diff?.content ? createElement('pre', { style: diffStyle }, renderDiff(diff.content))
+            : createElement('div', { style: emptyStyle }, '当前文件没有可显示的 Diff'),
       ),
     ),
   )
@@ -157,27 +170,61 @@ export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcCl
   } | undefined
   if (typeof slots?.inject !== 'function' || typeof slots.register !== 'function') return undefined
   let disposeSlot: (() => void) | undefined
-  try {
-    disposeSlot = slots.inject('conversation.view', () => {
+  let disposeCounterSlot: (() => void) | undefined
+  let disposed = false
+  let labelSessionId: string | undefined
+  let labelCount = 0
+  const reportCount = (sessionId: string, count: number): void => {
+    if (disposed || (labelSessionId === sessionId && labelCount === count)) return
+    labelSessionId = sessionId
+    labelCount = count
+    // DSH 标签的 label 是字符串快照；重新登记同一个 Slot 触发标签列表刷新。
+    const previous = disposeSlot
+    disposeSlot = undefined
+    previous?.()
+    try {
+      disposeSlot = registerSlot()
+    } catch (error) {
+      console.warn('codingns4dsh: 修改文件标签数量刷新失败', error)
+    }
+  }
+  function registerSlot(): () => void {
+    return slots!.inject!('conversation.view', () => {
       // 必须通过 SlotRegistry 实例调用 register，保留其 Cordis 调用上下文。
-      return slots.register!({
+      return slots!.register!({
         name: 'conversation.view',
         id: SESSION_CHANGED_FILES_VIEW_ID,
         order: 100,
-        label: () => '修改文件',
-        inject: () => ({ rpc, remote }),
+        label: () => `修改文件 ${labelCount}`,
+        inject: () => ({ rpc, remote, reportCount }),
       }, SessionChangedFilesView)
     })
+  }
+  function registerCounterSlot(): () => void {
+    return slots!.inject!('conversation.session.header.actions', () => slots!.register!({
+      name: 'conversation.session.header.actions',
+      id: `${SESSION_CHANGED_FILES_VIEW_ID}/counter`,
+      order: 1000,
+      inject: () => ({ rpc, remote, reportCount }),
+    }, SessionChangedFilesCounter))
+  }
+  try {
+    disposeSlot = registerSlot()
+    disposeCounterSlot = registerCounterSlot()
   } catch (error) {
     if (isDuplicateRegistrationError(error)) {
       disposeSlot?.()
+      disposeCounterSlot?.()
       return undefined
     }
     disposeSlot?.()
+    disposeCounterSlot?.()
     throw error
   }
   const dispose = (): void => {
+    disposed = true
     disposeSlot?.()
+    disposeCounterSlot?.()
     if (runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__?.dispose === dispose) {
       delete runtime.__CODINGNS4DSH_SESSION_CHANGED_FILES_VIEW__
     }
@@ -188,6 +235,62 @@ export function registerSessionChangedFilesView(ctx: unknown, rpc: CodingNsRpcCl
 
 function isDuplicateRegistrationError(error: unknown): boolean {
   return error instanceof Error && /already registered|已注册/u.test(error.message)
+}
+
+function SessionChangedFilesCounter(props: SessionChangedFilesCounterProps): null {
+  useEffect(() => {
+    let disposed = false
+    const load = async (): Promise<void> => {
+      try {
+        const workspaceId = await resolveGitWorkspaceId(props.remote, props.sessionId)
+        if (workspaceId === undefined) throw new Error('当前会话没有可用的工作区')
+        const [sessionFiles, status] = await Promise.all([
+          call<SessionChangedFiles>(props.rpc, 'fileManagement/session-changes', { sessionId: props.sessionId, workspaceId }),
+          call<GitStatus>(props.rpc, 'git/status', { workspaceId }),
+        ])
+        if (disposed) return
+        const touched = new Set(sessionFiles.paths.map(normalizePath))
+        const count = status.changes.filter((item) => touched.has(normalizePath(item.path)) || item.oldPath !== null && touched.has(normalizePath(item.oldPath))).length
+        props.reportCount(props.sessionId, count)
+      } catch {
+        if (!disposed) props.reportCount(props.sessionId, 0)
+      }
+    }
+    void load()
+    const timer = globalThis.setInterval(() => { void load() }, 5_000)
+    return () => { disposed = true; globalThis.clearInterval(timer) }
+  }, [props.remote, props.rpc, props.reportCount, props.sessionId])
+  return null
+}
+
+function renderDiff(content: string): readonly ReactElement[] {
+  const lines = content.split('\n')
+  return lines.map((line, index) => createElement('span', {
+    key: index,
+    style: diffLineStyle(line),
+  }, `${line}${index < lines.length - 1 ? '\n' : ''}`))
+}
+
+function RefreshIcon(): ReactElement {
+  return createElement('svg', { width: 18, height: 18, viewBox: '0 0 20 20', fill: 'none', 'aria-hidden': true },
+    createElement('path', { d: 'M16 8.5A6.2 6.2 0 1 0 16.1 12', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+    createElement('path', { d: 'M16 4.5v4h-4', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+  )
+}
+
+function StageIcon(): ReactElement {
+  return createElement('svg', { width: 18, height: 18, viewBox: '0 0 20 20', fill: 'none', 'aria-hidden': true },
+    createElement('path', { d: 'M4 13.5v2h12v-2', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+    createElement('path', { d: 'M10 14V4.5m0 0L6.8 7.7M10 4.5l3.2 3.2', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+  )
+}
+
+function diffLineStyle(line: string): CSSProperties {
+  if (line.startsWith('+++') || line.startsWith('---')) return diffHeaderLineStyle
+  if (line.startsWith('+')) return diffAddedLineStyle
+  if (line.startsWith('-')) return diffRemovedLineStyle
+  if (line.startsWith('@@')) return diffHunkLineStyle
+  return diffContextLineStyle
 }
 
 function renderNode(
@@ -206,7 +309,12 @@ function renderNode(
     const files = flattenFiles(node)
     return createElement('div', { key: `directory:${node.path}` },
       createElement('div', { style: rowStyle(depth), onMouseEnter: () => hover(node.path), onMouseLeave: () => hover(undefined) },
-        createElement('button', { type: 'button', onClick: () => toggle(node.path), style: treeButtonStyle }, `${expanded ? '⌄' : '›'} ${node.name}`),
+        createElement('button', { type: 'button', onClick: () => toggle(node.path), style: treeButtonStyle },
+          createElement('span', { style: treeChevronStyle }, expanded ? '⌄' : '›'),
+          createElement('span', { style: folderIconStyle }, '▰'),
+          createElement('span', { style: fileNameStyle, title: node.path }, node.name),
+          createElement('span', { style: mutedCountStyle }, String(files.length)),
+        ),
         hoveredPath === node.path ? createElement('button', { type: 'button', title: '暂存目录', disabled: files.every((item) => item.staged), onClick: () => void stageTargets(files.filter((item) => !item.staged).map((item) => item.path), 'stage'), style: iconButtonStyle }, '+') : null,
       ),
       expanded ? createElement('div', null, node.children.map((child) => renderNode(child, depth + 1, collapsed, hoveredPath, selectedPath, toggle, select, hover, stageTargets))) : null,
@@ -265,28 +373,37 @@ function flattenFiles(node: DirectoryNode): readonly GitChangeItem[] {
 }
 
 function normalizePath(value: string): string { return value.replaceAll('\\', '/').replace(/^\.\//u, '').replace(/^\/+|\/+$/gu, '') }
-function fileIcon(name: string): string { return name.split('.').pop()?.slice(0, 2).toUpperCase() || 'F' }
+function fileIcon(name: string): string { return name.includes('.') ? '·' : '□' }
 function asRecord(value: unknown): Record<string, unknown> | undefined { return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined }
 async function call<T>(rpc: CodingNsRpcClient, endpoint: string, payload: unknown): Promise<T> { return await callCodingNsRpc<T>(rpc, endpoint, payload) }
 
-const rootStyle: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: 'var(--dsw-alias-label-primary,inherit)', background: 'var(--dsw-alias-bg-base,transparent)', fontSize: 13 }
-const toolbarStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--dsw-alias-border-l3,#ddd)', flex: '0 0 auto' }
+const rootStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', height: 'auto', minHeight: '100%', overflow: 'visible', padding: '0 64px', boxSizing: 'border-box', color: 'var(--dsw-alias-label-primary,inherit)', background: 'var(--dsw-alias-bg-base,transparent)', fontSize: 13 }
+const toolbarStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 1280, boxSizing: 'border-box', padding: '12px 16px', borderBottom: '1px solid var(--dsw-alias-border-l3,#ddd)', flex: '0 0 auto' }
 const countStyle: CSSProperties = { color: 'var(--dsw-alias-label-tertiary,#777)' }
-const contentStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(260px, 42%) minmax(0, 1fr)', flex: '1 1 auto', minHeight: 0 }
-const treePaneStyle: CSSProperties = { overflow: 'auto', padding: '8px 0', borderRight: '1px solid var(--dsw-alias-border-l3,#ddd)' }
-const diffPaneStyle: CSSProperties = { overflow: 'auto', minWidth: 0, background: 'var(--dsw-alias-bg-layer-1,transparent)' }
-const rowStyle = (depth: number): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 4, minHeight: 34, padding: `2px 8px ${2}px ${12 + depth * 16}px` })
-const treeButtonStyle: CSSProperties = { border: 0, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left', flex: 1, minWidth: 0, padding: '5px 2px', fontWeight: 600 }
-const fileButtonStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, border: 0, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left', flex: 1, minWidth: 0, padding: '4px 2px' }
+const contentStyle: CSSProperties = { display: 'grid', gridTemplateColumns: '3.5fr 6.5fr', width: '100%', maxWidth: 1280, flex: '0 0 auto', minHeight: 0 }
+const treePaneStyle: CSSProperties = { padding: '8px 0', borderRight: '1px solid var(--dsw-alias-border-l3,#ddd)' }
+const diffPaneStyle: CSSProperties = { minWidth: 0, background: 'var(--dsw-alias-bg-layer-1,transparent)' }
+const rowStyle = (depth: number): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 7, minHeight: 28, padding: `0 8px 0 ${8 + depth * 14}px`, fontSize: 12 })
+const treeButtonStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, width: '100%', minWidth: 0, minHeight: 28, border: 0, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0, fontWeight: 600 }
+const fileButtonStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, border: 0, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left', flex: 1, minWidth: 0, padding: 0 }
 const selectedRowStyle: CSSProperties = { background: 'var(--dsw-alias-interactive-bg-selected,rgba(80,120,200,.16))' }
-const fileIconStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 20, borderRadius: 4, color: 'var(--dsw-alias-state-business-primary,#356ae6)', background: 'var(--dsw-alias-interactive-bg-selected,rgba(80,120,200,.14))', fontSize: 10, fontWeight: 700, flex: '0 0 22px' }
+const fileIconStyle: CSSProperties = { width: 12, color: 'var(--dsw-alias-label-tertiary,#777)', fontSize: 12, textAlign: 'center', flex: '0 0 12px' }
+const treeChevronStyle: CSSProperties = { width: 12, color: 'var(--dsw-alias-label-tertiary,#777)', fontSize: 12, flex: '0 0 12px' }
+const folderIconStyle: CSSProperties = { color: 'var(--dsw-alias-state-business-primary,#356ae6)', fontSize: 11, flex: '0 0 auto' }
 const fileNameStyle: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }
 const statusStyle: CSSProperties = { color: 'var(--dsw-alias-label-tertiary,#777)', flex: '0 0 auto', fontWeight: 700 }
+const mutedCountStyle: CSSProperties = { color: 'var(--dsw-alias-label-tertiary,#777)', fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }
 const actionsStyle: CSSProperties = { display: 'inline-flex', gap: 2, flex: '0 0 auto' }
-const iconButtonStyle: CSSProperties = { width: 26, height: 26, border: '1px solid var(--dsw-alias-border-l2,#ccc)', borderRadius: 5, background: 'var(--dsw-alias-bg-layer-1,transparent)', color: 'inherit', cursor: 'pointer' }
+const iconButtonStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: 0, borderRadius: 4, padding: 0, background: 'transparent', color: 'var(--dsw-alias-label-secondary,#777)', cursor: 'pointer', fontSize: 16 }
 const dangerButtonStyle: CSSProperties = { ...iconButtonStyle, color: 'var(--dsw-alias-state-danger,#c43d3d)' }
-const buttonStyle: CSSProperties = { border: '1px solid var(--dsw-alias-border-l2,#ccc)', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 10px', font: 'inherit' }
-const primaryButtonStyle: CSSProperties = { ...buttonStyle, background: 'var(--dsw-alias-interactive-bg-selected,rgba(80,120,200,.18))' }
+const toolbarIconButtonStyle: CSSProperties = { ...iconButtonStyle, width: 36, height: 36, border: '1px solid var(--dsw-alias-border-l2,#ccc)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08))', boxShadow: '0 1px 2px rgba(0,0,0,.12)', fontSize: 18 }
+const toolbarRefreshButtonStyle: CSSProperties = { ...toolbarIconButtonStyle, color: 'var(--dsw-alias-state-business-primary,#356ae6)' }
+const toolbarStageButtonStyle: CSSProperties = { ...toolbarIconButtonStyle, color: 'var(--dsw-alias-state-success,#18864b)' }
 const emptyStyle: CSSProperties = { padding: 24, color: 'var(--dsw-alias-label-tertiary,#777)', textAlign: 'center' }
 const errorStyle: CSSProperties = { padding: '8px 16px', color: 'var(--dsw-alias-state-danger,#c43d3d)', borderBottom: '1px solid var(--dsw-alias-border-l3,#ddd)' }
-const diffStyle: CSSProperties = { margin: 0, padding: 16, minHeight: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word', font: '12px/1.55 var(--dsw-font-mono,ui-monospace,monospace)' }
+const diffStyle: CSSProperties = { margin: 0, padding: 16, minHeight: '100%', overflow: 'visible', whiteSpace: 'pre-wrap', wordBreak: 'break-word', font: '12px/1.55 var(--dsw-font-mono,ui-monospace,monospace)' }
+const diffHeaderLineStyle: CSSProperties = { display: 'block', color: 'var(--dsw-alias-label-tertiary,#777)' }
+const diffHunkLineStyle: CSSProperties = { display: 'block', color: 'var(--dsw-alias-state-business-primary,#356ae6)', background: 'rgba(53,106,230,.08)' }
+const diffAddedLineStyle: CSSProperties = { display: 'block', color: '#137333', background: 'rgba(34,197,94,.12)' }
+const diffRemovedLineStyle: CSSProperties = { display: 'block', color: '#b42318', background: 'rgba(220,38,38,.12)' }
+const diffContextLineStyle: CSSProperties = { display: 'block' }

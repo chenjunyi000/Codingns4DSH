@@ -70,11 +70,17 @@ test('没有 uiConversation.views 时仍注册 conversation.view 标签', () => 
     },
   }
   const dispose = registerSessionChangedFilesView({ slots }, { call: async () => ({ ok: true, value: undefined }) })
-  assert.equal(registrations.length, 1)
-  assert.equal(registrations[0]?.options.id, 'codingns4dsh/session-changed-files')
-  const label = registrations[0]?.options.label
+  assert.equal(registrations.length, 2)
+  const view = registrations.find((entry) => entry.options.id === 'codingns4dsh/session-changed-files')
+  assert.ok(view)
+  const label = view.options.label
   assert.equal(typeof label, 'function')
-  assert.equal((label as () => string)(), '修改文件')
+  assert.equal((label as () => string)(), '修改文件 0')
+  const injected = (view.options.inject as () => { reportCount: (sessionId: string, count: number) => void })()
+  injected.reportCount('session-1', 5)
+  const refreshedView = registrations.at(-1)
+  assert.equal(refreshedView?.options.id, 'codingns4dsh/session-changed-files')
+  assert.equal((refreshedView?.options.label as () => string)(), '修改文件 5')
   dispose?.()
   for (const disposer of disposers) disposer()
 })
