@@ -86,6 +86,8 @@ export interface WorkspaceSessionEnhancementSettings {
   showSubscriptionUsage: boolean
   /** 是否在输入工具区显示快捷会话入口。 */
   showQuickPhrases: boolean
+  /** 是否记忆对话窗口与右侧栏的宽度比例；具体比例保存在当前浏览器。 */
+  rememberConversationRightbarRatio: boolean
   /** 插件本地保存的快捷会话条目。 */
   quickPhrases: QuickPhrase[]
   /** 内置快捷会话是否已经完成首次初始化；仅用于兼容旧配置。 */
@@ -191,6 +193,7 @@ export const DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS: WorkspaceSessionEnh
   hiddenWorkspaceIds: [],
   showSubscriptionUsage: true,
   showQuickPhrases: true,
+  rememberConversationRightbarRatio: false,
   quickPhrases: DEFAULT_QUICK_PHRASES.map((phrase) => ({ ...phrase })),
   quickPhrasesSeeded: true,
 }

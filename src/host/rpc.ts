@@ -265,7 +265,7 @@ function isAllowedSettingsPath(path: readonly string[]): boolean {
   if (path.length === 1) return ['controlBaseUrl', 'controlBaseUrls', 'terminalEnhancement', 'workspaceSessionEnhancement'].includes(path[0] ?? '')
   if (path[0] === 'modules') return path.length === 2 && ['lanAccess', 'reverseProxy', 'cliAdapters', 'terminalEnhancement', 'workspaceSessionEnhancement', 'debug', 'gitManagement', 'fileManagement'].includes(path[1] ?? '')
   if (path[0] === 'workspaceSessionEnhancement') {
-    return path.length === 2 && ['showAdapterLogo', 'showArchivedSessions', 'showWorkspaceHiding', 'hiddenWorkspaceIds', 'showSubscriptionUsage', 'showQuickPhrases', 'quickPhrases', 'quickPhrasesSeeded'].includes(path[1] ?? '')
+    return path.length === 2 && ['showAdapterLogo', 'showArchivedSessions', 'showWorkspaceHiding', 'hiddenWorkspaceIds', 'showSubscriptionUsage', 'showQuickPhrases', 'rememberConversationRightbarRatio', 'quickPhrases', 'quickPhrasesSeeded'].includes(path[1] ?? '')
   }
   return path[0] === 'lanAccessDsh' && path.length === 2 && ['autoStart', 'listenHost', 'listenPort', 'dshPort'].includes(path[1] ?? '')
 }
