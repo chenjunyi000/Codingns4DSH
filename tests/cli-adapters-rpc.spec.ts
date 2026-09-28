@@ -142,8 +142,7 @@ test('Codex app-server 保留 item 工具生命周期和失败结果', async () 
   driver.dispose()
 })
 
-test('Codex 分段模式在同一个 provider turn 内把每个工具完成拆成独立 step', async () => {
-  let turnStarts = 0
+test('Codex 在同一个 provider turn 内保留多个工具调用，不人为拆分 step', async () => {
   const driver = new CodexAppServerDriver({
     binaries: ['fake-codex'],
     spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
@@ -161,7 +160,6 @@ test('Codex 分段模式在同一个 provider turn 内把每个工具完成拆�
           return
         }
         if (request.method === 'turn/start') {
-          turnStarts += 1
           stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'segmented-turn', status: 'inProgress' } } })}\n`)
           setImmediate(() => {
             const event = (method: string, item: Record<string, unknown>): void => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 'segmented-thread', turnId: 'segmented-turn', item } })}\n`)
@@ -178,29 +176,69 @@ test('Codex 分段模式在同一个 provider turn 内把每个工具完成拆�
     }) as never,
   })
 
-  const first = []
-  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '执行', splitToolSteps: true })) first.push(chunk)
-  const second = []
-  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '不会重复发送', splitToolSteps: true })) second.push(chunk)
-  const third = []
-  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '仍复用同一 turn', splitToolSteps: true })) third.push(chunk)
+  const chunks = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'segmented', messages: [], prompt: '执行', splitToolSteps: true })) chunks.push(chunk)
 
-  assert.equal(turnStarts, 1)
-  assert.deepEqual(first.filter((chunk) => chunk.type), [
+  assert.equal(driver.supportsSegmentedTurns, true)
+  assert.deepEqual(chunks.filter((chunk) => chunk.type), [
     { type: 'session-binding', providerSessionId: 'segmented-thread' },
     { type: 'tool-event', toolName: 'command_execution', callId: 'call-1', input: 'pwd', status: 'running' },
     { type: 'tool-event', toolName: 'command_execution', callId: 'call-1', input: 'pwd', output: '/one', outputMode: 'snapshot', status: 'completed' },
-    { type: 'step-boundary' },
-  ])
-  assert.deepEqual(second.filter((chunk) => chunk.type), [
     { type: 'tool-event', toolName: 'command_execution', callId: 'call-2', input: 'ls', status: 'running' },
     { type: 'tool-event', toolName: 'command_execution', callId: 'call-2', input: 'ls', output: 'two', outputMode: 'snapshot', status: 'completed' },
-    { type: 'step-boundary' },
-  ])
-  assert.deepEqual(third, [
     { type: 'text-delta', text: '完成', messageId: 'message-1' },
     { type: 'finish', reason: 'stop' },
   ])
+  driver.dispose()
+})
+
+test('Codex 只在 assistant item 切换后分段，同一 assistant 的多个工具保持同一 step', async () => {
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'initialize') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+          return
+        }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'message-boundary-thread' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'message-boundary-turn', status: 'inProgress' } } })}\n`)
+          setImmediate(() => {
+            const event = (method: string, item: Record<string, unknown>): void => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 'message-boundary-thread', turnId: 'message-boundary-turn', item } })}\n`)
+            const text = (itemId: string, delta: string): void => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/agentMessage/delta', params: { threadId: 'message-boundary-thread', turnId: 'message-boundary-turn', itemId, delta } })}\n`)
+            text('assistant-1', '先检查')
+            event('item/started', { type: 'commandExecution', id: 'call-1', command: 'pwd', status: 'inProgress' })
+            event('item/completed', { type: 'commandExecution', id: 'call-1', command: 'pwd', aggregated_output: '/one', status: 'completed' })
+            event('item/started', { type: 'commandExecution', id: 'call-2', command: 'ls', status: 'inProgress' })
+            event('item/completed', { type: 'commandExecution', id: 'call-2', command: 'ls', aggregated_output: 'two', status: 'completed' })
+            text('assistant-2', '再总结')
+            event('item/started', { type: 'commandExecution', id: 'call-3', command: 'cat README.md', status: 'inProgress' })
+            event('item/completed', { type: 'commandExecution', id: 'call-3', command: 'cat README.md', aggregated_output: 'done', status: 'completed' })
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'message-boundary-thread', turn: { id: 'message-boundary-turn', status: 'completed' } } })}\n`)
+          })
+        }
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'message-boundary', messages: [], prompt: '执行', splitToolSteps: true })) first.push(chunk)
+  assert.deepEqual(first.map(({ type }) => type), [
+    'session-binding', 'text-delta', 'tool-event', 'tool-event', 'tool-event', 'tool-event', 'step-boundary',
+  ])
+
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'message-boundary', messages: [], prompt: '继续', splitToolSteps: true })) second.push(chunk)
+  assert.deepEqual(second.map(({ type }) => type), ['text-delta', 'tool-event', 'tool-event', 'finish'])
   driver.dispose()
 })
 
@@ -237,6 +275,82 @@ test('Codex app-server 解析 tokenUsage.last 并传递上下文窗口占用', a
     uncachedInputTokens: 32000, totalTokens: 40120, cacheHitRate: 20,
     contextWindow: 258400, contextTokens: 40000, contextUsageRatio: 0.154799,
   }])
+  driver.dispose()
+})
+
+test('Codex 同一会话第二轮的冲突 usage 窗口不会覆盖首轮 256K', async () => {
+  let turnCount = 0
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'codex-stable-window' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          turnCount += 1
+          const turnId = `codex-stable-turn-${turnCount}`
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: turnId, status: 'inProgress' } } })}\n`)
+          setImmediate(() => {
+            const contextWindow = turnCount === 1 ? 258400 : 1000000
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'thread/tokenUsage/updated', params: { threadId: 'codex-stable-window', tokenUsage: { last: { input_tokens: 258000, output_tokens: 4, total_tokens: 258004 }, contextWindow } } })}\n`)
+            stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'codex-stable-window', turn: { id: turnId, status: 'completed' } } })}\n`)
+          })
+          return
+        }
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const first = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'codex-stable-window', messages: [], prompt: '第一轮' })) first.push(chunk)
+  const second = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'codex-stable-window', messages: [], prompt: '第二轮' })) second.push(chunk)
+
+  assert.equal(first.find((chunk) => chunk.type === 'usage')?.contextWindow, 258400)
+  assert.equal(second.find((chunk) => chunk.type === 'usage')?.contextWindow, 258400)
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(second.at(-1)?.reason, 'stop')
+  driver.dispose()
+})
+
+test('Codex 空回合不得伪装成正常 stop', async () => {
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-codex'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id: number; method: string }
+        if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'codex-empty' } } })}\n`)
+          return
+        }
+        if (request.method === 'turn/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'codex-empty-turn', status: 'inProgress' } } })}\n`)
+          setImmediate(() => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'codex-empty', turn: { id: 'codex-empty-turn', status: 'completed' } } })}\n`))
+          return
+        }
+        stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+
+  const chunks = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'codex-empty', messages: [], prompt: '第二句话' })) chunks.push(chunk)
+  assert.deepEqual(chunks.filter((chunk) => chunk.type !== 'session-binding'), [
+    { type: 'text-delta', text: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: Codex Provider 未返回任何有效事件。' },
+    { type: 'finish', reason: 'error' },
+  ])
   driver.dispose()
 })
 
@@ -521,6 +635,66 @@ test('Codex 原生权限请求转换为标准事件并可回传审批结果', as
   await running
   assert.deepEqual(chunks.find((chunk) => (chunk as { type?: string }).type === 'permission-request'), { type: 'permission-request', requestId: '77', kind: 'command', detail: 'echo hidden' })
   assert.deepEqual(approved, { approved: true })
+  driver.dispose()
+})
+
+test('Codex fileChange 使用工作区可写沙箱、编辑工具名和原生审批格式', async () => {
+  let turnParams: Record<string, unknown> | null = null
+  let approval: unknown = null
+  const driver = new CodexAppServerDriver({
+    binaries: ['fake-agent'],
+    spawnSync: (() => ({ status: 0, stdout: 'codex 1.0.0', stderr: '' })) as never,
+    spawn: (() => {
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const stdin = { write(data: string): void {
+        const request = JSON.parse(data) as { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
+        if (request.method === 'initialize') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`)
+        } else if (request.method === 'thread/start') {
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { thread: { id: 'file-thread' } } })}\n`)
+        } else if (request.method === 'turn/start') {
+          turnParams = request.params ?? null
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { turn: { id: 'file-turn', status: 'inProgress' } } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: 88, method: 'item/fileChange/requestApproval', params: { threadId: 'file-thread', turnId: 'file-turn', itemId: 'file-change-item', reason: '需要写入工作区' } })}\n`)
+        } else if (request.id === 88) {
+          approval = request.result
+          const item = { type: 'fileChange', id: 'file-change-item', changes: [{ path: '/workspace/a.ts', kind: 'update', diff: '@@ -1 +1 @@\n-old\n+new' }], status: 'completed' }
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/started', params: { threadId: 'file-thread', turnId: 'file-turn', item: { ...item, status: 'inProgress' } } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'item/completed', params: { threadId: 'file-thread', turnId: 'file-turn', item } })}\n`)
+          stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId: 'file-thread', turnId: 'file-turn', turn: { id: 'file-turn', status: 'completed' } } })}\n`)
+        }
+      } }
+      return { stdout, stderr, stdin, kill() { stdout.end(); stderr.end(); return true } }
+    }) as never,
+  })
+  const chunks: unknown[] = []
+  for await (const chunk of driver.executeTurn({ sessionId: 'codex-file-change', messages: [], prompt: '修改文件' })) {
+    chunks.push(chunk)
+    if (chunk.type === 'permission-request') driver.respondPermission('codex-file-change', { requestId: chunk.requestId, approved: true })
+  }
+
+  assert.deepEqual(turnParams?.sandboxPolicy, {
+    type: 'workspaceWrite',
+    writableRoots: [process.cwd()],
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  })
+  assert.equal(turnParams?.approvalPolicy, 'on-request')
+  assert.deepEqual(chunks.find((chunk) => (chunk as { type?: string }).type === 'permission-request'), {
+    type: 'permission-request',
+    requestId: '88',
+    kind: 'file_change',
+    toolName: 'edit',
+    callId: 'file-change-item',
+    detail: '需要写入工作区',
+  })
+  assert.deepEqual(chunks.filter((chunk) => (chunk as { type?: string }).type === 'tool-event'), [
+    { type: 'tool-event', toolName: 'edit_file', callId: 'file-change-item', input: '{"changes":[{"file_path":"/workspace/a.ts","kind":"update","diff":"@@ -1 +1 @@\\n-old\\n+new"}]}', status: 'running' },
+    { type: 'tool-event', toolName: 'edit_file', callId: 'file-change-item', input: '{"changes":[{"file_path":"/workspace/a.ts","kind":"update","diff":"@@ -1 +1 @@\\n-old\\n+new"}]}', status: 'completed' },
+  ])
+  assert.deepEqual(approval, { decision: 'accept' })
   driver.dispose()
 })
 
@@ -890,6 +1064,7 @@ test('Codex 仅在失败终止通知到达后结束为 error', async () => {
   for await (const chunk of driver.executeTurn({ sessionId: 'codex-failed', messages: [], prompt: '执行' })) chunks.push(chunk)
   assert.deepEqual(chunks, [
     { type: 'session-binding', providerSessionId: 'thread-failed' },
+    { type: 'text-delta', text: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: Codex Provider 未返回任何有效事件。' },
     { type: 'finish', reason: 'error' },
   ])
   driver.dispose()

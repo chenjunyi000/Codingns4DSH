@@ -189,7 +189,7 @@ export type CodingNsAgentEvent =
       readonly messageId: string
     }
   | {
-      /** Provider 已完成一个外部工具，Host 应在当前流结束后注入下一个 DSH step。 */
+      /** Provider 的 assistant item 已切换，Host 应在当前流结束后注入下一个 DSH step。 */
       readonly type: 'step-boundary'
     }
   | CodingNsAgentToolEvent

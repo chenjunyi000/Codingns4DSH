@@ -716,7 +716,7 @@ test('CLI 功能模块按会话配置接管 llm/stream，并保留默认 DSH 流
   assert.equal(listener, undefined)
 })
 
-test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', async () => {
+test('分段适配器的 step 边界必须在 DSH finish 前注入下一个 step', async () => {
   const table = new CodingNsRpcTable()
   let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
   const order: string[] = []
@@ -764,12 +764,7 @@ test('Codex 工具 step 边界必须在 DSH finish 前注入下一个 step', asy
     chunks.push(chunk)
     if (chunk.type === 'finish') assert.deepEqual(order, ['inject'])
   }
-  assert.deepEqual(chunks, [
-    { type: 'block-start', index: 1, blockType: 'text' },
-    { type: 'text-delta', index: 1, text: '\n\n[//]: # (codingns-step-boundary)' },
-    { type: 'block-end', index: 1, block: { type: 'text', text: '\n\n[//]: # (codingns-step-boundary)' } },
-    { type: 'finish', reason: { kind: 'stop' } },
-  ])
+  assert.deepEqual(chunks, [{ type: 'finish', reason: { kind: 'stop' } }])
   await features.disable('cliAdapters')
 })
 
@@ -880,6 +875,66 @@ test('OpenCode 和 Command Code 不按工具完成切分 DSH step', async () => 
   }
 
   assert.deepEqual([...splitToolSteps.entries()], [['opencode', undefined], ['command-code', undefined]])
+  assert.deepEqual(injected, [])
+  await features.disable('cliAdapters')
+})
+
+test('Codex 连续 50 个工具事件后仍可接收第二条用户消息且不注入 step 提示', async () => {
+  const table = new CodingNsRpcTable()
+  let listener: ((options: unknown, next: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) | undefined
+  const prompts: string[] = []
+  const injected: string[] = []
+  const registry = new CodingNsCliAdapterRegistry([{
+    descriptor: { id: 'codex', name: 'Codex' },
+    supportsSegmentedTurns: true,
+    async detect() { return { installed: true, version: '1.0.0', command: 'codex' } },
+    async listModels() { return { groups: [], currentModel: null, currentEffort: null } },
+    async *executeTurn(input: { readonly prompt: string }) {
+      prompts.push(input.prompt)
+      for (let index = 0; index < 50; index += 1) {
+        yield { type: 'tool-event', toolName: 'shell', callId: `call-${index}`, status: 'completed' } as const
+      }
+      yield { type: 'text-delta', text: '完成' } as const
+      yield { type: 'finish', reason: 'stop' } as const
+    },
+  }])
+  const events = {
+    on(_name: string, next: (options: unknown, downstream: () => AsyncIterable<unknown>) => AsyncIterable<unknown>) {
+      listener = next
+      return () => { listener = undefined }
+    },
+  }
+  const features = new FeatureRegistry({
+    rpc: table,
+    events,
+    nativeSessions: {
+      available: true,
+      store: undefined,
+      controller: undefined,
+      get() { return { header: { cwd: '/workspace' } } },
+      list() { return [] },
+      async ensure() { return null },
+      async flush() {},
+      appendRequestContext() { return true },
+      injectNextStep(sessionId) {
+        injected.push(sessionId)
+        return true
+      },
+      subscribe() { return () => {} },
+    },
+  })
+  features.register(createCliAdaptersFeature({ registry }))
+  await features.start('cliAdapters')
+  await table.resolve('cli/session/set')?.handler('session/set', { sessionId: 'codex-fifty-tools', adapterId: 'codex' })
+
+  const first = []
+  for await (const chunk of listener!({ sessionId: 'codex-fifty-tools', messages: [{ role: 'user', content: '第一条' }] }, async function* () {})) first.push(chunk)
+  const second = []
+  for await (const chunk of listener!({ sessionId: 'codex-fifty-tools', messages: [{ role: 'user', content: '第二条' }] }, async function* () {})) second.push(chunk)
+
+  assert.equal(first.at(-1)?.type, 'finish')
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.deepEqual(prompts, ['第一条', '第二条'])
   assert.deepEqual(injected, [])
   await features.disable('cliAdapters')
 })

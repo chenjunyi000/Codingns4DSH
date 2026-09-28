@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import type { CodingNsAgentEvent, CodingNsAgentQuestionResponse, CodingNsCliModelCatalog, CodingNsAgentPermissionResponse, CodingNsCliTurnInput } from '../../shared/contracts/cli-adapter.js'
 import type { CodingNsCliDriver, CodingNsCliSessionProbeInput, CodingNsCliSessionProbeResult } from './driver.js'
 import { JsonRpcProcess, type JsonRpcMessage } from './json-rpc-process.js'
@@ -23,6 +23,9 @@ interface CodexSegmentedTurn {
   removeAbortListener: () => void
   terminalReason: 'stop' | 'cancel' | 'error' | null
   done: boolean
+  pendingChunk: CodingNsAgentEvent | undefined
+  currentAssistantMessageId: string | undefined
+  sawCompletedTool: boolean
 }
 
 interface CodexTurnEventQueue {
@@ -35,17 +38,26 @@ interface CodexTurnEventQueue {
 interface CodexSession {
   readonly rpc: JsonRpcProcess
   readonly cwd: string | undefined
+  modelId: string | undefined
+  contextWindow: number | undefined
   threadId: string
   turnId: string | null
   providerSessionId: string
-  readonly pendingPermissions: Map<string, (value: unknown) => void>
+  readonly pendingPermissions: Map<string, PendingCodexPermission>
   readonly pendingQuestions: Map<string, (value: unknown) => void>
   segmentedTurn: CodexSegmentedTurn | undefined
+}
+
+interface PendingCodexPermission {
+  readonly resolve: (value: unknown) => void
+  readonly response: 'legacy' | 'command' | 'file-change'
 }
 
 /** Codex app-server 的 JSON-RPC 驱动，Host 只暴露统一文本流，不暴露线程和 token。 */
 export class CodexAppServerDriver implements CodingNsCliDriver {
   readonly descriptor = { id: 'codex', name: 'Codex', protocol: 'json-rpc', capabilities: ['models', 'stream', 'resume', 'interrupt', 'tool-events', 'reasoning', 'usage', 'permission', 'questions', 'steer'] as const } as const
+  // Codex 一个 Provider turn 可能同时包含多个工具调用。只有 assistant item
+  // 切换后才分段，不能在每个工具完成后注入下一 step。
   readonly supportsSegmentedTurns = true
   private readonly binaries: readonly string[]
   private readonly runSpawnSync: typeof spawnSync
@@ -108,11 +120,12 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   async *executeTurn(input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
     const command = this.cachedBinary ?? (await this.detect()).command
     if (command === null) throw new Error('Codex 未安装')
-    if (input.splitToolSteps) {
+    if (input.splitToolSteps && this.supportsSegmentedTurns) {
       yield* this.executeSegmentedTurn(input, command)
       return
     }
     const session = await this.getSession(input, command)
+    prepareCodexSession(session, input)
     const rpc = session.rpc
     try {
       if (session.threadId === '') {
@@ -128,6 +141,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       let turnStartResolved = false
       const notificationsBeforeTurnStart: JsonRpcMessage[] = []
       let terminalReason: 'stop' | 'cancel' | 'error' | null = null
+      let sawMeaningfulEvent = false
       const acceptNotification = (message: JsonRpcMessage, allowUnidentifiedTool: boolean): void => {
         if (!isCodexNotificationForTurn(message, session.threadId, activeTurnId, allowUnidentifiedTool)) return
         const turnId = readTurnId(message)
@@ -162,11 +176,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       if (input.signal?.aborted) onAbort()
       else input.signal?.addEventListener('abort', onAbort, { once: true })
       try {
-        const response = await rpc.request('turn/start', {
-          threadId: session.threadId,
-          input: [{ type: 'text', text: input.prompt }],
-          ...(input.effortId ? { effort: input.effortId } : {}),
-        }, { signal: input.signal, killOnAbort: false })
+        const response = await rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
         const responseTurnId = readTurnId(response)
         if (responseTurnId !== null) {
           activeTurnId = responseTurnId
@@ -183,8 +193,11 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         if (responseTerminal !== null) onNotification(responseTerminal)
 
         for await (const message of eventQueue.iterable) {
-          const chunk = codexMessageToChunk(message)
-          if (chunk !== null) yield chunk
+          const rawChunk = codexMessageToChunk(message)
+          if (rawChunk === null) continue
+          if (rawChunk.type !== 'finish') sawMeaningfulEvent = true
+          const chunk = stabilizeCodexUsage(session, rawChunk)
+          yield chunk
         }
         if (input.signal?.aborted) await this.interrupt(input.sessionId)
       } catch (error) {
@@ -195,18 +208,24 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
         removeNotificationListener()
         eventQueue.close()
       }
-      yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : terminalReason ?? 'stop' }
+      if (!input.signal?.aborted && terminalReason !== 'cancel' && !sawMeaningfulEvent) {
+        yield { type: 'text-delta', text: 'CODINGNS_PROVIDER_EMPTY_RESPONSE: Codex Provider 未返回任何有效事件。' }
+        yield { type: 'finish', reason: 'error' }
+      } else {
+        yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : terminalReason ?? 'stop' }
+      }
     } finally { /* app-server 在会话结束前保持连接。 */ }
   }
 
   /**
-   * 将一个 Codex turn 按工具完成点切成多个 DSH step。
+   * 将一个 Codex turn 按 assistant item 切成多个 DSH step。
    *
    * DSH 的 step 边界只能由 Agent Loop 提交；这里仅提前结束本次 llm/stream，
    * 保留同一个 Codex turn 的通知队列，下一次 llm/stream 再继续消费它。
    */
   private async *executeSegmentedTurn(input: CodingNsCliTurnInput, command: string): AsyncIterable<CodingNsAgentEvent> {
     const session = await this.getSession(input, command)
+    prepareCodexSession(session, input)
     const rpc = session.rpc
     let active: CodexSegmentedTurn | undefined
     try {
@@ -222,7 +241,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       if (isNew) session.segmentedTurn = active
       if (isNew) yield { type: 'session-binding', providerSessionId: session.providerSessionId }
 
-      for await (const chunk of this.consumeSegment(active, input)) yield chunk
+      for await (const chunk of this.consumeSegment(session, active, input)) yield chunk
       if (active.done && session.segmentedTurn === active) session.segmentedTurn = undefined
     } catch (error) {
       if (active !== undefined && !active.done) this.closeSegmentedTurn(session, active)
@@ -244,6 +263,9 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       removeNotificationListener: () => undefined,
       terminalReason: null,
       done: false,
+      pendingChunk: undefined,
+      currentAssistantMessageId: undefined,
+      sawCompletedTool: false,
       removeAbortListener: () => undefined,
     }
     const acceptNotification = (message: JsonRpcMessage, allowUnidentifiedTool: boolean): void => {
@@ -276,11 +298,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     if (input.signal?.aborted) onAbort()
     else input.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const response = await session.rpc.request('turn/start', {
-        threadId: session.threadId,
-        input: [{ type: 'text', text: input.prompt }],
-        ...(input.effortId ? { effort: input.effortId } : {}),
-      }, { signal: input.signal, killOnAbort: false })
+      const response = await session.rpc.request('turn/start', codexTurnStartParams(input, session.threadId), { signal: input.signal, killOnAbort: false })
       const responseTurnId = readTurnId(response)
       if (responseTurnId !== null) {
         activeTurnId = responseTurnId
@@ -297,25 +315,48 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     }
   }
 
-  private async *consumeSegment(active: CodexSegmentedTurn, input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
+  private async *consumeSegment(session: CodexSession, active: CodexSegmentedTurn, input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
     while (true) {
-      const next = await active.queue.next()
-      if (next.done) {
+      let chunk: CodingNsAgentEvent | null
+      if (active.pendingChunk !== undefined) {
+        chunk = active.pendingChunk
+        active.pendingChunk = undefined
+      } else {
+        const next = await active.queue.next()
+        if (next.done) {
+          if (input.signal?.aborted) throw new Error('请求已取消')
+          active.done = true
+          active.removeAbortListener()
+          active.removeNotificationListener()
+          yield { type: 'finish', reason: active.terminalReason ?? 'stop' }
+          return
+        }
         if (input.signal?.aborted) throw new Error('请求已取消')
-        active.done = true
-        active.removeAbortListener()
-        active.removeNotificationListener()
-        yield { type: 'finish', reason: active.terminalReason ?? 'stop' }
-        return
+        chunk = codexMessageToChunk(next.value)
       }
-      if (input.signal?.aborted) throw new Error('请求已取消')
-      const chunk = codexMessageToChunk(next.value)
       if (chunk === null) continue
-      yield chunk
-      if (chunk.type === 'tool-event' && (chunk.status === 'completed' || chunk.status === 'failed')) {
-        yield { type: 'step-boundary' }
-        return
+
+      // 一个 assistant item 可能在多个工具调用之间切换。把新 item 的首个
+      // 正文留给下一次 llm/stream，当前流只返回边界，确保 DSH 先创建新 step。
+      if ((chunk.type === 'text-delta' || chunk.type === 'reasoning-delta')
+        && chunk.messageId !== undefined) {
+        const previousMessageId = active.currentAssistantMessageId
+        if (previousMessageId !== undefined
+          && previousMessageId !== chunk.messageId
+          && active.sawCompletedTool) {
+          active.pendingChunk = chunk
+          active.currentAssistantMessageId = chunk.messageId
+          active.sawCompletedTool = false
+          yield { type: 'step-boundary' }
+          return
+        }
+        active.currentAssistantMessageId = chunk.messageId
       }
+      const stabilizedChunk = stabilizeCodexUsage(session, chunk)
+      if (stabilizedChunk.type === 'tool-event' && (stabilizedChunk.status === 'completed' || stabilizedChunk.status === 'failed')) {
+        active.sawCompletedTool = true
+      }
+      yield stabilizedChunk
     }
   }
 
@@ -347,13 +388,19 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   /** 回传原生权限请求；审批值只在 Host 进程中流转。 */
   respondPermission(sessionId: string, response: CodingNsAgentPermissionResponse): void {
     const session = this.sessions.get(sessionId)
-    const resolve = session?.pendingPermissions.get(response.requestId)
-    if (resolve === undefined || session === undefined) throw new Error('Codex 权限请求不存在')
+    const pending = session?.pendingPermissions.get(response.requestId)
+    if (pending === undefined || session === undefined) throw new Error('Codex 权限请求不存在')
     session.pendingPermissions.delete(response.requestId)
-    resolve({
-      approved: response.approved,
-      ...(response.reason?.trim() ? { reason: response.reason.trim().slice(0, 512) } : {}),
-    })
+    if (pending.response === 'file-change') {
+      pending.resolve({ decision: response.approved ? 'accept' : 'decline' })
+    } else if (pending.response === 'command') {
+      pending.resolve({ decision: response.approved ? 'accept' : 'decline' })
+    } else {
+      pending.resolve({
+        approved: response.approved,
+        ...(response.reason?.trim() ? { reason: response.reason.trim().slice(0, 512) } : {}),
+      })
+    }
   }
 
   /** 回传 requestUserInput 的结构化回答。 */
@@ -368,7 +415,7 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
   dispose(): void {
     for (const session of this.sessions.values()) {
       if (session.segmentedTurn !== undefined) this.closeSegmentedTurn(session, session.segmentedTurn)
-      for (const resolve of session.pendingPermissions.values()) resolve({ approved: false })
+      for (const pending of session.pendingPermissions.values()) pending.resolve({ approved: false })
       session.pendingPermissions.clear()
       for (const resolve of session.pendingQuestions.values()) resolve({ answers: {} })
       session.pendingQuestions.clear()
@@ -388,16 +435,18 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
     const session = {
       rpc,
       cwd: input.cwd,
+      modelId: input.modelId,
+      contextWindow: undefined as number | undefined,
       threadId: '',
       turnId: null as string | null,
       providerSessionId: input.providerSessionId ?? input.sessionId,
-      pendingPermissions: new Map<string, (value: unknown) => void>(),
+      pendingPermissions: new Map<string, PendingCodexPermission>(),
       pendingQuestions: new Map<string, (value: unknown) => void>(),
       segmentedTurn: undefined as CodexSegmentedTurn | undefined,
     }
     this.processes.add(rpc)
     this.sessions.set(input.sessionId, session)
-    await rpc.request('initialize', { clientInfo: { name: 'codingns4dsh', version: '0.1.1' }, capabilities: {} }, { signal: input.signal, killOnAbort: false })
+    await rpc.request('initialize', { clientInfo: { name: 'codingns4dsh', version: '0.1.1' }, capabilities: { experimentalApi: true } }, { signal: input.signal, killOnAbort: false })
     rpc.notify('initialized', {})
     rpc.setServerRequestHandler((request) => {
       const requestId = readRequestId(request)
@@ -409,10 +458,41 @@ export class CodexAppServerDriver implements CodingNsCliDriver {
       if (isQuestionEvent(`${method} ${type}`)) {
         return new Promise<unknown>((resolve) => session.pendingQuestions.set(requestId, resolve))
       }
-      return new Promise<unknown>((resolve) => session.pendingPermissions.set(requestId, resolve))
+      return new Promise<unknown>((resolve) => session.pendingPermissions.set(requestId, {
+        resolve,
+        response: permissionResponseKind(method, params),
+      }))
     })
     return session
   }
+}
+
+function stabilizeCodexUsage(session: CodexSession, event: CodingNsAgentEvent): CodingNsAgentEvent {
+  if (event.type !== 'usage' || event.contextWindow === undefined) return event
+  if (session.contextWindow === undefined) {
+    session.contextWindow = event.contextWindow
+    return event
+  }
+  if (session.contextWindow === event.contextWindow) return event
+  // 同一 Codex thread/model 的 usage 通知可能带有全局默认窗口或迟到旧值。
+  // 它不能覆盖首个已确认窗口，否则 DSH 会把 256K 错显示成 1M，并跳过压缩。
+  const contextTokens = event.contextTokens ?? event.inputTokens + (event.cacheReadTokens ?? 0) + (event.cacheWriteTokens ?? 0)
+  return {
+    ...event,
+    contextWindow: session.contextWindow,
+    contextTokens,
+    contextUsageRatio: Number(Math.min(1, contextTokens / session.contextWindow).toFixed(6)),
+  }
+}
+
+function prepareCodexSession(session: CodexSession, input: CodingNsCliTurnInput): void {
+  // 未提供 modelId 表示沿用当前 Codex thread 的模型，不能因为配置字段缺省
+  // 就把已经确认的上下文容量清空。
+  if (input.modelId === undefined || session.modelId === input.modelId) return
+  // 模型切换意味着上下文容量可能改变；只有这类明确路由变化才允许重置
+  // 稳定窗口，同一模型的迟到 usage 不能触发重置。
+  session.modelId = input.modelId
+  session.contextWindow = undefined
 }
 
 function parseCodexCatalog(value: unknown): CodingNsCliModelCatalog {
@@ -464,8 +544,16 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
   }
   if (method.includes('permission') || method.includes('Approval') || type.includes('permission') || type.includes('approval')) {
     const requestId = readRequestId(message) ?? readRequestId(params)
-    const detail = text ?? (typeof params.command === 'string' ? params.command : typeof params.description === 'string' ? params.description : null)
-    if (requestId !== null) return { type: 'permission-request', requestId, kind: typeof params.kind === 'string' ? params.kind : 'unknown', ...(detail ? { detail } : {}) }
+    const permission = codexPermissionDetails(method, params, item)
+    const detail = permission.detail ?? text ?? undefined
+    if (requestId !== null) return {
+      type: 'permission-request',
+      requestId,
+      kind: permission.kind,
+      ...(permission.toolName === undefined ? {} : { toolName: permission.toolName }),
+      ...(permission.callId === undefined ? {} : { callId: permission.callId }),
+      ...(detail === undefined ? {} : { detail }),
+    }
   }
   const messageId = firstToolText(params.itemId, item.id)
   if (method.includes('agentMessage') || method.includes('message') && (type.includes('text') || type === '')) {
@@ -475,10 +563,17 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
     return text ? { type: 'reasoning-delta', text, ...(messageId === undefined ? {} : { messageId }) } : null
   }
   if (isCodexToolEvent(method, type)) {
-    const name = firstToolText(item.name, item.toolName, item.tool, item.command !== undefined ? 'command_execution' : undefined, type)
+    const name = firstToolText(
+      isFileChangeType(type) ? 'edit_file' : undefined,
+      item.name,
+      item.toolName,
+      item.tool,
+      item.command !== undefined ? 'command_execution' : undefined,
+      type,
+    )
     const callId = firstToolText(item.callId, item.call_id, item.toolCallId, item.id, params.itemId)
     const agentId = firstToolText(item.agentId, item.agent_id, type.includes('agent') || type.includes('collab') ? item.id : undefined)
-    const input = serializeToolValue(item.arguments ?? item.input ?? item.command)
+    const input = serializeToolValue(isFileChangeType(type) ? fileChangeToolInput(item) : item.arguments ?? item.input ?? item.command)
     const rawOutput = item.result ?? item.output ?? item.aggregated_output
     const explicitError = serializeToolValue(item.error)
     const output = serializeToolValue(rawOutput)
@@ -501,6 +596,53 @@ function codexMessageToChunk(message: Record<string, any>): CodingNsAgentEvent |
     }
   }
   return codexUsageChunk(params)
+}
+
+interface CodexPermissionDetails {
+  readonly kind: string
+  readonly toolName?: string
+  readonly callId?: string
+  readonly detail?: string
+}
+
+function codexPermissionDetails(method: string, params: Record<string, any>, item: Record<string, any>): CodexPermissionDetails {
+  const fileChange = method.includes('fileChange') || method.includes('file_change') || String(item.type ?? '').toLowerCase() === 'filechange'
+  const command = typeof params.command === 'string' ? params.command : typeof item.command === 'string' ? item.command : undefined
+  const reason = typeof params.reason === 'string' ? params.reason : typeof params.description === 'string' ? params.description : undefined
+  const grantRoot = typeof params.grantRoot === 'string' ? params.grantRoot : undefined
+  const paths = permissionPaths(params.fileChanges ?? params.file_changes ?? item.changes)
+  const callId = firstToolText(params.callId, params.call_id, params.itemId, item.id)
+  const detail = [reason, command, paths.length > 0 ? `文件: ${paths.join(', ')}` : undefined, grantRoot ? `允许写入: ${grantRoot}` : undefined]
+    .filter((value): value is string => value !== undefined && value.trim() !== '')
+    .join('；')
+  return {
+    kind: typeof params.kind === 'string' ? params.kind : fileChange ? 'file_change' : 'command',
+    ...(fileChange ? { toolName: 'edit' } : {}),
+    ...(callId === undefined ? {} : { callId }),
+    ...(detail === '' ? {} : { detail }),
+  }
+}
+
+function permissionPaths(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap((entry) => permissionPaths(entry))
+  if (!isRecord(value)) return []
+  const path = firstToolText(value.path, value.filePath, value.file_path)
+  return path === undefined ? [] : [path]
+}
+
+function isFileChangeType(type: string): boolean {
+  return type.replace(/[_-]/gu, '').toLowerCase() === 'filechange'
+}
+
+function fileChangeToolInput(item: Record<string, any>): unknown {
+  const changes = Array.isArray(item.changes) ? item.changes : []
+  return {
+    changes: changes.map((change) => isRecord(change) ? {
+      file_path: firstToolText(change.path, change.filePath, change.file_path) ?? '',
+      ...(typeof change.kind === 'string' ? { kind: change.kind } : {}),
+      ...(typeof change.diff === 'string' ? { diff: change.diff } : typeof change.patch === 'string' ? { diff: change.patch } : {}),
+    } : change),
+  }
 }
 
 /** Codex app-server 的 tokenUsage 使用未缓存输入和缓存输入两个独立桶。 */
@@ -619,7 +761,8 @@ function isCodexNotificationForTurn(
   if (notificationThreadId !== null && notificationThreadId !== threadId) return false
   // turn/start 响应前的无 turnId 工具通知无法证明属于本次回合，通常是
   // thread/resume 的迟到历史；响应后则把它交给当前开放的 DSH step 处理。
-  if (notificationTurnId === null && isCodexToolNotification(message) && !allowUnidentifiedTool) return false
+  if (notificationTurnId === null && !allowUnidentifiedTool
+    && (isCodexToolNotification(message) || isCodexUsageNotification(message))) return false
   return turnId === null || notificationTurnId === null || notificationTurnId === turnId
 }
 
@@ -666,6 +809,39 @@ function isCodexToolNotification(message: JsonRpcMessage): boolean {
   const method = typeof message.method === 'string' ? message.method : ''
   const type = typeof item?.type === 'string' ? item.type : ''
   return isCodexToolEvent(method, type)
+}
+
+function isCodexUsageNotification(message: JsonRpcMessage): boolean {
+  const method = typeof message.method === 'string' ? message.method.toLowerCase() : ''
+  return method.includes('tokenusage') || method.includes('token_usage') || method.includes('usage/updated')
+}
+
+function codexTurnStartParams(input: CodingNsCliTurnInput, threadId: string): Record<string, unknown> {
+  const cwd = resolve(input.cwd ?? process.cwd())
+  return {
+    threadId,
+    input: [{ type: 'text', text: input.prompt }],
+    cwd,
+    // DSH 的 workspace-write 只约束自身工具沙箱，不会自动传递给 Codex
+    // app-server。显式声明当前工作区，避免 Codex 将文件编辑误判为只读越权。
+    sandboxPolicy: {
+      type: 'workspaceWrite',
+      writableRoots: [cwd],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    },
+    approvalPolicy: 'on-request',
+    ...(input.effortId ? { effort: input.effortId } : {}),
+  }
+}
+
+function permissionResponseKind(method: string, params: Record<string, any>): PendingCodexPermission['response'] {
+  if (method.includes('fileChange') || method.includes('file_change')) return 'file-change'
+  // 新版 Codex 带 threadId/turnId/itemId，并要求 decision；旧版测试和旧
+  // app-server 使用 approved 字段，按请求形状保持向后兼容。
+  if (method.includes('commandExecution') && (params.threadId !== undefined || params.turnId !== undefined || params.itemId !== undefined)) return 'command'
+  return 'legacy'
 }
 
 function readId(value: unknown): string | null {
