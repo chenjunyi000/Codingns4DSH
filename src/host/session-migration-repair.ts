@@ -75,6 +75,10 @@ export async function repairLegacySessionLog(path: string, signal?: AbortSignal)
   const source = await readFileBytes(path)
   throwIfAborted(signal)
   const parsed = decodeLog(path, source)
+  // 0.2 使用 V4；未知的更高 generation 必须交给官方迁移器，插件不能重排
+  // 它的 event envelope，否则 repair 会把新 projection 引用改写成旧语义。
+  const generation = sessionHeaderVersion(parsed.header)
+  if (generation !== undefined && generation > 4) return false
   const repaired = repairEvents(parsed.events, isV4Log(path, parsed.header))
   if (repaired === null) return false
   throwIfAborted(signal)
@@ -204,6 +208,14 @@ function repairEvents(events: readonly SessionEvent[], canonicalizeV4Results = f
 
 function isV4Log(path: string, header: Record<string, unknown>): boolean {
   return header.version === 4 || /\.v4\.jsonl(?:\.zstd)?$/u.test(path)
+}
+
+function sessionHeaderVersion(header: Record<string, unknown>): number | undefined {
+  const direct = header.version
+  if (typeof direct === 'number' && Number.isSafeInteger(direct) && direct >= 0) return direct
+  const data = header.data
+  if (isRecord(data) && typeof data.version === 'number' && Number.isSafeInteger(data.version) && data.version >= 0) return data.version
+  return undefined
 }
 
 /** 将插件旧版在 V4 文件中留下的 V3 tool-result wrapper 提升为 tool-role 消息。 */

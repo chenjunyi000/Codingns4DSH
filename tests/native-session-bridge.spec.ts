@@ -488,6 +488,40 @@ test('原生会话桥接把 Codex 压缩活动写成标准 compaction 生命周�
     model: 'gpt-5.3-codex',
   })
   assert.deepEqual(events[6]?.options, { surfaceOp: { op: 'replace', startSeq: 2, endSeq: 3 }, sourceEventSeqs: [2, 3] })
+  assert.deepEqual(events[6]?.data?.source, { kind: 'plugin', plugin: 'compact' })
+})
+
+test('Session V4 的压缩检查点改用生产者自持的 compact-checkpoint 标识', () => {
+  const events: Array<Record<string, any>> = [
+    { type: 'session', version: 4, seq: 0 },
+    { type: 'turn/start', seq: 1, data: { turn: 1 } },
+    { type: 'step/start', seq: 2, data: { turn: 1, step: 1 } },
+    { type: 'user/message', seq: 3, data: { id: 'user-1', role: 'user', content: [{ type: 'text', text: '旧问题' }], source: { kind: 'user' } }, surfaceOp: 'append' },
+    { type: 'assistant/message', seq: 4, data: { turn: 1, step: 1, message: { id: 'assistant-1', role: 'assistant', content: [{ type: 'text', text: '旧回答' }], source: { kind: 'model', provider: 'codex', model: 'gpt-5.3-codex' } }, stream: [] }, surfaceOp: 'append' },
+  ]
+  const session = {
+    surface: { nodes: [3, 4] },
+    snapshotEvents() { return [...events] },
+    append(type: string, data: unknown, options?: unknown) {
+      const event = { type, seq: events.length, data, ...(options === undefined ? {} : { options }) }
+      events.push(event)
+      return event
+    },
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      return name === 'sessions'
+        ? { get(id: string) { return id === 'v4-compaction' ? session : undefined }, list() { return [session] } }
+        : undefined
+    },
+  } as never)
+
+  assert.equal(bridge.appendCompactionEvent?.('v4-compaction', { type: 'context-compaction', phase: 'start', compactionId: 'compact-v4', provider: 'codex', model: 'gpt-5.3-codex' }), true)
+  assert.equal(bridge.appendCompactionEvent?.('v4-compaction', { type: 'context-compaction', phase: 'summary', compactionId: 'compact-v4', summary: '保留任务目标。', provider: 'codex', model: 'gpt-5.3-codex', shadowedTokenCount: 200 }), true)
+  assert.deepEqual(events.slice(5).map((event) => event.type), ['compaction/start', 'compaction/summary', 'user/message'])
+  assert.deepEqual(events[7]?.data?.source, { kind: 'compact-checkpoint', compactionId: 'compact-v4' })
+  assert.deepEqual(events[7]?.data?.content, [{ type: 'text', text: '保留任务目标。' }])
+  assert.deepEqual(events[7]?.options, { surfaceOp: { op: 'replace', startSeq: 3, endSeq: 4 }, sourceEventSeqs: [3, 4] })
 })
 
 test('原生会话桥接把失败结果写成带 isError 的 V4 tool-role 消息', () => {
@@ -734,6 +768,30 @@ test('DSH 0.1.7 使用 model-selection source 注入下一个 step', () => {
   })
 })
 
+test('注入消息的 source 语法跟随会话 generation 而不是运行时版本号', () => {
+  const messages: Array<{ session: string; source: unknown }> = []
+  const sessions: Record<string, unknown> = {
+    'v4-step': { snapshotEvents() { return [{ type: 'session', version: 4, seq: 0 }] }, append() { return undefined } },
+    'v3-step': { snapshotEvents() { return [{ type: 'session', version: 3, seq: 0 }] }, append() { return undefined } },
+  }
+  const agents: Record<string, unknown> = {}
+  for (const id of Object.keys(sessions)) {
+    agents[id] = { inject(message: unknown) { messages.push({ session: id, source: (message as { source: unknown }).source }) } }
+  }
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      if (name === 'sessions') return { get(id: string) { return sessions[id] }, list() { return Object.values(sessions) } }
+      if (name === 'agents') return { get(id: string) { return agents[id] } }
+      return undefined
+    },
+  } as never, '0.2.0-rc.1')
+
+  assert.equal(bridge.injectNextStep?.('v4-step', '工具已完成'), true)
+  assert.equal(bridge.injectNextStep?.('v3-step', '工具已完成'), true)
+  assert.deepEqual(messages[0]?.source, { kind: 'model-selection', form: 'notice', summary: '工具已完成' })
+  assert.deepEqual(messages[1]?.source, { kind: 'plugin', plugin: 'codingns4dsh', form: 'notice', summary: '工具已完成' })
+})
+
 test('原生会话桥接通过 WorkspaceController 同步侧栏归档状态', async () => {
   const calls: string[] = []
   const bridge = createCodingNsNativeSessionBridge({
@@ -767,4 +825,38 @@ test('归档时重新发现晚于插件装载的 WorkspaceController', async () 
   assert.equal(bridge.available, true)
   assert.equal(await bridge.archive?.('dsh-late'), true)
   assert.deepEqual(calls, ['dsh-late'])
+})
+
+test('Session V4 generation 可被识别，未来 generation 不被旧投影器追加事件', () => {
+  const events: Array<Record<string, unknown>> = [
+    { type: 'session', version: 4, seq: 0 },
+    { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+  ]
+  const futureEvents: Array<Record<string, unknown>> = [
+    { type: 'session', version: 5, seq: 0 },
+    { type: 'step/start', seq: 1, data: { turn: 1, step: 1 } },
+  ]
+  const createSession = (rows: Array<Record<string, unknown>>) => ({
+    snapshotEvents() { return rows },
+    append(type: string, data: unknown) {
+      rows.push({ type, seq: rows.length, data })
+      return rows.at(-1)
+    },
+  })
+  const v4 = createSession(events)
+  const future = createSession(futureEvents)
+  const bridge = createCodingNsNativeSessionBridge({
+    get(name: string) {
+      if (name !== 'sessions') return undefined
+      return {
+        get(id: string) { return id === 'v4' ? v4 : id === 'v5' ? future : undefined },
+        list() { return [v4, future] },
+      }
+    },
+  } as never)
+  assert.equal(bridge.formatVersion?.('v4'), 4)
+  assert.equal(bridge.formatVersion?.('v5'), 'unsupported')
+  assert.notEqual(bridge.appendToolCall?.('v4', { callId: 'v4-call', name: 'read', arguments: '{}' }), null)
+  assert.equal(bridge.appendToolCall?.('v5', { callId: 'v5-call', name: 'read', arguments: '{}' }), null)
+  assert.equal(futureEvents.length, 2)
 })

@@ -19,6 +19,9 @@ export interface CodingNsNativeSessionStore {
   flush?(session: unknown): Promise<boolean> | Promise<void> | boolean | void
 }
 
+/** 插件可安全写入的 DSH Session generation；未来 generation 必须先有专用 adapter。 */
+export type CodingNsNativeSessionFormat = 3 | 4 | 'unknown' | 'unsupported'
+
 /** 公共 CLI 投影层写入 DSH 的工具调用，不包含任何 Provider 私有字段。 */
 export interface CodingNsNativeToolCall {
   readonly callId: string
@@ -129,6 +132,8 @@ export interface CodingNsNativeSessionBridge {
   readonly workspaceController?: CodingNsNativeWorkspaceController
   /** 获取已经进入 DSH 原生 SessionStore 的会话。 */
   get(sessionId: string): unknown | undefined
+  /** 读取 Session header generation，用于阻止未来格式被旧投影器误写。 */
+  formatVersion?(sessionId: string): CodingNsNativeSessionFormat
   /** 获取当前 Host 已装载的原生会话；失败时返回空数组。 */
   list(): readonly unknown[]
   /** 调用 DSH 原生 session/list；无 Controller 时回退到本地 SessionStore。 */
@@ -195,10 +200,20 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
   // 下一步的工具写进旧 step；step/start 到达后由工具投影器重试。
   const pendingStepTransitions = new Set<string>()
   let injectedStepSequence = 0
-  const modernInjectedSource = isModernDshVersion(dshVersion)
+  const modernProducerSource = isModernDshVersion(dshVersion)
+  // 当前会话的 generation 比运行时版本号更直接：v4 只接受生产者自持的
+  // source.kind，旧的 plugin 包装会被准入拒绝；v3 仍由 dsh-compaction 的
+  // plugin 判定识别。会话头缺少版本时（精简 Host 或旧夹具）才退回版本号推断。
+  const usesProducerOwnedSource = (session: AppendableSession | null): boolean => {
+    const format = sessionFormat(session)
+    if (format === 4) return true
+    if (format === 3) return false
+    return modernProducerSource
+  }
   const appendNativeToolCall = (sessionId: string, call: CodingNsNativeToolCall): CodingNsNativeToolCallHandle | null => {
     if (on !== undefined && pendingStepTransitions.has(sessionId)) return null
     const session = appendableSession(store?.get(sessionId))
+    if (sessionFormat(session) === 'unsupported') return null
     const position = session === null ? null : activeStep(session)
     if (session === null || position === null) return null
     // DSH 的工具生命周期由 assistant/message 先声明，再由 tool/call 开始。
@@ -236,7 +251,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
   }
   const appendNativeToolResult = (handle: CodingNsNativeToolCallHandle, result: CodingNsNativeToolResult): boolean => {
     const session = appendableSession(store?.get(handle.sessionId))
-    if (session === null) return false
+    if (session === null || sessionFormat(session) === 'unsupported') return false
     const error = result.error?.trim()
     session.append('tool/result', {
       turn: handle.turn,
@@ -261,7 +276,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
   }
   const appendNativeRequestContext = (sessionId: string, context: CodingNsNativeRequestContext): boolean => {
     const session = appendableSession(store?.get(sessionId))
-    if (session === null || context.provider.trim() === '' || context.model.trim() === '') return false
+    if (session === null || sessionFormat(session) === 'unsupported' || context.provider.trim() === '' || context.model.trim() === '') return false
     try {
       // request/context 是 token-meter 的容量来源。相同路由重复追加会让
       // 投影先清空旧 pressure，再等待下一条 usage，ContextMeter 因而闪烁。
@@ -339,7 +354,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
   const appendNativeUsageSample = (sessionId: string, usage: CodingNsNativeUsageSample): boolean => {
     const session = appendableSession(store?.get(sessionId))
     const position = session === null ? null : activeStep(session)
-    if (session === null || position === null) return false
+    if (session === null || sessionFormat(session) === 'unsupported' || position === null) return false
     try {
       const previousContext = latestRequestContext(session)
       const normalizedUsage = previousContext?.contextWindow !== undefined
@@ -372,7 +387,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
   }
   const appendNativeCompactionEvent = (sessionId: string, event: CodingNsNativeCompactionEvent): boolean => {
     const session = appendableSession(store?.get(sessionId))
-    if (session === null) return false
+    if (session === null || sessionFormat(session) === 'unsupported') return false
     try {
       if (event.phase === 'start') {
         if (compactionStates.has(sessionId)) return true
@@ -405,11 +420,15 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
             model: event.model?.trim() || 'external-agent',
           })
           // DSH 前端的 compaction 节点由紧随 summary 的 checkpoint 替换事件生成。
+          // v4 的检查点必须携带同一次 compaction/start 的 compactionId，v3 继续
+          // 使用该版本 dsh-compaction 识别的 plugin 标记。
           session.append('user/message', {
             id: `codingns-compaction-${state.compactionId}`,
             role: 'user',
             content: [{ type: 'text', text: summary }],
-            source: { kind: 'plugin', plugin: 'compact' },
+            source: usesProducerOwnedSource(session)
+              ? { kind: 'compact-checkpoint', compactionId: state.compactionId }
+              : { kind: 'plugin', plugin: 'compact' },
           }, {
             surfaceOp: { op: 'replace', startSeq: range.start, endSeq: range.end },
             sourceEventSeqs: range.seqs,
@@ -443,7 +462,7 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
         id: `codingns-external-step-${injectedStepSequence}-${randomUUID()}`,
         role: 'user',
         content: [{ type: 'text', text: boundedSummary }],
-        source: modernInjectedSource
+        source: usesProducerOwnedSource(appendableSession(store?.get(sessionId)))
           ? { kind: 'model-selection', form: 'notice', summary: boundedSummary }
           : { kind: 'plugin', plugin: 'codingns4dsh', form: 'notice', summary: boundedSummary },
       })
@@ -468,6 +487,9 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
     ...(workspaceController === undefined ? {} : { workspaceController }),
     get(sessionId) {
       return store?.get(sessionId)
+    },
+    formatVersion(sessionId) {
+      return sessionFormat(appendableSession(store?.get(sessionId)))
     },
     list() {
       try { return store?.list() ?? [] } catch { return [] }
@@ -645,6 +667,24 @@ function appendableSession(value: unknown): AppendableSession | null {
   if (!isRecord(value)) return null
   if (typeof value.snapshotEvents !== 'function' || typeof value.append !== 'function') return null
   return value as unknown as AppendableSession
+}
+
+/**
+ * Session V4 的 header 可能直接暴露 version，也可能包在 data 中；旧测试夹具
+ * 没有 header 时返回 unknown，继续保持 0.1.x 的兼容行为。对未来 generation
+ * 直接停止插件写入，避免把 V4 envelope 当作未知事件追加后破坏 projection。
+ */
+function sessionFormat(session: AppendableSession | null): CodingNsNativeSessionFormat {
+  if (session === null) return 'unknown'
+  let events: readonly unknown[]
+  try { events = session.snapshotEvents() } catch { return 'unknown' }
+  const header = events[0]
+  if (!isRecord(header)) return 'unknown'
+  const data = isRecord(header.data) ? header.data : undefined
+  const version = finiteInteger(header.version) ?? (data === undefined ? null : finiteInteger(data.version))
+  if (version === null) return 'unknown'
+  if (version === 3 || version === 4) return version
+  return version > 4 ? 'unsupported' : 'unknown'
 }
 
 function isNativeStepStart(value: unknown): boolean {
