@@ -370,3 +370,67 @@ test('Host RPC Gateway feature 只分发已登记的 RPC 命名空间', async ()
   assert.equal(sent[0]?.type, 'rpc.response')
   assert.deepEqual(JSON.parse(new TextDecoder().decode(sent[0]?.body)), { action: 'run', payload: { ok: true } })
 })
+
+test('DSH Session 发送失败会收敛物理线路，并向对端说明原因', async () => {
+  // 只改本地状态的失败会让对端在死线路上等一个永远不来的响应：中继页面的原生
+  // 设置 describe 就是这么永久停在 loading 的（页面空白且没有报错）。
+  const [left, right] = carrierPair()
+  const closed: (string | undefined)[] = []
+  const errors: Error[] = []
+  const originalSend = left.carrier.send.bind(left.carrier)
+  let failuresRemaining = 0
+  left.carrier.send = (data: Uint8Array) => {
+    if (failuresRemaining > 0) {
+      failuresRemaining -= 1
+      return Promise.reject(new Error('DataChannel 背压等待超时'))
+    }
+    return originalSend(data) ?? Promise.resolve()
+  }
+  left.carrier.close = async (reason?: string) => { closed.push(reason) }
+  const scope = { hostId: 'h1', kind: 'local' } as const
+  const host = new DshSession({
+    carrier: left.carrier,
+    role: 'host',
+    generation: 'g1',
+    hostScope: scope,
+    capabilities: ['rpc'],
+    onError: (error) => { errors.push(error) },
+  })
+  const client = new DshSession({
+    carrier: right.carrier,
+    role: 'client',
+    generation: 'g1',
+    hostScope: scope,
+    capabilities: ['rpc'],
+  })
+  try {
+    host.start()
+    client.start()
+    await client.waitReady()
+
+    failuresRemaining = 1
+    host.send({
+      version: 1,
+      messageId: 'h_probe',
+      streamId: 'probe',
+      channel: 'rpc',
+      type: 'rpc.response',
+      sequence: 99,
+      generation: 'g1',
+      hostScope: scope,
+      meta: {},
+      body: new Uint8Array([1, 2, 3]),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
+    assert.equal(errors.length, 1)
+    assert.match(errors[0]?.message ?? '', /背压等待超时/u)
+    assert.equal(closed.length, 1)
+    assert.match(closed[0] ?? '', /DSH Session 失败/u)
+    // 对端必须收到 session.close，而不是继续等一个不会来的响应。
+    assert.equal(client.state, 'closed')
+  } finally {
+    host.close()
+    client.close()
+  }
+})

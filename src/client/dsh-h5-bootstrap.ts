@@ -247,7 +247,13 @@ export async function startDshH5BrowserBootstrap(options: DshH5BrowserBootstrapO
   const attachConnectionClose = (current: Awaited<ReturnType<typeof connectWebRtcClient>>): void => {
     current.onClosed((error) => {
       if (stopped || current !== connection) return
-      debug.log('bootstrap.connection.closed', { generation, error: error?.message ?? 'closed' })
+      const reason = error ?? new Error('WebRTC connection closed')
+      debug.log('bootstrap.connection.closed', { generation, error: reason.message })
+      // 物理线路断开必须立刻让在途请求失败，而不是等重连流程再收尾：
+      // 中继页面上的原生设置 describe 只会一直停在 loading，表现成「模型」页
+      // 空白且没有任何报错，会话列表却因为重连成功而看起来正常。
+      transport.invalidateConnection(reason)
+      session?.close(reason.message)
       reconnectTimer = setTimeout(() => { reconnectTimer = undefined; void reconnect() }, 50)
     })
   }

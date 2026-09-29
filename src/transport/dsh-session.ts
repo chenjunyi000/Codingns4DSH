@@ -262,11 +262,29 @@ export class DshSession {
     }, interval)
   }
 
+  /**
+   * 会话失败必须同时收敛物理线路。
+   *
+   * 早期实现只把本地状态改成 `degraded`、拒绝 `waitReady`：对端既收不到
+   * `session.close`，DataChannel 也不会关闭，于是一次发送失败（例如浏览器宣告的
+   * max-message-size 太小、分片发送被拒、背压超时）之后，对端会在一个已经死掉的
+   * 线路上等一个永远不回来的响应。中继页面的原生设置 `settings/describe` 正是这样
+   * 永久停在 loading：页面空白、没有任何报错。
+   */
   private fail(error: Error): void {
+    if (this.stateValue === 'closed' || this.stateValue === 'degraded') return
+    const wasReady = this.stateValue === 'ready'
     this.stateValue = 'degraded'
     this.debug.log('session.error', { error: error.message })
     this.readyReject?.(error)
     this.options.onError?.(error)
+    if (wasReady) {
+      // 先尽力通知对端失败原因；发送本身失败也已经不影响后续收敛。
+      try { this.send(this.createEnvelope('session.close', 'session', { reason: error.message })) } catch { /* 线路不可用时尽力而为 */ }
+    }
+    const carrier = this.options.carrier
+    // 让已排队的收尾帧先进入发送链，再关闭物理线路。
+    setTimeout(() => { void carrier.close(`DSH Session 失败：${error.message}`) }, 0)
   }
 }
 
