@@ -11,6 +11,8 @@ import { OpenCodeDriver } from './opencode-driver.js'
 import { MiniMaxCodeDriver } from './mcode-driver.js'
 import { ZcodeAppServerDriver } from './zcode-driver.js'
 import { CodingNsCliAdapterRegistry } from './registry.js'
+import { setAdapterRegistry, setSubagentConversations } from './registry-holder.js'
+import { CodingNsSubagentConversations } from './subagent-conversations.js'
 import { CodingNsCliSessionStore } from './session-store.js'
 import { CodingNsDshMessageProjector } from './dsh-message-projector.js'
 import { CommandCodeSubscriptionService } from './command-code-subscription.js'
@@ -61,6 +63,12 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
       })
       registry.applyEnabledSettings(context.services.settings?.get().agentAdapters)
       registry.warmCatalog()
+      const subagentConversations = new CodingNsSubagentConversations(registry)
+      setSubagentConversations(subagentConversations)
+      context.resources.add(() => { setSubagentConversations(undefined); return subagentConversations.dispose() })
+      // 供 agent_subagent 工具跨模块消费；模块停用时同步置空。
+      setAdapterRegistry(registry)
+      context.resources.add(() => setAdapterRegistry(undefined))
       if (nativeSessions !== undefined) {
         const disposeNativeEvents = nativeSessions.subscribe({
           onEvent: (session, event) => {
@@ -98,6 +106,10 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           case 'session/steer': return registry.steer(readSessionId(payload), readPrompt(payload), false)
           case 'session/follow-up': return registry.steer(readSessionId(payload), readPrompt(payload), true)
           case 'session/interrupt': return registry.interrupt(readSessionId(payload))
+          case 'subagents/list': return subagentConversations.list(readOptionalParentSessionId(payload))
+          case 'subagents/get': return subagentConversations.get(readSubagentId(payload))
+          case 'subagents/follow-up': return subagentConversations.followUp(readSubagentId(payload), readPrompt(payload))
+          case 'subagents/interrupt': return subagentConversations.interrupt(readSubagentId(payload))
           case 'team/status': return context.services.nativeTeam?.diagnostic() ?? registry.teamDiagnostic()
           case 'team/members': return requireTeam(context).invoke('members', payload)
           case 'team/tasks': return requireTeam(context).invoke('tasks', payload)

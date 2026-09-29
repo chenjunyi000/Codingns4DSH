@@ -1,0 +1,2192 @@
+{
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\package.json": {
+    "mtime": 1790688300.7250087,
+    "ast_hash": "95fc7c23a5b7fb522843b98597642669",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\profile\\package.json": {
+    "mtime": 1790688300.726009,
+    "ast_hash": "c64214210f7e200e42d6bd0d177f12d4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\profile\\scripts\\check-dsh-install.mjs": {
+    "mtime": 1790684147.3071783,
+    "ast_hash": "6a2a4f170dfea24ac943021b24820a41",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\profile\\version.json": {
+    "mtime": 1790688300.7280219,
+    "ast_hash": "c26049ab671f7a9ea00ed8768d90d64c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\check-capability-retirement.mjs": {
+    "mtime": 1790684147.310176,
+    "ast_hash": "58c75fde18a201aaf2d9ef9f70ba9545",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\check-dsh-install.mjs": {
+    "mtime": 1790684147.310176,
+    "ast_hash": "6e376d200be80577bf50fdecbc724157",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\check-tag-version.mjs": {
+    "mtime": 1790684147.311176,
+    "ast_hash": "b6c6c6f5bc87b8e984036ee7b47b44fc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\check-version-sync.mjs": {
+    "mtime": 1790684147.3125994,
+    "ast_hash": "5c69561f1de9990a788e55b5e70c3206",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\clean-dist.mjs": {
+    "mtime": 1790684147.3125994,
+    "ast_hash": "48939e20cc30dc5f802d9d45e4041906",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\clean-stage0-dev-link.sh": {
+    "mtime": 1790684147.314119,
+    "ast_hash": "ffc9b8b48c6621650aed06d6a0c39223",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\dev-watch.mjs": {
+    "mtime": 1790684147.314119,
+    "ast_hash": "47c64a36292deec3f40d21b12767affa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\generate-capability-report.mjs": {
+    "mtime": 1790684147.3151238,
+    "ast_hash": "bb39049d973150881b5b24e8b629dc0f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\link-dsh-dev.mjs": {
+    "mtime": 1790684147.3161244,
+    "ast_hash": "c514865075898d0ffeda2017cf9c01c5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\publish-npm-package.sh": {
+    "mtime": 1790684147.3161244,
+    "ast_hash": "53d1847b906affc4c7470e7e9f3ed13b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\run-dsh-stage0.sh": {
+    "mtime": 1790684147.317124,
+    "ast_hash": "855091be6fea48276e837e07752cad9d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\run-dsh-web.sh": {
+    "mtime": 1790684147.3181248,
+    "ast_hash": "1efda4b42aed752792133981f14b2a88",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\set-dsh-version.mjs": {
+    "mtime": 1790684147.3191297,
+    "ast_hash": "6c85755a21342bbf852a5bc229de3dae",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\scripts\\set-plugin-version.mjs": {
+    "mtime": 1790684147.3191297,
+    "ast_hash": "37789eabd550b9148a4b8dadcb95f505",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\bootstrap\\dsh-connection-adapter.ts": {
+    "mtime": 1790684147.3788202,
+    "ast_hash": "5e80992c183a52bbb6a2db3b30bf08a9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\bootstrap\\index.ts": {
+    "mtime": 1790684147.3798194,
+    "ast_hash": "5cf6d9cfb980aa1fc5e629509454b251",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\account-bar.ts": {
+    "mtime": 1790684147.3808203,
+    "ast_hash": "0fd16290c554628dddeebf5815925422",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\cli-catalog.ts": {
+    "mtime": 1790684147.3818197,
+    "ast_hash": "fd1892278c4288d5cfcf43588d07cc86",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\cli-slots.ts": {
+    "mtime": 1790684147.3818197,
+    "ast_hash": "3fd134061b5cbf901fb411a140055cfa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\context-breakdown-dom.ts": {
+    "mtime": 1790684147.3828201,
+    "ast_hash": "779483dd6a2913bfd60e1b140b4781ab",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\debug\\ui.ts": {
+    "mtime": 1790684147.3838203,
+    "ast_hash": "49c26605354df5ec22cf80e547738e67",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\dsh-h5-bootstrap.ts": {
+    "mtime": 1790684147.38582,
+    "ast_hash": "7ede9c88031fc4b60e05e6421e040d00",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\dsh-runtime-version.ts": {
+    "mtime": 1790684147.3871725,
+    "ast_hash": "878a5459a6dc9d576491bd2d5f9d349c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\external-tool-stream.ts": {
+    "mtime": 1790684147.3877022,
+    "ast_hash": "f760b135fe0503fa0f6626e3a00331d3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\cli-adapters.ts": {
+    "mtime": 1790687207.9270175,
+    "ast_hash": "b7d56ad0cfac3bd7bf743fa94726dde1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\debug.ts": {
+    "mtime": 1790684147.390673,
+    "ast_hash": "ef871ffef388be4ba4cd48058210869d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\file-management-panel.ts": {
+    "mtime": 1790684147.3917773,
+    "ast_hash": "c9417de5d9b2a5cea6c931ab3fa0ecc6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\file-management.ts": {
+    "mtime": 1790684147.3928304,
+    "ast_hash": "02e00fecbb4c8652b57ef174452d4da1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\index.ts": {
+    "mtime": 1790684147.3938801,
+    "ast_hash": "79635aa6f8c6a71e23a9af1eb98222f9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\lan-access-panel.ts": {
+    "mtime": 1790684147.3949313,
+    "ast_hash": "31a5e93cd4e6d3bc9421738f7bb1329e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\lan-access.ts": {
+    "mtime": 1790684147.3954587,
+    "ast_hash": "24becaeb701024dd68893864f60fb567",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\login-protection-panel.ts": {
+    "mtime": 1790684147.3965437,
+    "ast_hash": "2f9a8f18fbe96d3396330a5c8a909aa7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\login-protection-session.ts": {
+    "mtime": 1790684147.3970659,
+    "ast_hash": "06ca1d5476a883d85f6cc8ad835f2f54",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\login-protection.ts": {
+    "mtime": 1790684147.3975906,
+    "ast_hash": "8947231fff254624ab976db3a90e80a9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\peer-host.ts": {
+    "mtime": 1790684147.3986516,
+    "ast_hash": "b9d9e22e1961d05d8a68a5fc65bd4c66",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\reverse-proxy-panel.ts": {
+    "mtime": 1790684147.399699,
+    "ast_hash": "ba215d667172e9d0283e9aa227b02c49",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\reverse-proxy.ts": {
+    "mtime": 1790684147.4002244,
+    "ast_hash": "219cef46680e1564baf41c1c83ca9afc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\subscription-usage-panel.ts": {
+    "mtime": 1790684147.401551,
+    "ast_hash": "c7595deac15bf2eaaba9feca2121cbf8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\terminal-enhancement-panel.ts": {
+    "mtime": 1790684147.402768,
+    "ast_hash": "d7ae423e71a21beaaefe341a2b224241",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\terminal-enhancement.ts": {
+    "mtime": 1790684147.403776,
+    "ast_hash": "00e9f6864d56aac4166c2e269c3cd787",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\types.ts": {
+    "mtime": 1790684147.4047735,
+    "ast_hash": "30bc9cd2ba013b92eb52fe21c403701b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\workspace-session-enhancement-panel.ts": {
+    "mtime": 1790684147.4047735,
+    "ast_hash": "37c3016acf8ecd192a5790302ac615b5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\features\\workspace-session-enhancement.ts": {
+    "mtime": 1790684147.4057734,
+    "ast_hash": "fb685c78aafd5452075f6925ad194131",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\file-management-dom.ts": {
+    "mtime": 1790684147.4067736,
+    "ast_hash": "ebdd8ae00dc9efab642ef8009fd7ded2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\git-management.ts": {
+    "mtime": 1790684147.407772,
+    "ast_hash": "9dc89a9d86c22fbd99f74d3adddd563c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\h5-bootstrap-entry.ts": {
+    "mtime": 1790684147.407772,
+    "ast_hash": "c7ca6b56d476b98412b45ab597e3f7ec",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\host-navigation.ts": {
+    "mtime": 1790684147.4087758,
+    "ast_hash": "1a26a3474bc7ea51e51cfd14c867c1db",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\host-router.ts": {
+    "mtime": 1790684147.4097736,
+    "ast_hash": "93e435cb47d34e42f0be886852d8460e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\image-assets.d.ts": {
+    "mtime": 1790684147.4097736,
+    "ast_hash": "31c3809f64f654401f9715e8ffe0f156",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\index.ts": {
+    "mtime": 1790684147.4107742,
+    "ast_hash": "3e91128f8d0349f816ec6adbac5961c5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\lan-access.ts": {
+    "mtime": 1790684147.4117758,
+    "ast_hash": "9d8fb8e19392e68a619978a52e664a30",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\locale.ts": {
+    "mtime": 1790684147.4117758,
+    "ast_hash": "a863d5ae6d1aaf20f759dd32544c7005",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-connection-button.ts": {
+    "mtime": 1790684147.412773,
+    "ast_hash": "c0e895ee5c5f7fcb0e116e801e97236c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-management-api.ts": {
+    "mtime": 1790684147.4137752,
+    "ast_hash": "5c126333880862ccdd9b8dee73e3c735",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-management-panel.ts": {
+    "mtime": 1790684147.4137752,
+    "ast_hash": "1c0c410a6efa827fbc10d7176624a698",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-native-session-ui.ts": {
+    "mtime": 1790684147.4147773,
+    "ast_hash": "25c403b886aa0a4e19a5905cc18a72db",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-scoped-client.ts": {
+    "mtime": 1790684147.4157758,
+    "ast_hash": "5d51f1aa6c568d6cf115fd57c067f40f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\peer-host-session-controller.ts": {
+    "mtime": 1790684147.4157758,
+    "ast_hash": "e9d3aa8b3f7f28e20558476d2946882d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\provider-icon-assets.ts": {
+    "mtime": 1790684246.9299898,
+    "ast_hash": "078e4ff88d60d4d644bc17a948cff070",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\provider-icons.ts": {
+    "mtime": 1790684246.93099,
+    "ast_hash": "0cdf962fcc5db59acb554feb9e884e3f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\quick-phrase-layout.ts": {
+    "mtime": 1790684147.4187756,
+    "ast_hash": "ed2c9d0e67187fa8db3e9247361b94b1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\quick-phrase-slot.ts": {
+    "mtime": 1790684147.4187756,
+    "ast_hash": "074db11023edb0c1745b45eb340329bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\remote-web-context.ts": {
+    "mtime": 1790684147.419778,
+    "ast_hash": "2657d6695ec50fd31c36561f5869ad37",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\session-adapter-cache.ts": {
+    "mtime": 1790684147.4207778,
+    "ast_hash": "902f0424dba84d40860449fc1e0ac2e0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\session-changed-files-view.ts": {
+    "mtime": 1790684147.4220366,
+    "ast_hash": "3f4bac601032026878fa58badeea365f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\settings-bridge.ts": {
+    "mtime": 1790684147.4220366,
+    "ast_hash": "40a96c92725217e8881d73485fd0e5a2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\settings-section.ts": {
+    "mtime": 1790684147.4230561,
+    "ast_hash": "a51fb0dfec9bde9ff8d7fce95c018fc4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\subscription-slot.ts": {
+    "mtime": 1790684147.4240594,
+    "ast_hash": "ef1fcf7918d398663d1a9f301de1b0f6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\index.ts": {
+    "mtime": 1790684147.4250596,
+    "ast_hash": "528a5cc1377a17101a6a8a01df287847",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\model.ts": {
+    "mtime": 1790684147.4260612,
+    "ast_hash": "933c8903576c9fdf59e15a0224ee2ba1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\recovery.ts": {
+    "mtime": 1790684147.4260612,
+    "ast_hash": "c295c03c17e99b6fc72ba2a0b9fc799f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\styles.ts": {
+    "mtime": 1790684147.4270597,
+    "ast_hash": "0f2b2be4e6e39c83422b7c1a6a37ebe7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\ui.ts": {
+    "mtime": 1790684147.4270597,
+    "ast_hash": "f10f034b6ab30e7b44c2c74dac7b4a3b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\xterm-css.d.ts": {
+    "mtime": 1790684147.4280598,
+    "ast_hash": "1b233b3f2fbda58fc951f5781ad6a11c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\terminal\\xterm-view.ts": {
+    "mtime": 1790684147.429056,
+    "ast_hash": "a752c01bcb65b9d363720cf8bf0f6d98",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\theme.ts": {
+    "mtime": 1790684147.430056,
+    "ast_hash": "3f3141e145db39bf6848362f023ec557",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\workspace-session-archive-dom.ts": {
+    "mtime": 1790684147.4310555,
+    "ast_hash": "01fd4eb6ded26435ebab74c4296bc3f9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\workspace-session-fiber.ts": {
+    "mtime": 1790684147.4310555,
+    "ast_hash": "96080be9df04e2d18dc8fbfeca786976",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\workspace-session-logo-dom.ts": {
+    "mtime": 1790684147.4320557,
+    "ast_hash": "8a1d329ab4934a99820ae2dff8989cad",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\workspace-session-rightbar-dom.ts": {
+    "mtime": 1790684147.4330544,
+    "ast_hash": "a7efda25542075083b0c05b907655c99",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\workspace-session-visibility-dom.ts": {
+    "mtime": 1790684147.434057,
+    "ast_hash": "ae7939b435867606314b9dd1030a75de",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\config-forms-adapter.ts": {
+    "mtime": 1790684147.4350536,
+    "ast_hash": "0b57ce1df2a508d8f2faf4b9a4bd46cc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\conversation-adapter.ts": {
+    "mtime": 1790684147.4360533,
+    "ast_hash": "75d98cd4f03394c935972b994fbcb269",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\locale-adapter.ts": {
+    "mtime": 1790684147.4360533,
+    "ast_hash": "c142ac59899168ea4886ba560771d5a0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\primitives-adapter.ts": {
+    "mtime": 1790684147.4370549,
+    "ast_hash": "66910bc9ca25dbfdd1e777af45301fb5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\settings-scope-adapter.ts": {
+    "mtime": 1790684147.4370549,
+    "ast_hash": "c80ca4cfcb10e85cf020a8f8f9caa3cc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\sidebar-adapter.ts": {
+    "mtime": 1790684147.4380553,
+    "ast_hash": "94503f901af97326de0cbf43eb2882bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\theme-adapter.ts": {
+    "mtime": 1790684147.4380553,
+    "ast_hash": "0edfe796bd39c4628eeecb04b528954f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\client\\typert-adapter.ts": {
+    "mtime": 1790684147.4390552,
+    "ast_hash": "251a26fd60fd270d776b49270d2a0ee8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\host\\config-forms-adapter.ts": {
+    "mtime": 1790684147.4400556,
+    "ast_hash": "108cb8913ea2af5530e6cd379a1f0b08",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\host\\connection-rpc-adapter.ts": {
+    "mtime": 1790684147.4410555,
+    "ast_hash": "535546ef43d5b9cc41bc56b875bf55bd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\host\\settings-scope-adapter.ts": {
+    "mtime": 1790684147.4410555,
+    "ast_hash": "5dc569356f7167c3a0b924d4257c5c15",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\host\\typert-adapter.ts": {
+    "mtime": 1790684147.442056,
+    "ast_hash": "06118cc5da207e891c1cef9fba225bad",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\index.ts": {
+    "mtime": 1790684147.442056,
+    "ast_hash": "9f587eb573ff0e59acacc95910966dfc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\matrix.ts": {
+    "mtime": 1790684147.4430559,
+    "ast_hash": "d0f988727d226a1079b68aeeadf6a8e8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\registry.ts": {
+    "mtime": 1790684147.4430559,
+    "ast_hash": "63e0c8310098ab97cb7139c449d91c5e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\routes.ts": {
+    "mtime": 1790684147.4440558,
+    "ast_hash": "fafa6e2c43f45953934288a5227c32b8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\settings-store.ts": {
+    "mtime": 1790684147.4450552,
+    "ast_hash": "0a97f52345140aa27e5c4bc766c6b32a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\dsh-capabilities\\types.ts": {
+    "mtime": 1790684147.4450552,
+    "ast_hash": "28e8d3eb3bfb7094ecf643a3c135b605",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\features\\host-router.ts": {
+    "mtime": 1790684147.4460535,
+    "ast_hash": "30d8674633587ceec81e4a81914c1d17",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\features\\index.ts": {
+    "mtime": 1790684147.4470532,
+    "ast_hash": "75c08918357c8aca1a15b72a0e9244fb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\features\\registry.ts": {
+    "mtime": 1790684147.448056,
+    "ast_hash": "0361ab71cbf1797d368a794122f54d97",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\features\\resource-scope\\index.ts": {
+    "mtime": 1790684147.4490623,
+    "ast_hash": "815a17cca5fc01a14d45eb02ebea9579",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\auth-session.ts": {
+    "mtime": 1790684147.4500577,
+    "ast_hash": "b3a681180c7b221ed37f744e18c93dab",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\claude-driver.ts": {
+    "mtime": 1790684147.4510567,
+    "ast_hash": "27f038fbd0d550a1bc232c07049adf62",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\claude-model-options.ts": {
+    "mtime": 1790684147.452058,
+    "ast_hash": "0dc21189e6469083ee21c1635c2bdd0a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\codex-driver.ts": {
+    "mtime": 1790684147.45306,
+    "ast_hash": "0f7e8a129fdf14910e2d9edc7221565b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\command-code-driver.ts": {
+    "mtime": 1790684147.454056,
+    "ast_hash": "af0a09a8b244e2da5c89a1790a83f11c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\command-code-subscription.ts": {
+    "mtime": 1790684147.454056,
+    "ast_hash": "4d91af9bdf8a4931fe81e9ec5c63a1c8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\desktop-app-runtime.ts": {
+    "mtime": 1790593539.9616535,
+    "ast_hash": "bd3729fe4a02750f31ea2eaedaceb6e4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\driver.ts": {
+    "mtime": 1790684147.455062,
+    "ast_hash": "66984cacd10afd4005563b5a029ff926",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\dsh-message-projector.ts": {
+    "mtime": 1790684147.4560626,
+    "ast_hash": "83f53e342828bdd397d37da8f568c46d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\dsh-tool-history.ts": {
+    "mtime": 1790684147.4560626,
+    "ast_hash": "30e192ef515a104e38609759c266f49c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\feature.ts": {
+    "mtime": 1790687075.824505,
+    "ast_hash": "c4bf74ecb59663805875e9de90bf1cd5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\gemini-driver.ts": {
+    "mtime": 1790684147.4582338,
+    "ast_hash": "944aeefee9e67adee18d16369a65a070",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\grok-driver.ts": {
+    "mtime": 1790684147.459244,
+    "ast_hash": "8ed622c496091deea95628682a3c14c5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\http-sse-client.ts": {
+    "mtime": 1790684147.459244,
+    "ast_hash": "e510cd4fd55874f4ecf394a61d649780",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\interaction-events.ts": {
+    "mtime": 1790684147.4602396,
+    "ast_hash": "26b2cfd04b06dd5bd9ffa8ed85d2f0a3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\json-rpc-process.ts": {
+    "mtime": 1790684765.65318,
+    "ast_hash": "7e8a7ffe68a54bc235619977112261d8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\kimi-driver.ts": {
+    "mtime": 1790684147.4612372,
+    "ast_hash": "e32c4dceec1ca46a24553e60b8b44344",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\legacy-session-adapter.ts": {
+    "mtime": 1790684147.4612372,
+    "ast_hash": "f34f2af986c5d7fbdd50844c9dfd1c68",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\legacy-session-settings.ts": {
+    "mtime": 1790684147.462237,
+    "ast_hash": "9ceebde3818c609e00260cde2f275a18",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\mcode-catalog.ts": {
+    "mtime": 1790672764.41143,
+    "ast_hash": "2aa3f8fcdd18c497d8bd03f51c5c1eb5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\mcode-driver.ts": {
+    "mtime": 1790675554.6907778,
+    "ast_hash": "1a5d5648c1fe64e280ada08bfd20167e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\model-catalog.ts": {
+    "mtime": 1790684246.9359899,
+    "ast_hash": "83efd710f8309fe3510ac80b49a0cf6f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\native-team-proxy.ts": {
+    "mtime": 1790684147.4642386,
+    "ast_hash": "9e0f5d030ad0c14c717d8ee70a39d810",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\official-provider-subscription.ts": {
+    "mtime": 1790684147.4642386,
+    "ast_hash": "e870374be9adb7eb50f5611c25bc93e6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\opencode-driver.ts": {
+    "mtime": 1790684147.4652388,
+    "ast_hash": "b583fe1bb624a5afca3ba201e3ba6005",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\pi-driver.ts": {
+    "mtime": 1790684147.4662383,
+    "ast_hash": "c481274b922d2f31b73e76983f22a273",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\process-utils.ts": {
+    "mtime": 1790684147.4662383,
+    "ast_hash": "1813fab4370dc30a6c5224c18d8a4231",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\provider-registry.ts": {
+    "mtime": 1790684147.467244,
+    "ast_hash": "df17a2fe32e6d4823deeb8333d72c809",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\provider-subscription.ts": {
+    "mtime": 1790684147.4682374,
+    "ast_hash": "32516e3ea2bdc40b507e7e724d39db46",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\registry-holder.ts": {
+    "mtime": 1790687075.8221061,
+    "ast_hash": "93ffedaf7e8ea5feb7317c78055562f4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\registry.ts": {
+    "mtime": 1790684382.4334707,
+    "ast_hash": "0c0a2d7a71764812523259531019fbc7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\rpc-driver-utils.ts": {
+    "mtime": 1790684147.4682374,
+    "ast_hash": "824a5f02ec26b0acb2fedaa370fab4d2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\session-probe.ts": {
+    "mtime": 1790684147.46974,
+    "ast_hash": "1e29df6de381d727b5ce8310c76a836a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\session-store.ts": {
+    "mtime": 1790684147.4712455,
+    "ast_hash": "8a10a7dd340ccfd9aedea61a1d46858f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\standard-stream-driver.ts": {
+    "mtime": 1790684147.4717672,
+    "ast_hash": "6f833c7b3a0e20fd6f835680ea841328",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\stream-normalizer.ts": {
+    "mtime": 1790684147.4717672,
+    "ast_hash": "a62ff4169c8f0b088792364602f32d67",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\subagent-tool.ts": {
+    "mtime": 1790687254.5109856,
+    "ast_hash": "9057638fbed32fd58b8e271b6120892c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\tool-observation.ts": {
+    "mtime": 1790684147.4727707,
+    "ast_hash": "14b962b3ed97e79b4ac8fd8e44998c65",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\zcode-driver.ts": {
+    "mtime": 1790680392.047646,
+    "ast_hash": "0d9e619ed324db7ed040f0b19ec9d90c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\control-api-client.ts": {
+    "mtime": 1790684147.4737728,
+    "ast_hash": "096aabbf0ab4f940775e01ad5a71d13e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\debug.ts": {
+    "mtime": 1790684147.474772,
+    "ast_hash": "2057946addbe0371e6b860b5fae24986",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\dsh-device-runtime.ts": {
+    "mtime": 1790684147.4757767,
+    "ast_hash": "162a240de889732eb5e275142b99b5b4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\dsh-gateway-feature.ts": {
+    "mtime": 1790684147.4757767,
+    "ast_hash": "f4b5cc9f566487ba6ae05a666dfa63f2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\dsh-runtime-version.ts": {
+    "mtime": 1790684147.4767742,
+    "ast_hash": "96cdeb9fba0b9ce7b9c59876e966e866",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\auth.ts": {
+    "mtime": 1790685142.285148,
+    "ast_hash": "74fe0584877f1edc2b689df43f2beccf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\debug.ts": {
+    "mtime": 1790684147.4777763,
+    "ast_hash": "243852df35538146a1314dc61e437630",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\file-management.ts": {
+    "mtime": 1790684147.4792619,
+    "ast_hash": "32128daa3cfb5b40aa2fa4e4bfc42e6e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\git-management.ts": {
+    "mtime": 1790684147.4792619,
+    "ast_hash": "ccf46cf0706a30284a4e572cd8f42a3d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\host-status.ts": {
+    "mtime": 1790684147.480265,
+    "ast_hash": "11479bcec8fdebd6100691083937805b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\index.ts": {
+    "mtime": 1790684147.480265,
+    "ast_hash": "8f86607f6b587cbd021f2a4043a1c778",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\lan-access-dsh.ts": {
+    "mtime": 1790684147.4812665,
+    "ast_hash": "4a438614024fde98b703a8ff20a0524b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\peer-host.ts": {
+    "mtime": 1790684147.4822676,
+    "ast_hash": "313979e8bfce99f3ccec624b389051f7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\terminal-process.ts": {
+    "mtime": 1790684147.4822676,
+    "ast_hash": "08be096b020ef2c8bee730c63f34a6c5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\terminal-status.ts": {
+    "mtime": 1790684147.4832673,
+    "ast_hash": "bb292001ba42592085a219c657d7e177",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\features\\types.ts": {
+    "mtime": 1790684147.4832673,
+    "ast_hash": "873e5d01a0c092d37555356cf027977c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\host-router.ts": {
+    "mtime": 1790684147.4842675,
+    "ast_hash": "93e435cb47d34e42f0be886852d8460e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\index-injection.ts": {
+    "mtime": 1790684147.485014,
+    "ast_hash": "2396e4557130414ab0d0817c6248085c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\index.ts": {
+    "mtime": 1790684382.4309802,
+    "ast_hash": "ae8f8ba20ea477d6d711214960b32119",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\lan-access-dsh.ts": {
+    "mtime": 1790684147.48602,
+    "ast_hash": "2e3840bcfa7ef0ef45d299b34a56afe7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\host-api-proxy-service.ts": {
+    "mtime": 1790684147.4880252,
+    "ast_hash": "6fa344a9b8efe2984c89be2b1c0336ba",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\host-ws-connector.ts": {
+    "mtime": 1790684147.4880252,
+    "ast_hash": "cf85801617432e7f0e836eeaaa92c0dd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\host-ws-proxy-service.ts": {
+    "mtime": 1790684147.4890254,
+    "ast_hash": "c9a0abae458d6aafee45bd47b5740f65",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-aggregate-service.ts": {
+    "mtime": 1790684147.4890254,
+    "ast_hash": "28c2b520fe6e9e9d0d9b2f82a11fb176",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-diagnostics.ts": {
+    "mtime": 1790684147.490025,
+    "ast_hash": "dbddb49f09a5a5ee77c79ba5db6ed7af",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-handshake.ts": {
+    "mtime": 1790684147.4910252,
+    "ast_hash": "a5d82b87b152a579d8b45f3357d2f913",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-relay.ts": {
+    "mtime": 1790684147.4910252,
+    "ast_hash": "76534a7b09273cdb5ea2402141a492d0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-session.ts": {
+    "mtime": 1790684147.4920251,
+    "ast_hash": "94f14389618556e8c758613d197e0518",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-store.ts": {
+    "mtime": 1790684147.4920251,
+    "ast_hash": "6e38e269b2db3b16e71047f89ffcbcec",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\modules\\peer-host\\peer-host-ws-gateway.ts": {
+    "mtime": 1790684147.4930253,
+    "ast_hash": "806f8f00070bde51cbaed45c148c9fa2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\native-session-bridge.ts": {
+    "mtime": 1790684147.4940248,
+    "ast_hash": "98508d7dff9c3d4976eddf99197cc970",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\node-cli.d.ts": {
+    "mtime": 1790684147.4950254,
+    "ast_hash": "74a4b4e06d24fd7521c8752e81e6dabd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\node-net.d.ts": {
+    "mtime": 1790684147.4950254,
+    "ast_hash": "4620d5ee8f6a84fc6e7d0ef098c3d0b7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\relay-tunnel-runtime.ts": {
+    "mtime": 1790684147.496025,
+    "ast_hash": "b223c87778dc888ff09c22537b952c58",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\remote-web-runtime.ts": {
+    "mtime": 1790684147.4970255,
+    "ast_hash": "43c49fc1446d69519c69c07a1f33a13e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\rpc-table.ts": {
+    "mtime": 1790684147.4970255,
+    "ast_hash": "db17a46a23438ab9c8ddfd6790b50669",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\rpc.ts": {
+    "mtime": 1790684147.498025,
+    "ast_hash": "646a75175df2521771d8486640937fce",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\session-changes.ts": {
+    "mtime": 1790684147.499025,
+    "ast_hash": "0f75932dcecbb43fcbc01648d2ac366e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\session-migration-repair.ts": {
+    "mtime": 1790684147.500025,
+    "ast_hash": "a22af793b4c0d7d55a36fe6f1328fbdc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\settings.ts": {
+    "mtime": 1790684147.500025,
+    "ast_hash": "35f4b17c566a27f1c42a3f22bb107720",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\attachment-registry.ts": {
+    "mtime": 1790684147.5010245,
+    "ast_hash": "980b5786b038378f690e36a13739d611",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\backends\\conpty-backend.ts": {
+    "mtime": 1790684147.5025296,
+    "ast_hash": "27ffbdddf099ba0847c4b1e0e68551e4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\backends\\local-pty-backend.ts": {
+    "mtime": 1790684147.5035353,
+    "ast_hash": "4cfb92d247eda61a36ab58d1f8021ea9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\backends\\tmux-backend.ts": {
+    "mtime": 1790684147.5045958,
+    "ast_hash": "5f95f1de56144283c665a45fc1756628",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\broker\\conpty-broker-client.ts": {
+    "mtime": 1790684147.5056038,
+    "ast_hash": "a35fb3e1d442dc1f5c74e7ffdda46d73",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\broker\\conpty-broker-process.ts": {
+    "mtime": 1790684147.5056038,
+    "ast_hash": "f648b066fd4a9031ce5c13f37f906724",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\broker\\conpty-broker-protocol.ts": {
+    "mtime": 1790684147.5066023,
+    "ast_hash": "f6c50a5fb0a5aad0bd61fa1dfbeaffd3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\controller-factory.ts": {
+    "mtime": 1790684147.507603,
+    "ast_hash": "038843c0f28e6d8e18bd66f2235721be",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\index.ts": {
+    "mtime": 1790684147.507603,
+    "ast_hash": "907f9bfb87c5eb04bc15d568b278074a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\runtime-adapter.ts": {
+    "mtime": 1790684147.5086029,
+    "ast_hash": "393c73306fda2de6fe789e7fad1c9578",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\runtime-manager.ts": {
+    "mtime": 1790684147.5097597,
+    "ast_hash": "0a9018654e9efac3f6eb3ac11acc32c2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\shell-detection.ts": {
+    "mtime": 1790684147.5097597,
+    "ast_hash": "4548271d5c8ca24e36e320acb1694dfd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\startup.ts": {
+    "mtime": 1790684147.5107632,
+    "ast_hash": "9a4bbd02506b262902cf92ddd7080833",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\terminal-controller.ts": {
+    "mtime": 1790684147.511769,
+    "ast_hash": "cf4ef824b4c0a29364169d52bb6ec47f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\terminal-process-service.ts": {
+    "mtime": 1790684147.511769,
+    "ast_hash": "a20e35fa7c053e07d263832f951cbb9f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\terminal-process-store.ts": {
+    "mtime": 1790684147.5127628,
+    "ast_hash": "f8dfcc51af102d8144342d35642fa7c8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\terminal-service.ts": {
+    "mtime": 1790684147.5127628,
+    "ast_hash": "446d75bf6bd4dac41478e3347c780a9f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\terminal\\terminal-store.ts": {
+    "mtime": 1790684147.5142715,
+    "ast_hash": "8f06cbdd35c15b741bb759cf12cca7e6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\index.ts": {
+    "mtime": 1790684147.5142715,
+    "ast_hash": "900cf9b564a11f5ccce0302c397acfe2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\auth.ts": {
+    "mtime": 1790684147.5162854,
+    "ast_hash": "2b9ed789bc8e0733d17bcdfa8cc0a8e2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\cli-adapter.ts": {
+    "mtime": 1790686961.2880094,
+    "ast_hash": "bcbf4e1e68d531425cdf2d070b4e1365",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\command-code.ts": {
+    "mtime": 1790684147.51728,
+    "ast_hash": "8078c5b0b1b3a41b2bb8e408cdc6ac23",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\config.ts": {
+    "mtime": 1790684147.5182824,
+    "ast_hash": "7dbeac4a030c9f6248d3b5e051ef23b0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\debug-config.ts": {
+    "mtime": 1790684147.5182824,
+    "ast_hash": "0952982488ce0a2e403f1a0d14a1931b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\debug.ts": {
+    "mtime": 1790684147.5192814,
+    "ast_hash": "1791be554f77345dafec8d894ff63048",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\dsh-device.ts": {
+    "mtime": 1790684147.5192814,
+    "ast_hash": "1a158a3b4db0d3b39e015cf4f8777269",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\errors.ts": {
+    "mtime": 1790684147.5202818,
+    "ast_hash": "953c6383b9fffd02c1dda6c038b04df2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\feature.ts": {
+    "mtime": 1790684147.521279,
+    "ast_hash": "bcd71b37fc0ab221e79f74a8496127c0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\file-management.ts": {
+    "mtime": 1790684147.521279,
+    "ast_hash": "10fe20b08475549aa0eedaacdffd83a6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\git.ts": {
+    "mtime": 1790684147.522279,
+    "ast_hash": "4e385638e812345863ec80624c5d69b8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\host-status.ts": {
+    "mtime": 1790684147.522279,
+    "ast_hash": "27b704b545628efc3257b76a6fedc896",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\lan-access-dsh.ts": {
+    "mtime": 1790684147.5232801,
+    "ast_hash": "0d55e33cfb495d17a8d23033c0b5e333",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\peer-host.ts": {
+    "mtime": 1790684147.5242822,
+    "ast_hash": "c06ed762dd5f845d26bc4302776fed25",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\signaling.ts": {
+    "mtime": 1790684147.5248077,
+    "ast_hash": "d60ae197446d0fe73c519aa527746b3a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\subscription.ts": {
+    "mtime": 1790684147.5253446,
+    "ast_hash": "eccdce6c8ae9b8cdaae35a2943e4a14b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\terminal-process.ts": {
+    "mtime": 1790684147.5258934,
+    "ast_hash": "514c7219817a0367c5501ccabcef6e53",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\terminal.ts": {
+    "mtime": 1790684147.5264187,
+    "ast_hash": "73b97bd70b6319bf3acf9625de64ee71",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\transport.ts": {
+    "mtime": 1790684147.5269406,
+    "ast_hash": "0ca5891d187121b06b40fb5ac8613d87",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\contracts\\version.ts": {
+    "mtime": 1790688300.7300093,
+    "ast_hash": "c9c7d2474ed6fdfc837764031ec84d5d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\debug.ts": {
+    "mtime": 1790684147.5279756,
+    "ast_hash": "822aa445926261799f8b0c98bc2c7ad1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\index.ts": {
+    "mtime": 1790684147.5284922,
+    "ast_hash": "b7462621f92ad30f1cce3e71db344ca5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\shared\\unref-timer.ts": {
+    "mtime": 1790608354.3586214,
+    "ast_hash": "05347d3e4eb062c1b0c8c8702ae07482",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\carrier.ts": {
+    "mtime": 1790684147.5295243,
+    "ast_hash": "794f149fe2e6db5d23f4af6713708b44",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\debug.ts": {
+    "mtime": 1790684147.530043,
+    "ast_hash": "b1e4770c9ac267a79fb552d1ac271a47",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\dsh-envelope.ts": {
+    "mtime": 1790684147.530557,
+    "ast_hash": "f52a11af6f4b998f9c85479a275c7963",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\dsh-gateway.ts": {
+    "mtime": 1790684147.531601,
+    "ast_hash": "86d52a39c32c09f8c33521fa6fd52884",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\dsh-session.ts": {
+    "mtime": 1790684147.532139,
+    "ast_hash": "1b17c4c141c4f156e11156bc10cf95da",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\dsh-transport.ts": {
+    "mtime": 1790684147.5326664,
+    "ast_hash": "46f413c7baef0f547f6f65b172b06c52",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\frame.ts": {
+    "mtime": 1790684147.533712,
+    "ast_hash": "96f9a22eefa0302fdb3c4dcc29278485",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\index.ts": {
+    "mtime": 1790684147.5342388,
+    "ast_hash": "1752774cd550e5ed8aa118a543b37afc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\multiplexer.ts": {
+    "mtime": 1790684147.5347657,
+    "ast_hash": "c592fc1a4f44503a511cae17dae71e72",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\webrtc-client.ts": {
+    "mtime": 1790684147.5352979,
+    "ast_hash": "f531fbf90be1098a17e9a77273b3c2d4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\transport\\webrtc-host.ts": {
+    "mtime": 1790684147.5352979,
+    "ast_hash": "5cff329ff34b22738de53ad8c369ccb7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\typert.host.ts": {
+    "mtime": 1790684147.5363073,
+    "ast_hash": "8ef354d6fb49b4c040fa53eca75c7c9c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\typert.remote-client.ts": {
+    "mtime": 1790684147.5363073,
+    "ast_hash": "b9710b2d08e359aecc3c23db45e5ba54",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\types\\dsh-ui-optional-modules.d.ts": {
+    "mtime": 1790684147.5373075,
+    "ast_hash": "af6ad0e78f4c8f37cbbf10c3fe65ee0d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\auth.spec.ts": {
+    "mtime": 1790684147.5383074,
+    "ast_hash": "39d59f13def9f0d7cc5920b6a294924e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\bootstrap.spec.ts": {
+    "mtime": 1790684147.5393074,
+    "ast_hash": "2b6b36a450181d9762717c67a8f7ccae",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\capability-retirement.spec.ts": {
+    "mtime": 1790684147.5403035,
+    "ast_hash": "fbe1ec3c514a059fbf5f7319f34472ae",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters-claude-models.spec.ts": {
+    "mtime": 1790684147.5413034,
+    "ast_hash": "4cb0f5151952e38b478165b04cf4c462",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters-kimi-gemini.spec.ts": {
+    "mtime": 1790684147.5413034,
+    "ast_hash": "57881e343de69f960e39cbaa29a25d86",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters-opencode.spec.ts": {
+    "mtime": 1790684147.542303,
+    "ast_hash": "a26f3842da38deb75e6622b1cef8bd08",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters-rpc.spec.ts": {
+    "mtime": 1790684147.5433028,
+    "ast_hash": "8445aeac268d9a20d84e0c747a92cec4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters-stream.spec.ts": {
+    "mtime": 1790684147.5443032,
+    "ast_hash": "b8e67cc15eef2a347650ec1a35e4b6bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-adapters.spec.ts": {
+    "mtime": 1790684147.545304,
+    "ast_hash": "6eaea7d9e185b8b4e5403fa2cc282491",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-catalog-cache.spec.ts": {
+    "mtime": 1790684147.545304,
+    "ast_hash": "8fffc4dfce994a75f1604c7438d16964",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-session-probe.spec.ts": {
+    "mtime": 1790684147.5463033,
+    "ast_hash": "f267d6f1d91a8949dd08f50051b6c092",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-session-security.spec.ts": {
+    "mtime": 1790684147.547304,
+    "ast_hash": "155744fed1b5547332bae487419ca727",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\cli-session-store.spec.ts": {
+    "mtime": 1790684147.548304,
+    "ast_hash": "db24e8571c4a55aa6132f2847c1711bd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-cli-sessions.spec.ts": {
+    "mtime": 1790684147.548304,
+    "ast_hash": "f8aace7c0c8822e53841001b7bb9b1ce",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-entry.spec.ts": {
+    "mtime": 1790684147.5493078,
+    "ast_hash": "237ce1c85928ee02c51a5c2b05b638ef",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-locale.spec.ts": {
+    "mtime": 1790684147.550304,
+    "ast_hash": "1f1b8856a0ecc9ea39230da6ab74c790",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-settings-bridge.spec.ts": {
+    "mtime": 1790684147.5513058,
+    "ast_hash": "844596105f0810a29e661eb21b1d53be",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-theme.spec.ts": {
+    "mtime": 1790684147.5523036,
+    "ast_hash": "8377b4b04902d8fb2b9173b105f27108",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\client-transport-ownership.spec.ts": {
+    "mtime": 1790684147.5523036,
+    "ast_hash": "1ad464c0f893332d6ea07e85c7b4e5aa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\conpty-broker.spec.ts": {
+    "mtime": 1790684147.5533047,
+    "ast_hash": "6f2e39c1a0b10493de5cfc203c3ed45e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\context-breakdown-dom.spec.ts": {
+    "mtime": 1790684147.554303,
+    "ast_hash": "fff62bbd2027cc04fc3bc3ec7808716d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\contracts.spec.ts": {
+    "mtime": 1790684147.554303,
+    "ast_hash": "a9120493e02406fd9ca79b7e9b403730",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\debug-contracts.spec.ts": {
+    "mtime": 1790684147.5553036,
+    "ast_hash": "f9e4151b2c7dec14c9e702dc29fefefb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\debug-logging.spec.ts": {
+    "mtime": 1790684147.5563047,
+    "ast_hash": "d0ec37f7ae77b832c750f54ca289c419",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\debug-workspace.spec.ts": {
+    "mtime": 1790684147.5573049,
+    "ast_hash": "74bb435b7ac72138c7e7e81709b0eab8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\desktop-external-agents.spec.ts": {
+    "mtime": 1790687330.324214,
+    "ast_hash": "5f92c9fac2ef326299c5e1ff1ff75824",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-capability-adapters.spec.ts": {
+    "mtime": 1790684147.5573049,
+    "ast_hash": "b313122ae12618956b11981429d0d036",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-capability-registry.spec.ts": {
+    "mtime": 1790684147.559304,
+    "ast_hash": "08dc32b7321e44d99320df7cab5bfc42",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-connection-adapter.spec.ts": {
+    "mtime": 1790684147.5603046,
+    "ast_hash": "681e7c257b01cfbbf378affea937d60a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-device-runtime.spec.ts": {
+    "mtime": 1790684147.5603046,
+    "ast_hash": "ce8f4131829240240ece4f5166e3a769",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-h5-bootstrap.spec.ts": {
+    "mtime": 1790684147.5613046,
+    "ast_hash": "45c24cee7a0a5d00b9492a932222435e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-message-projector.spec.ts": {
+    "mtime": 1790684147.5623074,
+    "ast_hash": "ef18188936531bcef899cfc4f7b918e1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-runtime-version.spec.ts": {
+    "mtime": 1790684147.5623074,
+    "ast_hash": "320174ad3484d43f8ba4c15da4e5d176",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-session-gateway.spec.ts": {
+    "mtime": 1790684147.563305,
+    "ast_hash": "57edc259d19407dcc1ba78fdcbcc5f0b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\dsh-tool-history.spec.ts": {
+    "mtime": 1790684147.564308,
+    "ast_hash": "ce63b211ff5e87d20fa8c43066fe53b4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\feature-registry.spec.ts": {
+    "mtime": 1790684147.5653026,
+    "ast_hash": "03ba8cdc545e0b2e4f027abc8cd5f4fd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\feature-wiring.spec.ts": {
+    "mtime": 1790684147.5653026,
+    "ast_hash": "3750d9b23955407d5cf78a4cdffa2041",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\file-management-settings.spec.ts": {
+    "mtime": 1790684147.5663054,
+    "ast_hash": "d8f68117e97e8fac4492520cb18f91cd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\file-management.spec.ts": {
+    "mtime": 1790684147.567311,
+    "ast_hash": "2f52101b93db429156d80b56c8690635",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\git-management.spec.ts": {
+    "mtime": 1790684147.567311,
+    "ast_hash": "74654268ef4a139171ff69b6f72ee627",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\host-entry.spec.ts": {
+    "mtime": 1790684147.5683138,
+    "ast_hash": "3a5d1b434638928a4ba062e23ab48def",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\host-index-injection.spec.ts": {
+    "mtime": 1790684147.5683138,
+    "ast_hash": "ece980e5f1315f74f31b66942ea444ee",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\host-navigation.spec.ts": {
+    "mtime": 1790684147.56931,
+    "ast_hash": "8137ddb773916ea7bba3c4067901d72c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\host-relay-runtime.spec.ts": {
+    "mtime": 1790684147.56931,
+    "ast_hash": "87e23e18c7f8de59781a449a33f2d88e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\host-router.spec.ts": {
+    "mtime": 1790684147.5703084,
+    "ast_hash": "541430e1c86adfb2a8ab4f4b7dfbe37b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\lan-access-dsh.spec.ts": {
+    "mtime": 1790684147.571313,
+    "ast_hash": "c1400a85001aa2c6a7fd41607d2c2260",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\lan-access.spec.ts": {
+    "mtime": 1790684147.571313,
+    "ast_hash": "e655366bba88436b47da4289ca918626",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\local-pty-backend.spec.ts": {
+    "mtime": 1790684147.5723138,
+    "ast_hash": "4288d970a5115fe4a6e5932c4ce23755",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\manifest.spec.ts": {
+    "mtime": 1790684147.5723138,
+    "ast_hash": "44c0e3444a73e78f2ae090cc57f3b830",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\native-session-bridge.spec.ts": {
+    "mtime": 1790684147.5733137,
+    "ast_hash": "c2edea1d3740af82fb857098ebe818fa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\native-team-proxy.spec.ts": {
+    "mtime": 1790684147.5743139,
+    "ast_hash": "37163c754a2626a00d2e3283e552ea22",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\official-provider-subscription.spec.ts": {
+    "mtime": 1790684147.5743139,
+    "ast_hash": "7f08e00d5aa01ee5a822f7ae964840dc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-aggregate.spec.ts": {
+    "mtime": 1790684147.575314,
+    "ast_hash": "ff077bb0fc7d822b2dace188265dac68",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-connection-button.spec.ts": {
+    "mtime": 1790684147.575314,
+    "ast_hash": "b1d43495577e778d804a7a2b0a7f04aa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-contracts.spec.ts": {
+    "mtime": 1790684147.5763137,
+    "ast_hash": "1e5c8599006a615114cc7863655d39cb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-handshake.spec.ts": {
+    "mtime": 1790684147.5763137,
+    "ast_hash": "faa1bde89699ac1f599f8bc7dcf5c0d8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-http-proxy.spec.ts": {
+    "mtime": 1790684147.5773144,
+    "ast_hash": "2d200cfb3303eb0fa6fef45c45567c6c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-integration.spec.ts": {
+    "mtime": 1790684147.5783136,
+    "ast_hash": "cc1ed8e188ff1092e7c87e7c195832ad",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-management.spec.ts": {
+    "mtime": 1790684147.5783136,
+    "ast_hash": "d92fb02ee53f039cea403dde84b3eee4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-native-session-ui.spec.ts": {
+    "mtime": 1790684147.5793145,
+    "ast_hash": "33b57c374c3cee90a486fbe87605b5fe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-privacy.spec.ts": {
+    "mtime": 1790684147.5793145,
+    "ast_hash": "eb8ce612ac10df278914fdffc39eb445",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-relay.spec.ts": {
+    "mtime": 1790684147.5803142,
+    "ast_hash": "bfca7b2c16467069bb936ae7e4c0e786",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-security.spec.ts": {
+    "mtime": 1790684147.581314,
+    "ast_hash": "f6a25cb856956f22414c758d03d9dcb0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-session.spec.ts": {
+    "mtime": 1790684147.581314,
+    "ast_hash": "e456374173d878a9fc0cc9b5e1f20b7a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-store.spec.ts": {
+    "mtime": 1790684147.582314,
+    "ast_hash": "c0ab625c0885b963bed3e0558951daa3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-ws-connector.spec.ts": {
+    "mtime": 1790684147.582825,
+    "ast_hash": "96f0b5cd1554d9cd0f7d00fd88bffc38",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-ws-gateway.spec.ts": {
+    "mtime": 1790684147.582825,
+    "ast_hash": "64397ada5bbe1b142a63d1d8af12f431",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\peer-host-ws-proxy.spec.ts": {
+    "mtime": 1790684147.583835,
+    "ast_hash": "eb332cc0028a249e9bc298cc9a28f122",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\quick-phrase-layout.spec.ts": {
+    "mtime": 1790684147.583835,
+    "ast_hash": "cad04fec0b0002b015747be6d974a8bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\relay-tunnel-wire-compat.spec.ts": {
+    "mtime": 1790684147.584834,
+    "ast_hash": "0805f300f3fe4937a2e5147253136059",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\remote-web-runtime.spec.ts": {
+    "mtime": 1790684147.584834,
+    "ast_hash": "7d6d4ac520217ddf77a9d606226e7541",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\resource-scope.spec.ts": {
+    "mtime": 1790684147.586492,
+    "ast_hash": "f1b0d6fec8d86be761a4472dea8768a8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\session-changes.spec.ts": {
+    "mtime": 1790684147.5874977,
+    "ast_hash": "7e02d0e4ebe591cce79b74a989529106",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\session-migration-repair.spec.ts": {
+    "mtime": 1790684147.5874977,
+    "ast_hash": "5d7d509138a86945b1f274cc659a799c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\spec003-stage0-dsh-contract.spec.ts": {
+    "mtime": 1790684147.588497,
+    "ast_hash": "c6f52fd498415c18f3f94a8020631f56",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\subscription-usage.spec.ts": {
+    "mtime": 1790684147.5894973,
+    "ast_hash": "725c9a07ee532b1c3ece5e358a0bf483",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-client-model.spec.ts": {
+    "mtime": 1790684147.5894973,
+    "ast_hash": "639bc25082251a7dc2c534b334df8c76",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-client-ui.spec.ts": {
+    "mtime": 1790684147.5904975,
+    "ast_hash": "59c50c35c510a284eae61b5ce83f16b5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-controller-contract.spec.ts": {
+    "mtime": 1790684147.5904975,
+    "ast_hash": "0ebfeb2b53c987dc75fb2708ac0818ab",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-lifecycle.spec.ts": {
+    "mtime": 1790684147.5914974,
+    "ast_hash": "af520361c929a85f0066fa3c69e04445",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-process.spec.ts": {
+    "mtime": 1790684147.5914974,
+    "ast_hash": "809f5a4dcac65f29b033606d6e71e5bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-recovery.spec.ts": {
+    "mtime": 1790684147.5924973,
+    "ast_hash": "b8f41d01259674a450afb80df42f1c8f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-settings.spec.ts": {
+    "mtime": 1790684147.593497,
+    "ast_hash": "e58efcee0d66aa7c56335cfaaaafdec3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-shell-detection.spec.ts": {
+    "mtime": 1790684147.593497,
+    "ast_hash": "af5600d5d2f1a13e2b28857d6c994a2b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-startup.spec.ts": {
+    "mtime": 1790684147.5944974,
+    "ast_hash": "198f999f49cea4d404dc24acacfb52a6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-status.spec.ts": {
+    "mtime": 1790684147.5944974,
+    "ast_hash": "84463c38d6861c87cc0cd7a96c3225a5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-store.spec.ts": {
+    "mtime": 1790684147.5954976,
+    "ast_hash": "cf8fe1a2879850a314aca7201ec99da6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\terminal-typert.spec.ts": {
+    "mtime": 1790684147.5954976,
+    "ast_hash": "0a4622b03f11825e4537dda0e718183b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\tmux-backend.spec.ts": {
+    "mtime": 1790684147.5964973,
+    "ast_hash": "de88bff210e072e5af72e4a258687b0a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\transport-carrier.spec.ts": {
+    "mtime": 1790684147.5964973,
+    "ast_hash": "aa96e7e0e71bf9a5d63125715a34a022",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\transport-debug.spec.ts": {
+    "mtime": 1790684147.5974972,
+    "ast_hash": "5ad92e2010853a939d1c2ca98ba36138",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\transport.spec.ts": {
+    "mtime": 1790684147.5984972,
+    "ast_hash": "0748deabd52da4f3b9f288e5d752c5e9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\webrtc-client.spec.ts": {
+    "mtime": 1790684147.5984972,
+    "ast_hash": "4499a79170a22ee6bdf8eef608a1559a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\webrtc-host.spec.ts": {
+    "mtime": 1790684147.5994976,
+    "ast_hash": "6a4848d0953018e9b2c4a1c9a5c07954",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\workspace-session-archive.spec.ts": {
+    "mtime": 1790684147.5994976,
+    "ast_hash": "5a82c99c2a541d1cd6c1e6b94442b5f1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\workspace-session-enhancement.spec.ts": {
+    "mtime": 1790684147.6004975,
+    "ast_hash": "47abd91b5f9bd9374f8c384205f92258",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\workspace-session-rightbar.spec.ts": {
+    "mtime": 1790684147.6004975,
+    "ast_hash": "907a512813d011a2e6e58916a3cdb4e7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tests\\workspace-session-visibility.spec.ts": {
+    "mtime": 1790684147.6020021,
+    "ast_hash": "079163e5d9867db627bfa414c57483c3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tsconfig.json": {
+    "mtime": 1790684147.6020021,
+    "ast_hash": "022920ba94e8a139c7219d4a4bdea73f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tsdown.config.ts": {
+    "mtime": 1790684147.6030078,
+    "ast_hash": "102218b411fdaa768608ecb8abdb11db",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\tsdown.h5.config.ts": {
+    "mtime": 1790684147.6030078,
+    "ast_hash": "33bb101d57c16cd811c5e7cd944412ac",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\version.json": {
+    "mtime": 1790688300.723009,
+    "ast_hash": "a6c956d7c00845208cdd89e29619e9e6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\.github\\workflows\\publish-npm.yml": {
+    "mtime": 1790684147.2668898,
+    "ast_hash": "4ce524c6256b4a212f464c37b03d94e7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\README.en.md": {
+    "mtime": 1790685955.624439,
+    "ast_hash": "7cdc7d3c66cd5355526505e6d6f29719",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\README.md": {
+    "mtime": 1790685955.6254392,
+    "ast_hash": "230425d786b286ab3a84fb530d6e54a2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\README.md": {
+    "mtime": 1790684147.2780738,
+    "ast_hash": "cb2e061f3083b08ec2f34f03063669bb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\docs\\\u5f00\u53d1\u89c4\u8303\\20260922-\u529f\u80fd\u6a21\u5757\u5f00\u53d1\u89c4\u5219.md": {
+    "mtime": 1790684147.2966652,
+    "ast_hash": "84c152673963c2eb51d7bfab7d119792",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\docs\\\u5f00\u53d1\u89c4\u8303\\20260922-\u8bbe\u7f6e\u9009\u9879\u4e0e\u8868\u5355\u5f00\u53d1\u89c4\u5219.md": {
+    "mtime": 1790684147.2976625,
+    "ast_hash": "0e3d656eb1be804872b52ccf3476b6e4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\pnpm-workspace.yaml": {
+    "mtime": 1790685969.992802,
+    "ast_hash": "7ab88c5af73fa96422b45ca2bda5298e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\profile\\README.md": {
+    "mtime": 1790685955.6264424,
+    "ast_hash": "a868b69a92213757d84d1d0afcaa2fd4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\profile\\cordis.patch.yml": {
+    "mtime": 1790684147.3061788,
+    "ast_hash": "4ffaf606eff69f8de9bb2b751b893ec6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\000-Spec\u89c4\u8303\\Spec\u6a21\u677f\\README.md": {
+    "mtime": 1790684147.3221366,
+    "ast_hash": "f1226b328673737543d7ebed46db3142",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\000-Spec\u89c4\u8303\\Spec\u6a21\u677f\\design.md": {
+    "mtime": 1790684147.3233047,
+    "ast_hash": "63bff16d0b57ae90ba5015937b91d6a3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\000-Spec\u89c4\u8303\\Spec\u6a21\u677f\\docs\\README.md": {
+    "mtime": 1790684147.3243127,
+    "ast_hash": "93ec8bf118bb4ea88ef9238a2b06867f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\000-Spec\u89c4\u8303\\Spec\u6a21\u677f\\requirements.md": {
+    "mtime": 1790684147.3253117,
+    "ast_hash": "bea155474dca2c1a42a23d48a36780f3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\000-Spec\u89c4\u8303\\Spec\u6a21\u677f\\tasks.md": {
+    "mtime": 1790684147.3264284,
+    "ast_hash": "80d8deb2597175a22d6de9f4db2ec261",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\README.md": {
+    "mtime": 1790684147.3274422,
+    "ast_hash": "558391cfd3d5e21813b7516b8343ca06",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\design.md": {
+    "mtime": 1790684147.3294504,
+    "ast_hash": "7c9047b264d9e59c455dc3c3ee0867a7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\20260921-DSH Web\u524d\u7aef\u8868\u5355\u4e0eHost\u8ba4\u8bc1RPC.md": {
+    "mtime": 1790684147.3304496,
+    "ast_hash": "2e7b70b1a6d7e40d96f9eab80bfad4e3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\20260921-\u9636\u6bb50-DSH\u63d2\u4ef6\u88c5\u914d\u8c03\u67e5.md": {
+    "mtime": 1790684147.3324265,
+    "ast_hash": "2ff4bc53e7feaed41f72f0fde468ed78",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\20260921-\u9636\u6bb50-Host\u4e0eClient\u8fb9\u754c.md": {
+    "mtime": 1790684147.333433,
+    "ast_hash": "1239261cb0a239a4ffd6533fe1eae718",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\20260921-\u9636\u6bb51\u81f34\u5e76\u884c\u5f00\u53d1\u8bb0\u5f55.md": {
+    "mtime": 1790684147.3344333,
+    "ast_hash": "2af2d206f9b597a4e1d9f9e7807272eb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\20260921-\u9636\u6bb54-DSH-generation\u9002\u914d\u8bc1\u636e.md": {
+    "mtime": 1790684147.3344333,
+    "ast_hash": "4b3905a0f11f35489896a9942034baf4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\docs\\README.md": {
+    "mtime": 1790684147.3354325,
+    "ast_hash": "0696d93dcf5b639b280d51fde7dcd725",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\requirements.md": {
+    "mtime": 1790684147.3364327,
+    "ast_hash": "cd3a39c96e4f33de4de68e6c4a6ba369",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec001-DeepSeekHarness-Codingns4DSH\u5355\u4e00\u63d2\u4ef6\\tasks.md": {
+    "mtime": 1790684147.3374329,
+    "ast_hash": "c037f523354260d1f4d9f26a57ab6bd5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\README.md": {
+    "mtime": 1790684147.3394594,
+    "ast_hash": "fc7f31b608d806602a504f4a3b254c11",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\design.md": {
+    "mtime": 1790684147.3405018,
+    "ast_hash": "65ea7060ba635ca7595dc36af01477e3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\docs\\20260921-DSH\u591a\u8def\u590d\u7528\u534f\u8bae\u8349\u6848.md": {
+    "mtime": 1790684147.3415413,
+    "ast_hash": "adefaad85d4e4c1f5a03192182a26723",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\docs\\README.md": {
+    "mtime": 1790684147.342062,
+    "ast_hash": "9f20a8bb955a133bf3520676520e1409",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\requirements.md": {
+    "mtime": 1790684147.3430974,
+    "ast_hash": "d41ca37c8e4d75ccb9188674382af222",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec002-\u57fa\u4e8eCodingns4DSH\u96a7\u9053\u7684DSH\u591a\u8def\u590d\u7528\u7f51\u5173\\tasks.md": {
+    "mtime": 1790684147.3441443,
+    "ast_hash": "161e88a3ae898da73d2249deb6f0701e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\README.md": {
+    "mtime": 1790684147.345186,
+    "ast_hash": "240cd6a23034e6944b6fb400ebfccb4e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\design.md": {
+    "mtime": 1790684147.3457105,
+    "ast_hash": "8b2c57b88dad97733822f526962d6af7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\20260922-\u6846\u67b6\u517c\u5bb9\u77e9\u9635.md": {
+    "mtime": 1790684147.3467531,
+    "ast_hash": "104d546fd9e4c90ea9b7fe607f34c36c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\20260922-\u7236\u4ed3\u5e93\u79fb\u690d\u8303\u56f4\u4e0e\u5dee\u5f02.md": {
+    "mtime": 1790684147.34727,
+    "ast_hash": "da94418f0ce4cbaf6892273bddd99d0c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\20260923-Spec003\u7ee7\u7eed\u5f00\u53d1\u63d0\u793a\u8bcd.md": {
+    "mtime": 1790684147.3483126,
+    "ast_hash": "17263810bf6aae8744d23fbc803b7b68",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\20260923-\u7ec8\u7aefPTY\u542f\u52a8\u5668\u8c03\u7528\u8bf4\u660e.md": {
+    "mtime": 1790684147.3488288,
+    "ast_hash": "c232b8857f3b459ecb39464082814b32",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\20260923-\u9636\u6bb50-DSH\u63a5\u53e3\u8c03\u67e5\u4e0e\u5951\u7ea6\u57fa\u7ebf.md": {
+    "mtime": 1790684147.3493533,
+    "ast_hash": "2bc894c94300ac719716b0b92edee460",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\docs\\README.md": {
+    "mtime": 1790684147.350393,
+    "ast_hash": "e1083f40822c06a2d31e63f474125e33",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\requirements.md": {
+    "mtime": 1790684147.350393,
+    "ast_hash": "14a7a1e2bc863119f1391a2e9757d10e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec003-\u5de5\u4f5c\u533a\u8c03\u8bd5\u9762\u677f\u4e0e\u5916\u90e8\u4ed3\u5e93\u8fd0\u884c\u7f16\u6392\\tasks.md": {
+    "mtime": 1790684147.3513982,
+    "ast_hash": "a6e40a72f14db02644d09844fc726a20",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec004-\u5de5\u4f5c\u533a\u4f1a\u8bddLogo\u589e\u5f3a\\README.md": {
+    "mtime": 1790684147.352397,
+    "ast_hash": "d03ab0d5b4bfdf3bbb2c2331256161f6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec004-\u5de5\u4f5c\u533a\u4f1a\u8bddLogo\u589e\u5f3a\\design.md": {
+    "mtime": 1790684147.3533978,
+    "ast_hash": "9795c42eb6e1c9b3c4a80237b12a6123",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec004-\u5de5\u4f5c\u533a\u4f1a\u8bddLogo\u589e\u5f3a\\docs\\20260923-\u517c\u5bb9\u6027\u4e0e\u9a8c\u6536\u8bb0\u5f55.md": {
+    "mtime": 1790684147.354398,
+    "ast_hash": "152efc6e9c39ae21715e178aad7cef79",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec004-\u5de5\u4f5c\u533a\u4f1a\u8bddLogo\u589e\u5f3a\\requirements.md": {
+    "mtime": 1790684147.355716,
+    "ast_hash": "d7fe13ee2fb3d565e213750b882906fe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec004-\u5de5\u4f5c\u533a\u4f1a\u8bddLogo\u589e\u5f3a\\tasks.md": {
+    "mtime": 1790684147.355716,
+    "ast_hash": "3a0a557a5d3b94105b50eb84ce599e8f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\README.md": {
+    "mtime": 1790684147.3567204,
+    "ast_hash": "b871e20b03718aded660d611829e5b2d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\design.md": {
+    "mtime": 1790684147.3577218,
+    "ast_hash": "97eabc6a515772868552f8ca3312cae2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\docs\\20260925-\u6280\u672f\u89c4\u5212\u4e0e\u80fd\u529b\u77e9\u9635.md": {
+    "mtime": 1790684147.3597214,
+    "ast_hash": "26d8ddfaffd9dbe70c1b40cdf16d436d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\docs\\README.md": {
+    "mtime": 1790684147.3607204,
+    "ast_hash": "72b89161833c6b71fc0d38fe36854cc6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\requirements.md": {
+    "mtime": 1790684147.3607204,
+    "ast_hash": "18726962c040213cd03c8b276b838622",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec005-DSH\u80fd\u529b\u6ce8\u518c\u4e0e\u7248\u672c\u8def\u7531\u673a\u5236\\tasks.md": {
+    "mtime": 1790684147.3622253,
+    "ast_hash": "cd72fd455f458b43db4cc99669fbd723",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\README.md": {
+    "mtime": 1790684147.3628142,
+    "ast_hash": "49feef1ed7c565f5d27dda4a0b313a02",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\design.md": {
+    "mtime": 1790684147.3638196,
+    "ast_hash": "ece10779a96461bf8aa2da15bde6ff2c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\docs\\20260927-\u7236\u4ed3\u5e93PeerHost\u5b9e\u73b0\u5bf9\u7167\u4e0e\u672c\u9879\u76ee\u8fb9\u754c.md": {
+    "mtime": 1790684147.3648195,
+    "ast_hash": "756836bd3ec5e247a2a1fdf3c4727fea",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\docs\\README.md": {
+    "mtime": 1790684147.3658216,
+    "ast_hash": "e67a4da53e8c61d2d5e53c37e7aaf32d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\requirements.md": {
+    "mtime": 1790684147.36682,
+    "ast_hash": "dffee35fc3a73046e468e98e0e934f75",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec006-PeerHost\u7ba1\u7406\u4e0e\u591aHost\u5de5\u4f5c\u533a\u4f1a\u8bdd\u805a\u5408\\tasks.md": {
+    "mtime": 1790684147.36782,
+    "ast_hash": "22b2d8018be008e18c842478fbe7d8bc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\README.md": {
+    "mtime": 1790684147.368825,
+    "ast_hash": "bc5f4ad6708742ab68bfd604923975f4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\design.md": {
+    "mtime": 1790684147.3698208,
+    "ast_hash": "2632010d64733e687ac92c441995796d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\docs\\20260928-DSH-0.1.7-RC2-AgentTeam\u4e0e\u5916\u90e8\u9002\u914d\u5668\u8c03\u67e5.md": {
+    "mtime": 1790684147.3708203,
+    "ast_hash": "fb8a1c1f2e16bf20ede8040afb5d272c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\docs\\20260928-\u5916\u90e8Agent\u4ee3\u7406\u6210\u5458\u6280\u672f\u89c4\u5212.md": {
+    "mtime": 1790684147.3718195,
+    "ast_hash": "126ffb7f9be3d827387fe4816d6f70aa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\docs\\README.md": {
+    "mtime": 1790684147.3728209,
+    "ast_hash": "b9f53e137d659367f07bf16544d08d95",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\requirements.md": {
+    "mtime": 1790684147.3728209,
+    "ast_hash": "af9e7f1bc8ec72f7cfec5d0f0766ad49",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec007-AgentTeam\u5916\u90e8Agent\u9002\u914d\u5668\u539f\u751f\u96c6\u6210\\tasks.md": {
+    "mtime": 1790684147.3738186,
+    "ast_hash": "57f8f41944725ad650ecfc45c81114b5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec008-\u4f1a\u8bdd\u7ea7\u53d7\u63a7\u8bbf\u95ee\u5730\u5740\\README.md": {
+    "mtime": 1790684147.3748198,
+    "ast_hash": "b10c8a564e1881470c7e412de4cf4092",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec008-\u4f1a\u8bdd\u7ea7\u53d7\u63a7\u8bbf\u95ee\u5730\u5740\\design.md": {
+    "mtime": 1790684147.3758197,
+    "ast_hash": "15856253d90b4490c3f550864e7c903b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec008-\u4f1a\u8bdd\u7ea7\u53d7\u63a7\u8bbf\u95ee\u5730\u5740\\requirements.md": {
+    "mtime": 1790684147.3768203,
+    "ast_hash": "df61f9213ccf41bb72d437f3379b7dab",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\specs\\spec008-\u4f1a\u8bdd\u7ea7\u53d7\u63a7\u8bbf\u95ee\u5730\u5740\\tasks.md": {
+    "mtime": 1790684147.3768203,
+    "ast_hash": "3c935aaaa1a9e0a7ef1db0fed64dbcb3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\claude-code.png": {
+    "mtime": 1790684147.2708886,
+    "ast_hash": "ef22935227c6b87157ea4bf1823d063d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\codex.png": {
+    "mtime": 1790684147.2718885,
+    "ast_hash": "e664220aed56af8aa8a33e370d7cde56",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\command-code.svg": {
+    "mtime": 1790684147.2718885,
+    "ast_hash": "5f6799a5379a6aac639321d5d81e28fa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\deepseek-harness.svg": {
+    "mtime": 1790684147.2728922,
+    "ast_hash": "267032a1e1e8de0374f783a117e24832",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\gemini.png": {
+    "mtime": 1790684147.2728922,
+    "ast_hash": "7e413e007a284dd90cba0f70779e7fa4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\grok.png": {
+    "mtime": 1790684147.2750683,
+    "ast_hash": "2f463f0b44bb26231e7965e6baa84020",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\kimi.png": {
+    "mtime": 1790684147.2760777,
+    "ast_hash": "38bed7cf38ded42f598dcb5b31c8cadc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\mcode.svg": {
+    "mtime": 1790615350.2392442,
+    "ast_hash": "b629ebd6d5d8cd4683261372d245c584",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\opencode.png": {
+    "mtime": 1790684147.2760777,
+    "ast_hash": "53ad880f6df7ed717ad729cdff87797b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\pi.svg": {
+    "mtime": 1790684147.2770772,
+    "ast_hash": "19ebaf4e357a37385e76cfdc45c421ed",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\provider-icons\\zcode.svg": {
+    "mtime": 1790615358.7733161,
+    "ast_hash": "ee5f58d14b25f68ed752452b1d613ded",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\agent-picker.jpg": {
+    "mtime": 1790684147.279073,
+    "ast_hash": "3c21ae324d99da02dbb92c5c583d7664",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\login-protection.jpg": {
+    "mtime": 1790684147.2810733,
+    "ast_hash": "21d935457b8f644c56738f354b7bbf5c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\model-picker.jpg": {
+    "mtime": 1790684147.2820752,
+    "ast_hash": "2df5a3cfa164132a354c5795d6563045",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\relay-h5-login.jpg": {
+    "mtime": 1790684147.2830732,
+    "ast_hash": "7d33aac5b5044b3bcc1e5497a74f0ebe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\relay-service.jpg": {
+    "mtime": 1790684147.285075,
+    "ast_hash": "09213920f5b841c6d3834b1772dc79fd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\relay-status.jpg": {
+    "mtime": 1790684147.2860768,
+    "ast_hash": "7a3b23e923a2ed7fcb10a8f9d5a14b54",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\settings-modules.jpg": {
+    "mtime": 1790684147.2876556,
+    "ast_hash": "18a5cdd10bff7b91f3ac57e74bdd8d0b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\settings-overview.jpg": {
+    "mtime": 1790684147.2886603,
+    "ast_hash": "bbcc97b606de24d06229bb541955ca56",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\subscription-plan.jpg": {
+    "mtime": 1790684147.290661,
+    "ast_hash": "8bf9d8af4179790037d8b888883e8605",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\subscription-usage.jpg": {
+    "mtime": 1790684147.2916608,
+    "ast_hash": "0fb1ae9f4fb1d54f341e7800db5ee03c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\workspace-debug-edit.jpg": {
+    "mtime": 1790684147.293662,
+    "ast_hash": "32e8e4ec4ed49c7be2c51bfc893ec6e1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\workspace-debug.jpg": {
+    "mtime": 1790684147.293662,
+    "ast_hash": "5eeec5049ba73f99a11e7a9295ce17e8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\assets\\screenshots\\workspace-overview.jpg": {
+    "mtime": 1790684147.2956629,
+    "ast_hash": "c32864fc32e9e8b02d4fd7667c83bc4a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\client\\subagent-conversations.ts": {
+    "mtime": 1790688233.6648066,
+    "ast_hash": "2a870cd83bdbf24503e0c2ff5edb659f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\30397\\dsh-desktop-plugin\\work\\beta-merge\\src\\host\\cli-adapters\\subagent-conversations.ts": {
+    "mtime": 1790687661.7747755,
+    "ast_hash": "aae3f93a168323475a0343e59f63ff5f",
+    "semantic_hash": ""
+  }
+}

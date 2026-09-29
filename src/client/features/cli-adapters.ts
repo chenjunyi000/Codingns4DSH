@@ -48,6 +48,15 @@ export const cliAdaptersFeature: CodingNsClientFeatureModule = {
     const { registerCliConversationSlots } = await import('../cli-slots.js')
     const disposeSlots = registerCliConversationSlots(slots, context.services.rpc, context.services.locale)
     context.resources.add(disposeSlots)
+    if (context.services.uiContext !== undefined) {
+      // 完整 DSH 宿主直接使用 Agent Teams 成员卡片与原生子会话；旧面板只留给
+      // 尚未装载 Team runtime 的精简 Host，避免同一子代理出现两套入口。
+      const team = await callCliRpc<{ readonly supported: boolean }>(context.services.rpc, 'team/status', {}).catch(() => null)
+      if (team?.supported !== true) {
+        const { registerSubagentConversationUi } = await import('../subagent-conversations.js')
+        context.resources.add(registerSubagentConversationUi(context.services.uiContext, context.services.rpc))
+      }
+    }
   },
   settingsPanel: CliAdaptersPanel,
 }

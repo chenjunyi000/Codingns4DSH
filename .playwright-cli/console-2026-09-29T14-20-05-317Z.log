@@ -1,0 +1,169 @@
+[    1423ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[    1609ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    1609ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    1609ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1610ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1610ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1610ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1843ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1843ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1843ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1843ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1843ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1844ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1844ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1844ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1844ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1844ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1844ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1845ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1845ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1845ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1846ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    1846ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    1938ms] [ERROR] Access to fetch at 'https://dsh-market.com/api/telemetry/event' from origin 'http://127.0.0.1:19440' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:19440/:0
+[    1938ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://dsh-market.com/api/telemetry/event:0
+[    1940ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    1940ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    1982ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    1996ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    2056ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    2058ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    2151ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:19440/:0
+[    3729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    3729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    4627ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    5722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    5722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    6405ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[    7633ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    7729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    7729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[    9722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[    9723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   11408ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   11723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   11723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   13719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   13719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   15721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   15722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   16404ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   17721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   17721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   19727ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   19727ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   21392ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   21719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   21720ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   23733ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   23734ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   25719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   25720ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   26388ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   27729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   27730ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   29736ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   29736ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   31395ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   31724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   31724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   33734ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   33735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   35718ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   35719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state:0
+[   35998ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   35998ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   35999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   35999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   35999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   35999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   35999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   36000ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   36128ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   36129ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   36129ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   36130ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   36390ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   37730ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   37731ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   39724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   39725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   41403ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   41732ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   41733ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   43721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   43722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   45725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   45726ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   46392ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   47773ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   47773ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   49724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   49724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   51392ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   51735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   51735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   53735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   53736ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   55721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   55721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   56388ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   57723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   57724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   59732ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   59732ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   61402ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   61727ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   61728ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   63723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   63723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   65378ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65379ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=session-751c4acd-1ba4-4a9f-bd08-7a5c91690dbe:0
+[   65379ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65379ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   65379ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65379ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   65380ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65380ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   65922ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65922ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   65923ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   65923ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   66390ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   67719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   67719ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   69725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   69726ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   71402ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   71733ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   71733ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   73722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   73723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   75721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   75722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   76388ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   77830ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   77830ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   79725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   79725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   81389ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   81723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   81724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   83721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   83721ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   85725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   85725ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   86388ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   87724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   87724ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   89722ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   89723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   91391ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/__codingns/session:0
+[   91723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   91723ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   93726ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/pets:0
+[   93727ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:19440/api/pet/state?current=66754f04-882a-43ed-acf2-57622bbbe53f:0
+[   93929ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://127.0.0.1:19440/plugins/events:0
+[   93931ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://127.0.0.1:19440/api/task-board/events:0
+[   94191ms] [WARNING] [connection] connection lost, retry #1 @ http://127.0.0.1:19440/plugins/??@linxin666/dsh-client-ui-preset-center/client.js,@linxin666/dsh-client-ui-skin-center/client.js,@deepseek-ai/dsh-experimental-client-ui-agent-team/client.js,@deepseek-ai/dsh-client-ui-directory-picker-browse/client.js,@deepseek-ai/dsh-session-log-export/client.js,@deepseek-ai/dsh-client-file-upload/client.js,@deepseek-ai/dsh-api-remotes/client.js,@deepseek-ai/dsh-client-ui-deliverables/client.js,@deepseek-ai/dsh-typert-registry/client.js,@deepseek-ai/dsh-client-connection/client.js,@deepseek-ai/dsh-api-workspace-controller/client.js,@deepseek-ai/dsh-api-session-controller/client.js,@jingyi0605/codingns4dsh/client.js&rev=a98772a05b04:26898

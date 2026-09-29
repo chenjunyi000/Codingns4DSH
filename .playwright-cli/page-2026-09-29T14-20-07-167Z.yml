@@ -1,0 +1,84 @@
+- generic [ref=e4]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - button "新建会话" [ref=e9] [cursor=pointer]:
+        - generic [ref=e10]:
+          - img [ref=e13]
+          - img [ref=e17]
+      - button "收起侧边栏" [ref=e38] [cursor=pointer]:
+        - img [ref=e39]
+    - button "新建会话" [ref=e41] [cursor=pointer]:
+      - generic [ref=e43]:
+        - img [ref=e44]
+        - generic [ref=e46]: 新会话
+      - generic:
+        - generic:
+          - generic: Ctrl
+          - generic: +
+          - generic: Alt
+          - generic: +
+          - generic: "N"
+    - navigation "全局面板" [ref=e47]:
+      - button "插件" [ref=e48] [cursor=pointer]:
+        - img [ref=e51]
+        - generic [ref=e56]: 插件
+      - button "任务看板" [ref=e57] [cursor=pointer]:
+        - img [ref=e60]
+        - generic [ref=e63]: 任务看板
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: 工作区
+        - generic [ref=e70]:
+          - button "搜索会话" [ref=e71] [cursor=pointer]:
+            - img [ref=e72]
+          - textbox "搜索会话名称"
+        - generic [ref=e75]:
+          - button "视图选项" [ref=e77] [cursor=pointer]:
+            - img [ref=e78]
+          - button "添加工作区" [ref=e81] [cursor=pointer]:
+            - img [ref=e82]
+      - tree "会话" [ref=e86]:
+        - generic [ref=e87]:
+          - img [ref=e88]
+          - generic [ref=e90]: 暂无会话
+    - generic [ref=e91]:
+      - generic [ref=e93]:
+        - button "检查更新" [ref=e94] [cursor=pointer]:
+          - img [ref=e95]
+        - button "远程访问" [ref=e99] [cursor=pointer]:
+          - img [ref=e100]
+      - generic [ref=e103]:
+        - button "打开使用统计设置" [ref=e104] [cursor=pointer]:
+          - generic [ref=e106]:
+            - img [ref=e107]
+            - text: 使用统计
+          - generic [ref=e111]: 正在加载用量数据…
+        - button "收起用量卡片" [ref=e112] [cursor=pointer]:
+          - img [ref=e113]
+      - button "设置" [ref=e119] [cursor=pointer]:
+        - generic [ref=e120]:
+          - img [ref=e121]
+          - generic [ref=e124]: 设置
+  - generic [ref=e128]:
+    - banner [ref=e130]
+    - generic [ref=e136]:
+      - generic [ref=e139]:
+        - img [ref=e142]
+        - generic [ref=e144]:
+          - generic [ref=e145]: 探索未至之境
+          - generic [ref=e146]: 预览版
+      - button "选择工作区" [ref=e148] [cursor=pointer]:
+        - img [ref=e149]
+        - generic [ref=e151]: 选择工作区
+        - img [ref=e152]
+      - generic [ref=e156] [cursor=pointer]:
+        - generic [ref=e158]:
+          - textbox "选择工作区" [ref=e159]
+          - generic: 选择一个工作区开始
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - button "添加文件或调用指令" [disabled]:
+              - img
+          - generic [ref=e162]:
+            - button "发送消息" [disabled]:
+              - img

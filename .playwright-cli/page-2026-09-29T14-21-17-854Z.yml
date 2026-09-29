@@ -1,0 +1,155 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - button "新建会话" [ref=e9] [cursor=pointer]:
+          - generic [ref=e10]:
+            - img [ref=e13]
+            - img [ref=e17]
+        - button "收起侧边栏" [ref=e38] [cursor=pointer]:
+          - img [ref=e39]
+      - button "新建会话" [ref=e41] [cursor=pointer]:
+        - generic [ref=e43]:
+          - img [ref=e44]
+          - generic [ref=e46]: 新会话
+        - generic:
+          - generic:
+            - generic: Ctrl
+            - generic: +
+            - generic: Alt
+            - generic: +
+            - generic: "N"
+      - navigation "全局面板" [ref=e47]:
+        - button "插件" [ref=e48] [cursor=pointer]:
+          - img [ref=e51]
+          - generic [ref=e56]: 插件
+        - button "任务看板" [ref=e57] [cursor=pointer]:
+          - img [ref=e60]
+          - generic [ref=e63]: 任务看板
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]: 工作区
+          - generic [ref=e70]:
+            - button "搜索会话" [ref=e71] [cursor=pointer]:
+              - img [ref=e72]
+            - textbox "搜索会话名称"
+          - generic [ref=e75]:
+            - button "视图选项" [ref=e77] [cursor=pointer]:
+              - img [ref=e78]
+            - button "添加工作区" [ref=e81] [cursor=pointer]:
+              - img [ref=e82]
+        - tree "会话" [ref=e86]:
+          - generic [ref=e164]:
+            - treeitem "未分组" [expanded] [ref=e213] [cursor=pointer]:
+              - img [ref=e214]
+              - generic [ref=e170]: 未分组
+            - treeitem "未命名 1分钟" [ref=e363] [cursor=pointer]:
+              - generic [ref=e211]: 未命名
+              - generic [ref=e212]: 1分钟
+      - generic [ref=e91]:
+        - generic [ref=e93]:
+          - button "发现新版本，检查更新" [ref=e171] [cursor=pointer]:
+            - img [ref=e95]
+            - generic [ref=e172]: 有更新
+          - button "远程访问" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+        - generic [ref=e103]:
+          - button "打开使用统计设置" [ref=e104] [cursor=pointer]:
+            - generic [ref=e105]:
+              - generic [ref=e106]:
+                - img [ref=e107]
+                - text: 今日消费
+              - generic [ref=e173]: ¥0.00
+            - generic [ref=e111]: 今日暂无用量
+            - generic [ref=e174]: 更新于 22:21
+          - button "收起用量卡片" [ref=e112] [cursor=pointer]:
+            - img [ref=e113]
+        - button "设置" [ref=e119] [cursor=pointer]:
+          - generic [ref=e120]:
+            - img [ref=e121]
+            - generic [ref=e124]: 设置
+    - generic [ref=e391]:
+      - banner [ref=e393]:
+        - generic [ref=e394]:
+          - generic [ref=e395]:
+            - generic [ref=e396]:
+              - navigation "会话层级" [ref=e397]:
+                - button "native-team-workspace" [ref=e399] [cursor=pointer]
+                - generic [ref=e400]:
+                  - generic [ref=e401]: /
+                  - button "切换子智能体：验证外部 Agent 原生会话" [ref=e404] [cursor=pointer]:
+                    - generic [ref=e405]: 验证外部 Agent 原生会话
+                    - img [ref=e406]
+              - generic [ref=e410]:
+                - button "智能体团队" [ref=e412] [cursor=pointer]:
+                  - img [ref=e413]
+                  - generic [ref=e418]: 智能体团队
+                - generic "处理代码、文件和资料，适合大多数任务。Agent 会按需使用检索、编辑和终端等工具。" [ref=e419]:
+                  - img [ref=e420]
+                  - text: 标准模式
+            - generic [ref=e426]:
+              - generic [ref=e428]:
+                - button "用 文件资源管理器 打开" [ref=e429] [cursor=pointer]
+                - button "更多打开方式" [ref=e430] [cursor=pointer]:
+                  - img [ref=e431]
+              - button "更多操作" [ref=e434] [cursor=pointer]:
+                - img [ref=e435]
+            - button "打开右侧边栏" [ref=e441] [cursor=pointer]:
+              - img [ref=e442]
+          - tablist [ref=e444]:
+            - tab "对话" [selected] [ref=e445] [cursor=pointer]
+            - tab "轨迹" [ref=e446] [cursor=pointer]
+      - generic [ref=e448]:
+        - generic [ref=e455]:
+          - generic [ref=e458]:
+            - generic [ref=e460]: 只回复 OK，不使用工具，不修改任何文件。
+            - generic [ref=e461]:
+              - generic [ref=e462]: 22:19
+              - button "复制" [ref=e463] [cursor=pointer]:
+                - img [ref=e464]
+          - generic [ref=e468]:
+            - status [ref=e469]: 已完成工作
+            - button "用时 13秒" [disabled] [ref=e470]:
+              - generic [ref=e471]: 用时 13秒
+          - paragraph [ref=e477]: OK
+          - generic [ref=e481]:
+            - button "复制" [ref=e482] [cursor=pointer]:
+              - img [ref=e483]
+            - generic [ref=e486]:
+              - button "好的回答" [ref=e487] [cursor=pointer]:
+                - img [ref=e488]
+              - button "有问题的回答" [ref=e490] [cursor=pointer]:
+                - img [ref=e491]
+            - button "在新对话中分支" [ref=e493] [cursor=pointer]:
+              - img [ref=e494]
+            - generic [ref=e500]: 22:19
+        - generic [ref=e506]:
+          - generic [ref=e507]:
+            - generic [ref=e509]:
+              - textbox "发消息或创建任务, / 调用指令, @ 文件或对话" [active] [ref=e510]
+              - generic: 发消息或创建任务, / 调用指令, @ 文件或对话
+            - generic [ref=e511]:
+              - generic [ref=e512]:
+                - button "添加文件或调用指令" [ref=e513] [cursor=pointer]:
+                  - img [ref=e514]
+                - button "访问模式，当前：完全权限" [ref=e518] [cursor=pointer]:
+                  - img [ref=e520]
+                  - generic [ref=e522]: 完全权限
+                  - img [ref=e524]
+              - generic [ref=e526]:
+                - generic [ref=e528]:
+                  - button "当前 Agent：MiniMax Code（已锁定）" [disabled] [ref=e530]:
+                    - img [ref=e531]
+                    - generic [ref=e532]: MiniMax Code
+                    - img [ref=e533]
+                  - button "选择模型，当前 MiniMax-M3.1-Flash-Preview，思考等级 default" [ref=e536] [cursor=pointer]:
+                    - generic [ref=e538]: MiniMax-M3.1-Flash-Preview
+                    - generic [ref=e539]: default
+                    - img [ref=e540]
+                - button "发送消息" [disabled] [ref=e542]:
+                  - img [ref=e543]
+          - button "1 轮 1 步" [ref=e549] [cursor=pointer]:
+            - img [ref=e550]
+            - generic [ref=e554]: 1 轮 1 步
+  - generic:
+    - img
