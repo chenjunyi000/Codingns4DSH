@@ -107,46 +107,62 @@ export class ZcodeAppServerDriver implements CodingNsCliDriver {
   }
 
   async *executeTurn(input: CodingNsCliTurnInput): AsyncIterable<CodingNsAgentEvent> {
-    if (!(await this.detect()).installed) throw new Error('ZCode 未安装')
-    const session = await this.getSession(input)
-    if (session.acpSessionId === '') {
-      const created = input.providerSessionId === undefined
-        ? await session.rpc.request('session/create', { workspace: zcodeWorkspace(input.cwd) }, { signal: input.signal, killOnAbort: false })
-        : await session.rpc.request('session/resume', { sessionId: input.providerSessionId, workspace: zcodeWorkspace(input.cwd) }, { signal: input.signal, killOnAbort: false })
-      session.acpSessionId = readSessionId(created) ?? input.providerSessionId ?? input.sessionId
-    }
-    yield { type: 'session-binding', providerSessionId: session.acpSessionId }
-
-    const eventQueue = createZcodeTurnEventQueue()
-    let sendResolved = false
-    let sendError: unknown = null
-    // session/resume 的重放通知不能进入当前回合；监听器先于 send 注册并缓存
-    // 响应前的通知，send 响应返回后再统一消费。监听器必须挂会话级（请求级的
-    // 会在 send 响应返回即被移除，回合终态事件就再也进不来）。
-    const notificationsBeforeSend: JsonRpcMessage[] = []
-    const onNotification = (message: JsonRpcMessage): void => {
-      // turn.terminal 详情略晚于 turn-failed 事件到达，宽限期结束前必须已经
-      // 记下真实 errorCode/errorMessage。
-      captureZcodeFailureDetail(message, session)
-      if (!sendResolved) {
-        notificationsBeforeSend.push(message)
+    // 启动期失败（进程死亡、创建/恢复被拒）不能抛空流：统一转成可见的失败
+    // 正文 + error 终态；进程级失败时丢弃该 DSH 会话的常驻进程，下一轮重建。
+    let session: ZcodeSession | undefined
+    let bound = false
+    let onTurnAbort: (() => void) | undefined
+    let detachNotifications: (() => void) | undefined
+    let closeQueue: (() => void) | undefined
+    try {
+      if (!(await this.detect()).installed) {
+        yield { type: 'text-snapshot', text: 'ZCode 未安装：未找到桌面端运行时或 PATH 上的 zcode 命令。' }
+        yield { type: 'finish', reason: 'error' }
         return
       }
-      eventQueue.push(message)
-    }
-    const removeNotificationListener = session.rpc.addNotificationListener(onNotification)
-    const sendPromise = session.rpc.request('session/send', {
-      sessionId: session.acpSessionId,
-      content: input.prompt,
-    }, { signal: input.signal, killOnAbort: false })
-      .then(() => undefined, (error: unknown) => { sendError = error })
-    const onAbort = (): void => {
-      void session.rpc.request('session/stop', { sessionId: session.acpSessionId }).catch(() => undefined)
-    }
-    if (input.signal?.aborted) onAbort()
-    else input.signal?.addEventListener('abort', onAbort, { once: true })
+      const activeSession = await this.getSession(input)
+      session = activeSession
+      if (activeSession.acpSessionId === '') {
+        const created = input.providerSessionId === undefined
+          ? await activeSession.rpc.request('session/create', { workspace: zcodeWorkspace(input.cwd) }, { signal: input.signal, killOnAbort: false })
+          : await activeSession.rpc.request('session/resume', { sessionId: input.providerSessionId, workspace: zcodeWorkspace(input.cwd) }, { signal: input.signal, killOnAbort: false })
+        activeSession.acpSessionId = readSessionId(created) ?? input.providerSessionId ?? input.sessionId
+      }
+      bound = true
+      yield { type: 'session-binding', providerSessionId: activeSession.acpSessionId }
 
-    try {
+      const eventQueue = createZcodeTurnEventQueue()
+      closeQueue = (): void => eventQueue.close()
+      let sendResolved = false
+      let sendError: unknown = null
+      // session/resume 的重放通知不能进入当前回合；监听器先于 send 注册并缓存
+      // 响应前的通知，send 响应返回后再统一消费。监听器必须挂会话级（请求级的
+      // 会在 send 响应返回即被移除，回合终态事件就再也进不来）。
+      const notificationsBeforeSend: JsonRpcMessage[] = []
+      const onNotification = (message: JsonRpcMessage): void => {
+        // turn.terminal 详情略晚于 turn-failed 事件到达，宽限期结束前必须已经
+        // 记下真实 errorCode/errorMessage。
+        captureZcodeFailureDetail(message, activeSession)
+        if (!sendResolved) {
+          notificationsBeforeSend.push(message)
+          return
+        }
+        eventQueue.push(message)
+      }
+      const removeNotificationListener = activeSession.rpc.addNotificationListener(onNotification)
+      detachNotifications = removeNotificationListener
+      const sendPromise = activeSession.rpc.request('session/send', {
+        sessionId: activeSession.acpSessionId,
+        content: input.prompt,
+      }, { signal: input.signal, killOnAbort: false })
+        .then(() => undefined, (error: unknown) => { sendError = error })
+      const onAbort = (): void => {
+        void activeSession.rpc.request('session/stop', { sessionId: activeSession.acpSessionId }).catch(() => undefined)
+      }
+      onTurnAbort = onAbort
+      if (input.signal?.aborted) onAbort()
+      else input.signal?.addEventListener('abort', onAbort, { once: true })
+
       await sendPromise
       if (sendError !== null && !input.signal?.aborted) throw new Error('ZCode 消息发送失败')
       sendResolved = true
@@ -156,15 +172,15 @@ export class ZcodeAppServerDriver implements CodingNsCliDriver {
       while (true) {
         const next = await eventQueue.next()
         if (next.done) break
-        const chunk = zcodeMessageToChunk(next.value, session, input)
+        const chunk = zcodeMessageToChunk(next.value, activeSession, input)
         if (chunk !== null) yield chunk
-        terminalReason = readZcodeTerminalReason(next.value, session, input) ?? terminalReason
+        terminalReason = readZcodeTerminalReason(next.value, activeSession, input) ?? terminalReason
         if (terminalReason !== null) {
           if (terminalReason === 'error') {
             // turn.terminal 详情（errorCode/errorMessage）略晚于 turn-failed
             // 到达，稍等再透出真实原因。
             await new Promise((resolve) => setTimeout(resolve, 1_500))
-            yield failureChunk(session)
+            yield failureChunk(activeSession)
           }
           yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : terminalReason }
           eventQueue.close()
@@ -172,19 +188,38 @@ export class ZcodeAppServerDriver implements CodingNsCliDriver {
         }
       }
       if (terminalReason === null) {
-        const usage = await readSessionUsage(session.rpc, session.acpSessionId)
+        const usage = await readSessionUsage(activeSession.rpc, activeSession.acpSessionId)
         if (usage !== null) yield usage
         yield { type: 'finish', reason: input.signal?.aborted ? 'cancel' : 'stop' }
       }
     } catch (error) {
-      if (!input.signal?.aborted) throw error
-      yield { type: 'finish', reason: 'cancel' }
+      if (input.signal?.aborted) {
+        yield { type: 'finish', reason: 'cancel' }
+        return
+      }
+      const detail = error instanceof Error ? error.message : String(error)
+      if (!bound || isProcessDead(error)) {
+        if (session !== undefined) this.disposeSession(input.sessionId)
+        yield { type: 'text-snapshot', text: `ZCode 回合失败 [START_FAILED]：${detail}（app-server 将在下一轮自动重启）` }
+        yield { type: 'finish', reason: 'error' }
+        return
+      }
+      throw error
     } finally {
-      input.signal?.removeEventListener('abort', onAbort)
-      removeNotificationListener()
-      eventQueue.close()
+      if (onTurnAbort !== undefined) input.signal?.removeEventListener('abort', onTurnAbort)
+      detachNotifications?.()
+      closeQueue?.()
     }
   }
+
+  /** 丢弃一个 DSH 会话的常驻进程（进程死亡后下一回合重建）。 */
+  private disposeSession(dshSessionId: string): void {
+    const stale = this.sessions.get(dshSessionId)
+    if (stale === undefined) return
+    this.sessions.delete(dshSessionId)
+    stale.rpc.dispose()
+  }
+
 
   async interrupt(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId)
@@ -355,6 +390,10 @@ async function readSessionUsage(rpc: JsonRpcProcess, sessionId: string): Promise
 function zcodeWorkspace(cwd: string | undefined): { workspacePath: string; workspaceKey: string } {
   const workspacePath = cwd?.trim() !== '' && cwd !== undefined ? cwd : process.cwd()
   return { workspacePath, workspaceKey: workspacePath }
+}
+
+function isProcessDead(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('Agent 进程已退出')
 }
 
 function readSessionId(created: unknown): string | undefined {
