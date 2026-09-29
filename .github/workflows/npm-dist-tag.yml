@@ -1,0 +1,42 @@
+name: npm dist-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要调整的已发布版本，留空则取 package.json 版本'
+        required: false
+        default: ''
+      dist_tag:
+        description: '目标 dist-tag'
+        required: true
+        default: 'latest'
+
+permissions:
+  contents: read
+
+jobs:
+  dist-tag:
+    name: 调整 npm dist-tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          registry-url: https://registry.npmjs.org
+
+      - name: 切换 dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TAG: ${{ inputs.dist_tag }}
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="${INPUT_VERSION:-$(node -p "require('./package.json').version")}"
+          npm dist-tag add "${package_name}@${package_version}" "${INPUT_TAG}"
+          npm view "$package_name" dist-tags --json
