@@ -21,7 +21,7 @@
 
 ### 需求 3：握手、能力和 generation
 
-首条业务消息必须是 `session.hello`。双方校验协议、DSH 版本、HostScope、能力和窗口后返回 `session.ready`。断线时当前 generation 立即失效；恢复由 DSH Connection recovery 创建新载体和新 generation。
+首条业务消息必须是 `session.hello`。双方校验隧道协议（`DSH_ENVELOPE_PROTOCOL`，缺省按 v1）、HostScope、能力和窗口后返回 `session.ready`；DSH 应用版本不参与握手门槛，仅作信息透传与回显。断线时当前 generation 立即失效；恢复由 DSH Connection recovery 创建新载体和新 generation。
 
 ### 需求 4：流控和二进制传输
 

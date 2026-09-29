@@ -35,7 +35,7 @@ Carrier 只提供可靠有序的二进制消息：打开、收发、关闭和错
 1. Client 用控制站会话申请短期 ticket。
 2. Relay 交换 SDP、ICE 和 TURN 信息；双方校验 Host DTLS fingerprint。
 3. 建立单个 WebSocket 载体并发送 `session.hello`。
-4. Host 校验协议族、DSH 版本、能力、HostScope 和策略，返回 `session.ready`。
+4. Host 校验隧道协议（缺省按 v1）、能力、HostScope 和策略，返回 `session.ready`；DSH 应用版本仅作信息透传（`dshVersion` 回显对端版本，`hostDshVersion` 携带主机版本）。
 5. Gateway 将后续 Envelope 按 `channel + streamId` 路由到唯一模块。
 
 ## 3. 组件职责

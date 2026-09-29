@@ -32,13 +32,14 @@ test('DSH Session 完成 hello/ready 协商并进入 ready', async () => {
   host.close(); client.close()
 })
 
-test('DSH Session 允许兼容的 Host 与 Client 使用不同应用版本握手', async () => {
+test('DSH Session 允许旧站点客户端跨应用版本握手并回显其版本', async () => {
   const [left, right] = carrierPair()
+  const scope = { hostId: 'h1', kind: 'local' } as const
   const host = new DshSession({
     carrier: left.carrier,
     role: 'host',
     generation: 'g1',
-    hostScope: { hostId: 'h1', kind: 'local' },
+    hostScope: scope,
     dshVersion: '0.2.0-rc.1',
     capabilities: ['rpc'],
   })
@@ -46,31 +47,114 @@ test('DSH Session 允许兼容的 Host 与 Client 使用不同应用版本握手
     carrier: right.carrier,
     role: 'client',
     generation: 'g1',
-    hostScope: { hostId: 'h1', kind: 'local' },
-    dshVersion: '0.2.0-rc.1',
+    hostScope: scope,
+    dshVersion: '0.1.6-alpha.2',
     capabilities: ['rpc'],
   })
+  const frames: DshEnvelope[] = []
+  const send = left.carrier.send.bind(left.carrier)
+  left.carrier.send = (data: Uint8Array) => { frames.push(decodeDshEnvelope(data)); return send(data) }
 
   host.start()
   client.start()
   await client.waitReady()
   assert.equal(host.ready, true)
+  const ready = frames.find((envelope) => envelope.type === 'session.ready')
+  assert.equal(ready?.meta.dshVersion, '0.1.6-alpha.2')
+  assert.equal(ready?.meta.hostDshVersion, '0.2.0-rc.1')
   client.close()
   host.close()
 })
 
-test('DSH Session 拒绝超出兼容范围的对端版本', async () => {
+test('DSH Session 不再按应用版本拒绝对端', async () => {
   const [left, right] = carrierPair()
   const host = new DshSession({ carrier: left.carrier, role: 'host', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.2.0-rc.1' })
   const client = new DshSession({ carrier: right.carrier, role: 'client', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.2.0-rc.2' })
   host.start()
   client.start()
-  await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(host.state, 'degraded')
-  assert.equal(client.ready, false)
-  assert.equal(host.ready, false)
+  await client.waitReady()
+  assert.equal(host.ready, true)
+  assert.equal(client.ready, true)
   client.close()
   host.close()
+})
+
+test('DSH Session 对端缺省协议版本时按 v1 放行', async () => {
+  const [hostSide, clientSide] = carrierPair()
+  const scope = { hostId: 'h1', kind: 'local' } as const
+  const host = new DshSession({ carrier: hostSide.carrier, role: 'host', generation: 'g1', hostScope: scope })
+  const frames: DshEnvelope[] = []
+  const send = hostSide.carrier.send.bind(hostSide.carrier)
+  hostSide.carrier.send = (data: Uint8Array) => { frames.push(decodeDshEnvelope(data)); return send(data) }
+  host.start()
+  clientSide.carrier.send(encodeDshEnvelope({
+    version: 1,
+    messageId: 'c_1',
+    streamId: 'session',
+    channel: 'session',
+    type: 'session.hello',
+    sequence: 0,
+    generation: 'g1',
+    hostScope: scope,
+    meta: { dshVersion: '0.1.6-alpha.2', capabilities: [] },
+  }))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(host.ready, true)
+  assert.ok(frames.some((envelope) => envelope.type === 'session.ready'))
+  host.close()
+})
+
+test('DSH Session 协议不匹配时回发 session.close 原因并进入 degraded', async () => {
+  const [hostSide, clientSide] = carrierPair()
+  const scope = { hostId: 'h1', kind: 'local' } as const
+  const host = new DshSession({ carrier: hostSide.carrier, role: 'host', generation: 'g1', hostScope: scope })
+  const frames: DshEnvelope[] = []
+  const send = hostSide.carrier.send.bind(hostSide.carrier)
+  hostSide.carrier.send = (data: Uint8Array) => { frames.push(decodeDshEnvelope(data)); return send(data) }
+  host.start()
+  clientSide.carrier.send(encodeDshEnvelope({
+    version: 1,
+    messageId: 'c_1',
+    streamId: 'session',
+    channel: 'session',
+    type: 'session.hello',
+    sequence: 0,
+    generation: 'g1',
+    hostScope: scope,
+    meta: { protocol: 'dsh-transport-v2', dshVersion: '0.2.0-rc.1', capabilities: [] },
+  }))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(host.state, 'degraded')
+  const close = frames.find((envelope) => envelope.type === 'session.close')
+  assert.equal(close?.meta.reason, 'PROTOCOL_VERSION_UNSUPPORTED')
+  host.close()
+})
+
+test('DSH Session 客户端拒绝协议不匹配的 ready 并回发 close 原因', async () => {
+  const [hostSide, clientSide] = carrierPair()
+  const scope = { hostId: 'h1', kind: 'local' } as const
+  const client = new DshSession({ carrier: clientSide.carrier, role: 'client', generation: 'g1', hostScope: scope })
+  const frames: DshEnvelope[] = []
+  const send = clientSide.carrier.send.bind(clientSide.carrier)
+  clientSide.carrier.send = (data: Uint8Array) => { frames.push(decodeDshEnvelope(data)); return send(data) }
+  client.start()
+  hostSide.carrier.send(encodeDshEnvelope({
+    version: 1,
+    messageId: 'h_1',
+    streamId: 'session',
+    channel: 'session',
+    type: 'session.ready',
+    sequence: 0,
+    generation: 'g1',
+    hostScope: scope,
+    meta: { protocol: 'dsh-transport-v2', dshVersion: '0.2.0-rc.1', capabilities: [] },
+  }))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(client.state, 'degraded')
+  await assert.rejects(client.waitReady(), /PROTOCOL_VERSION_UNSUPPORTED/)
+  const close = frames.find((envelope) => envelope.type === 'session.close')
+  assert.equal(close?.meta.reason, 'PROTOCOL_VERSION_UNSUPPORTED')
+  client.close()
 })
 
 test('Host Session 首个 hello 采用 Client generation，重连 generation 不再被误判过期', async () => {

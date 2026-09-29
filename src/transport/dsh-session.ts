@@ -6,7 +6,7 @@ import {
   type DshEnvelope,
   type DshHostScope,
 } from './dsh-envelope.js'
-import { DSH_VERSION, isDshVersionCompatible } from '../shared/contracts/version.js'
+import { DSH_VERSION } from '../shared/contracts/version.js'
 import { createDshTransportDebugLogger, type DshTransportDebugLogger } from './debug.js'
 
 export type DshSessionRole = 'client' | 'host'
@@ -29,7 +29,7 @@ export interface DshSessionOptions {
   debug?: DshTransportDebugLogger
 }
 
-/** 负责 DSH hello/ready、版本能力协商和心跳，不执行任何业务。 */
+/** 负责 DSH hello/ready、协议与能力协商和心跳，不执行任何业务。 */
 export class DshSession {
   private stateValue: DshSessionState = 'idle'
   private readonly listeners = new Set<(envelope: DshEnvelope) => void>()
@@ -117,14 +117,32 @@ export class DshSession {
     }))
   }
 
-  private sendReady(capabilities: readonly string[]): void {
+  private sendReady(capabilities: readonly string[], peerDshVersion?: string): void {
     this.send(this.createEnvelope('session.ready', 'session', {
       protocol: this.options.protocol ?? DSH_ENVELOPE_PROTOCOL,
-      dshVersion: this.options.dshVersion ?? DSH_VERSION,
+      // 回显对端上报的版本：旧客户端按自身兼容区间校验 ready，回显其自身版本才能放行。
+      dshVersion: peerDshVersion ?? this.options.dshVersion ?? DSH_VERSION,
+      hostDshVersion: this.options.dshVersion ?? DSH_VERSION,
       capabilities: [...capabilities],
       byteCredit: 64 * 1024,
       messageCredit: 32,
     }))
+  }
+
+  /**
+   * 握手只校验隧道协议版本：对端缺省不带协议时按 v1 处理。
+   * DSH 应用版本不再参与握手门槛；只有插件升级 DSH_ENVELOPE_PROTOCOL
+   * （对应不再兼容的 WebRTC 变更）时，才会在此拒绝旧协议对端。
+   */
+  private handshakeProtocolMatches(envelope: DshEnvelope): boolean {
+    const protocol = envelope.meta.protocol ?? DSH_ENVELOPE_PROTOCOL
+    return protocol === (this.options.protocol ?? DSH_ENVELOPE_PROTOCOL)
+  }
+
+  /** 协议不兼容时先回发 session.close 让对端拿到明确原因，再收敛本地会话。 */
+  private rejectHandshake(reason: string): void {
+    this.send(this.createEnvelope('session.close', 'session', { reason }))
+    this.fail(new Error(reason))
   }
 
   private receive(data: Uint8Array): void {
@@ -156,18 +174,17 @@ export class DshSession {
         this.fail(new Error('非法 session.hello'))
         return
       }
-      const protocol = envelope.meta.protocol
-      const dshVersion = envelope.meta.dshVersion
-      if (protocol !== (this.options.protocol ?? DSH_ENVELOPE_PROTOCOL) || typeof dshVersion !== 'string' || !isDshVersionCompatible(dshVersion)) {
-        this.fail(new Error('PROTOCOL_VERSION_UNSUPPORTED'))
+      if (!this.handshakeProtocolMatches(envelope)) {
+        this.rejectHandshake('PROTOCOL_VERSION_UNSUPPORTED')
         return
       }
+      const peerDshVersion = typeof envelope.meta.dshVersion === 'string' ? envelope.meta.dshVersion : undefined
       const offered = readCapabilities(envelope.meta.capabilities)
       const allowed = new Set(this.options.capabilities ?? offered)
       this.remoteCapabilities = offered.filter((capability) => allowed.has(capability))
       this.stateValue = 'ready'
       this.debug.log('session.ready', { role: this.options.role, capabilities: this.remoteCapabilities })
-      this.sendReady(this.remoteCapabilities)
+      this.sendReady(this.remoteCapabilities, peerDshVersion)
       this.readyResolve?.()
       this.options.onReady?.(this)
       return
@@ -177,10 +194,8 @@ export class DshSession {
         this.fail(new Error('非法 session.ready'))
         return
       }
-      const protocol = envelope.meta.protocol
-      const dshVersion = envelope.meta.dshVersion
-      if (protocol !== (this.options.protocol ?? DSH_ENVELOPE_PROTOCOL) || typeof dshVersion !== 'string' || !isDshVersionCompatible(dshVersion)) {
-        this.fail(new Error('PROTOCOL_VERSION_UNSUPPORTED'))
+      if (!this.handshakeProtocolMatches(envelope)) {
+        this.rejectHandshake('PROTOCOL_VERSION_UNSUPPORTED')
         return
       }
       this.remoteCapabilities = readCapabilities(envelope.meta.capabilities)
