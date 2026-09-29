@@ -66,10 +66,11 @@ test('FeatureRegistry 根据能力要求阻止、禁用或允许降级', async (
   assert.equal(registry.getSnapshot('optional').state, 'disabled')
 })
 
-test('能力矩阵覆盖插件当前测试的三个 DSH 版本', () => {
+test('能力矩阵覆盖插件当前测试的四个 DSH 版本', () => {
   const settingsRoutes = DSH_CAPABILITY_MATRIX.filter((route) => route.capability === 'settings.store')
   assert.ok(settingsRoutes.some((route) => route.supportedDsh.includes('0.1.5-rc.3')))
   assert.ok(settingsRoutes.some((route) => route.supportedDsh.includes('0.1.7-rc.2')))
+  assert.ok(settingsRoutes.some((route) => route.supportedDsh.includes('0.2.0-rc.1')))
   assert.ok(settingsRoutes.every((route) => route.consumers.length > 0))
 })
 
@@ -128,5 +129,108 @@ test('PeerHost 三版本 fixture 明确区分原生导航、Remote Web Context �
     const clientProfile = createDshCapabilityRegistry(version, 'client', clientContext).getProfile(clientContext)
     assert.equal(clientProfile.capabilities.get('peer-host.remote-web-context-fallback')?.status, version === '0.1.7-rc.2' ? 'unavailable' : 'ready')
     assert.equal(clientProfile.capabilities.get('peer-host.native-navigation')?.status, version === '0.1.7-rc.2' ? 'ready' : 'unavailable')
+  }
+})
+
+test('0.2.0-rc.1 Host fixture 按服务形状解析到 020 路由', () => {
+  const context = {
+    settings: { describe: () => [], mutate: async () => undefined, configure: () => () => undefined },
+    connection: {
+      rpc: { handle: () => undefined, intercept: () => undefined },
+      fetch: { register: () => undefined },
+      operator: {},
+      admit: () => undefined,
+      requestRejection: () => undefined,
+    },
+    typert: {
+      local: {},
+      remotes: { register: () => undefined, list: () => [] },
+      contexts: { getHost: () => undefined, getClient: () => undefined },
+    },
+    sessions: { get: () => undefined, list: () => [] },
+    subagents: { startContinuable: async () => undefined, sendMessage: async () => undefined },
+    agentTeams: { listMembers: () => [], spawnTeammate: async () => undefined },
+    agents: { get: () => undefined, list: () => [] },
+  }
+  const profile = createDshCapabilityRegistry('0.2.0-rc.1', 'host', context).getProfile(context)
+  const expectations = [
+    ['settings.store', 'settings-forms-020'],
+    ['connection.rpc', 'connection-rpc-020'],
+    ['connection.peer', 'connection-peer-admission-020'],
+    ['connection.attachment', 'connection-rpc-attachment-020'],
+    ['connection.uplink', 'connection-rpc-uplink-020'],
+    ['typert.remote', 'remote-context-stream-020'],
+    ['typert.context', 'typert-context-registry-020'],
+    ['typert.stream', 'typert-remote-stream-020'],
+    ['session.format-v4', 'session-format-v4'],
+    ['subagent.continuable', 'subagent-continuable-020'],
+    ['agent-team.native', 'agent-team-native-020'],
+  ] as const
+  for (const [capability, routeId] of expectations) {
+    const resolution = profile.capabilities.get(capability)
+    assert.equal(resolution?.routeId, routeId, capability)
+    assert.equal(resolution?.status, 'ready', capability)
+  }
+})
+
+test('0.2.0-rc.1 Client fixture 按服务形状与图标事实解析到 020 路由', () => {
+  const context = {
+    configForms: { get: () => undefined },
+    locale: {},
+    theme: {},
+    uiConversation: {},
+    sidebarRight: {},
+    remote: { $mount: () => undefined, $stream: () => undefined },
+    typert: { contexts: { getHost: () => undefined, getClient: () => undefined } },
+    modules: { version: 'client' },
+  }
+  const facts = { primitives: { IconPlusOutlineRegular: () => null, IconChevronDownOutlineRegular: () => null } }
+  const profile = createDshCapabilityRegistry('0.2.0-rc.1', 'client', context, facts).getProfile(context)
+  const expectations = [
+    ['settings.store', 'config-forms-020'],
+    ['ui.icon.plus', 'regular-plus-icon-020'],
+    ['ui.icon.chevron', 'regular-chevron-icon-020'],
+    ['locale.runtime', 'locale-runtime-020'],
+    ['theme.runtime', 'theme-runtime-020'],
+    ['conversation.tool-call', 'conversation-events-020'],
+    ['sidebar.right', 'sidebar-right-dock-020'],
+    ['typert.remote', 'remote-context-stream-020-client'],
+    ['typert.context', 'typert-context-registry-020-client'],
+    ['typert.stream', 'typert-remote-stream-020-client'],
+    ['client.boot-graph', 'client-web-boot-graph-020'],
+  ] as const
+  for (const [capability, routeId] of expectations) {
+    const resolution = profile.capabilities.get(capability)
+    assert.equal(resolution?.routeId, routeId, capability)
+    assert.equal(resolution?.status, 'ready', capability)
+  }
+})
+
+test('0.2.0-rc.1 fixture 缺失结构时保持不可用并生成诊断', () => {
+  const hostProfile = createDshCapabilityRegistry('0.2.0-rc.1', 'host', {}).getProfile({})
+  for (const capability of ['typert.context', 'typert.stream', 'session.format-v4', 'subagent.continuable', 'agent-team.native'] as const) {
+    assert.equal(hostProfile.capabilities.get(capability)?.status, 'unavailable', capability)
+  }
+  const clientProfile = createDshCapabilityRegistry('0.2.0-rc.1', 'client', {}).getProfile({})
+  for (const capability of ['ui.icon.plus', 'ui.icon.chevron', 'client.boot-graph'] as const) {
+    assert.equal(clientProfile.capabilities.get(capability)?.status, 'unavailable', capability)
+  }
+  assert.ok(clientProfile.diagnostics.some((item) => item.code === 'CAPABILITY_UNAVAILABLE'))
+})
+
+test('0.1.7 fixture 即使携带同名结构也不会误解析 0.2 专属能力', () => {
+  const context = {
+    settings: { describe: () => [], mutate: async () => undefined },
+    connection: {},
+    typert: { remotes: {}, contexts: {} },
+    sessions: { get: () => undefined, list: () => [] },
+    subagents: { startContinuable: async () => undefined, sendMessage: async () => undefined },
+    agentTeams: { listMembers: () => [], spawnTeammate: async () => undefined },
+    agents: {},
+  }
+  const profile = createDshCapabilityRegistry('0.1.7-rc.2', 'host', context).getProfile(context)
+  assert.equal(profile.capabilities.get('settings.store')?.routeId, 'config-settings')
+  for (const capability of ['typert.context', 'typert.stream', 'session.format-v4', 'subagent.continuable', 'agent-team.native'] as const) {
+    assert.equal(profile.capabilities.get(capability)?.status, 'unavailable', capability)
   }
 })

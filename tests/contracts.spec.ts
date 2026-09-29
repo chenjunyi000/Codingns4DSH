@@ -8,6 +8,7 @@ import {
   DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
   DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
   DEFAULT_FILE_MANAGEMENT_SETTINGS,
+  DEFAULT_SUBSCRIPTION_USAGE_SETTINGS,
   CODINGNS_DSH_ERROR_CODES,
   CodingNsDshError,
   isDshVersionCompatible,
@@ -52,6 +53,7 @@ test('Codingns4DSH 设置用模块名字典表达开关，结构不随模块数�
     terminalEnhancement: DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
     workspaceSessionEnhancement: DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
     fileManagement: DEFAULT_FILE_MANAGEMENT_SETTINGS,
+    subscriptionUsage: DEFAULT_SUBSCRIPTION_USAGE_SETTINGS,
     lanAccessDsh: { autoStart: false, listenHost: '0.0.0.0', listenPort: 13080, dshPort: 0 },
   })
 })
@@ -124,13 +126,10 @@ test('共享出口不再暴露按模块枚举的配置结构', async () => {
 
 test('不兼容 DSH 版本给出稳定错误码', () => {
   assert.doesNotThrow(() => assertSupportedDshVersion(SUPPORTED_DSH_VERSION))
-  assert.equal(isDshVersionCompatible('0.1.5-rc.3'), true)
-  assert.equal(isDshVersionCompatible('0.1.6'), true)
-  assert.equal(isDshVersionCompatible('0.1.6-alpha.3'), true)
-  assert.equal(isDshVersionCompatible('0.1.7-rc.1'), true)
-  assert.equal(isDshVersionCompatible('0.1.7-rc.2'), true)
-  assert.equal(isDshVersionCompatible('0.1.7-rc.3'), false)
-  assert.equal(isDshVersionCompatible('0.1.7'), false)
+  assert.equal(isDshVersionCompatible('0.2.0-rc.1'), true)
+  assert.equal(isDshVersionCompatible('0.1.7-rc.2'), false)
+  assert.equal(isDshVersionCompatible('0.2.0-rc.2'), false)
+  assert.equal(isDshVersionCompatible('0.2.0'), false)
   assert.equal(isLegacyDshVersion('0.1.5-rc.3'), true)
   assert.equal(isLegacyDshVersion('0.1.6-alpha.2'), false)
   assert.throws(

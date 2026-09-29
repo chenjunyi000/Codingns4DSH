@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url'
 const nextVersion = process.argv[2]?.trim()
 const nextCompatibility = process.argv[3]?.trim() || createDefaultCompatibility(nextVersion)
 const semver = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
-if (!nextVersion || !semver.test(nextVersion)) throw new Error('用法: pnpm run version:set-dsh -- 0.1.7-rc.1 [兼容范围]')
+if (!nextVersion || !semver.test(nextVersion)) throw new Error('用法: pnpm run version:set-dsh -- 0.2.0-rc.1 [兼容范围]')
 if (!/^>=\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)? <=\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(nextCompatibility)) {
-  throw new Error('DSH 兼容范围必须形如 ">=0.1.5-rc.3 <=0.1.7-rc.2"')
+  throw new Error('DSH 兼容范围必须形如 ">=0.2.0-rc.1 <=0.2.0-rc.1"')
 }
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -65,5 +65,7 @@ console.log('请随后运行 pnpm install --lockfile-only 和 pnpm run version:c
 function createDefaultCompatibility(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/u.exec(version ?? '')
   if (!match) return ''
+  // RC/Alpha 版本必须按精确版本隔离，避免把尚未验证的同 minor 宿主误纳入兼容范围。
+  if (version?.includes('-') === true) return `>=${version} <=${version}`
   return `>=${version} <=${match[1]}.${match[2]}.${match[3]}`
 }

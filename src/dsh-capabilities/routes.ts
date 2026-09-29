@@ -11,11 +11,12 @@ export function createDshCapabilityRegistry(
   dshVersion: string,
   runtime: DshCapabilityRuntime,
   context: unknown,
+  facts: DshCapabilityRuntimeFacts = {},
 ): DshCapabilityRegistry {
   const registry = new DshCapabilityRegistry(dshVersion, runtime)
-  const value = context as Record<string, unknown>
   const rangeLegacy = '>=0.1.5-rc.3 <=0.1.6'
   const rangeModern = '>=0.1.7-rc.2 <=0.1.7-rc.2'
+  const range020 = '>=0.2.0-rc.1 <=0.2.0-rc.1'
   const add = <T>(route: DshCapabilityRoute<T>): void => registry.register(route)
 
   if (runtime === 'host') {
@@ -25,22 +26,156 @@ export function createDshCapabilityRegistry(
     add({ id: 'connection-rpc-peer-aware', capability: 'connection.rpc', supportedDsh: rangeModern, runtime, priority: 20, status: 'supported', introducedIn: '0.1.7-rc.2', detect: (ctx) => (ctx as { connection?: unknown }).connection !== undefined, create: (ctx) => (ctx as { connection: unknown }).connection })
     add({ id: 'connection-peer', capability: 'connection.peer', supportedDsh: rangeModern, runtime, priority: 20, status: 'supported', introducedIn: '0.1.7-rc.2', detect: (ctx) => (ctx as { connection?: { peer?: unknown } }).connection?.peer !== undefined, create: (ctx) => (ctx as { connection: { peer: unknown } }).connection.peer })
     add({ id: 'remote-result', capability: 'typert.remote', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { remote?: unknown }).remote !== undefined, create: (ctx) => (ctx as { remote: unknown }).remote })
+    addDsh020HostRoutes(add, range020)
     addPeerHostHostRoutes(add)
   } else {
     add({ id: 'settings-scope', capability: 'settings.store', supportedDsh: rangeLegacy, runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => typeof (ctx as { settingsScope?: { bind?: unknown } }).settingsScope?.bind === 'function', create: (ctx) => (ctx as { settingsScope: unknown }).settingsScope })
     add({ id: 'config-form', capability: 'settings.store', supportedDsh: rangeModern, runtime, priority: 20, status: 'supported', introducedIn: '0.1.7-rc.2', detect: (ctx) => typeof (ctx as { configForms?: { get?: unknown } }).configForms?.get === 'function', create: (ctx) => (ctx as { configForms: unknown }).configForms })
-    add({ id: 'icon-primitives', capability: 'ui.icon.plus', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: () => value.primitives !== undefined, create: () => value.primitives })
+    add({ id: 'icon-primitives', capability: 'ui.icon.plus', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: () => facts.primitives !== undefined, create: () => facts.primitives })
     add({ id: 'locale-runtime', capability: 'locale.runtime', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { locale?: unknown }).locale !== undefined, create: (ctx) => (ctx as { locale: unknown }).locale })
     add({ id: 'theme-runtime', capability: 'theme.runtime', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { theme?: unknown }).theme !== undefined, create: (ctx) => (ctx as { theme: unknown }).theme })
     add({ id: 'conversation-events', capability: 'conversation.tool-call', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { uiConversation?: unknown }).uiConversation !== undefined, create: (ctx) => (ctx as { uiConversation: unknown }).uiConversation })
     add({ id: 'sidebar-right', capability: 'sidebar.right', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { sidebarRight?: unknown }).sidebarRight !== undefined, create: (ctx) => (ctx as { sidebarRight: unknown }).sidebarRight })
     add({ id: 'remote-result', capability: 'typert.remote', supportedDsh: '>=0.1.5-rc.3 <=0.1.7-rc.2', runtime, priority: 10, status: 'supported', introducedIn: '0.1.5-rc.3', detect: (ctx) => (ctx as { remote?: unknown }).remote !== undefined, create: (ctx) => (ctx as { remote: unknown }).remote })
+    addDsh020ClientRoutes(add, range020, facts)
     addPeerHostClientRoutes(add)
   }
   return registry
 }
 
 type CapabilityRouteAdder = <T>(route: DshCapabilityRoute<T>) => void
+
+/**
+ * 无法从 Context 探测、只能由运行时入口提供的结构事实。
+ * 图标导出属于客户端 bundle 的静态导入，由 client/index.ts 在装配时提供。
+ */
+export interface DshCapabilityRuntimeFacts {
+  readonly primitives?: unknown
+}
+
+/** DSH 0.2 Host 结构化能力。检测基于服务形状，不把版本判断散落到业务模块。 */
+function addDsh020HostRoutes(add: CapabilityRouteAdder, supportedDsh: string): void {
+  add({
+    id: 'settings-forms-020', capability: 'settings.store', supportedDsh, runtime: 'host', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'settings'), ['describe', 'mutate', 'configure']),
+    create: (ctx) => read(ctx, 'settings'),
+  })
+  add({
+    id: 'connection-rpc-020', capability: 'connection.rpc', supportedDsh, runtime: 'host', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'connection.rpc'), ['handle', 'intercept']) && hasMethods(read(ctx, 'connection.fetch'), ['register']),
+    create: (ctx) => read(ctx, 'connection'),
+  })
+  add({
+    id: 'connection-peer-admission-020', capability: 'connection.peer', supportedDsh, runtime: 'host', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'connection'), ['admit', 'requestRejection']) && read(ctx, 'connection.operator') !== undefined,
+    create: (ctx) => read(ctx, 'connection'),
+  })
+  add({
+    id: 'connection-rpc-attachment-020', capability: 'connection.attachment', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'connection.rpc'), ['handle']) && hasMethods(read(ctx, 'connection.fetch'), ['register']),
+    create: (ctx) => read(ctx, 'connection'),
+  })
+  add({
+    id: 'connection-rpc-uplink-020', capability: 'connection.uplink', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'connection.rpc'), ['handle']) && read(ctx, 'connection.operator') !== undefined,
+    create: (ctx) => read(ctx, 'connection'),
+  })
+  add({
+    id: 'remote-context-stream-020', capability: 'typert.remote', supportedDsh, runtime: 'host', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    // 0.2 Host 用 `ctx.typert` 注册表承载 Remote 服务（TypertRemoteService）；
+    // `ctx.remote` 属于浏览器装配，不会出现在 Host 组合里。
+    detect: (ctx) => read(ctx, 'typert.remotes') !== undefined && read(ctx, 'typert.local') !== undefined,
+    create: (ctx) => read(ctx, 'typert'),
+  })
+  add({
+    id: 'typert-context-registry-020', capability: 'typert.context', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'typert.contexts'), ['getHost', 'getClient']),
+    create: (ctx) => read(ctx, 'typert.contexts'),
+  })
+  add({
+    id: 'typert-remote-stream-020', capability: 'typert.stream', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    // 流式端点由 Remote 注册表承载（descriptor.mode === 'stream'）。
+    detect: (ctx) => hasMethods(read(ctx, 'typert.remotes'), ['register', 'list']),
+    create: (ctx) => read(ctx, 'typert.remotes'),
+  })
+  add({
+    id: 'session-format-v4', capability: 'session.format-v4', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    // generation 由 SessionStore 中每个会话头部的 version 决定；这里只确认 0.2
+    // 的 Store 形状，具体 generation 仍由 native-session-bridge 按会话读取。
+    detect: (ctx) => hasMethods(read(ctx, 'sessions'), ['get', 'list']),
+    create: (ctx) => read(ctx, 'sessions'),
+  })
+  add({
+    id: 'subagent-continuable-020', capability: 'subagent.continuable', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    // 0.2 的可续子代理是 SubagentRuntime 的公开操作 startContinuable/sendMessage。
+    detect: (ctx) => hasMethods(read(ctx, 'subagents'), ['startContinuable', 'sendMessage']),
+    create: (ctx) => read(ctx, 'subagents'),
+  })
+  add({
+    id: 'agent-team-native-020', capability: 'agent-team.native', supportedDsh, runtime: 'host', priority: 10,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    // 原生 Team 代理同时需要 TeamService 的成员/派生操作与 Agent 注册表。
+    detect: (ctx) => hasMethods(read(ctx, 'agentTeams'), ['listMembers', 'spawnTeammate']) && read(ctx, 'agents') !== undefined,
+    create: (ctx) => read(ctx, 'agentTeams'),
+  })
+}
+
+/** DSH 0.2 Client 结构化能力；图标和 UI 服务允许由新旧导出共同提供。 */
+function addDsh020ClientRoutes(add: CapabilityRouteAdder, supportedDsh: string, facts: DshCapabilityRuntimeFacts): void {
+  add({
+    id: 'config-forms-020', capability: 'settings.store', supportedDsh, runtime: 'client', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: (ctx) => hasMethods(read(ctx, 'settings'), ['describe', 'update']) || hasMethods(read(ctx, 'configForms'), ['get']),
+    create: (ctx) => read(ctx, 'settings') ?? read(ctx, 'configForms'),
+  })
+  add({
+    id: 'regular-plus-icon-020', capability: 'ui.icon.plus', supportedDsh, runtime: 'client', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: () => hasAny(facts.primitives, ['IconPlusOutlineRegular', 'IconPlusOutlineMedium']),
+    create: () => facts.primitives,
+  })
+  add({
+    id: 'regular-chevron-icon-020', capability: 'ui.icon.chevron', supportedDsh, runtime: 'client', priority: 30,
+    status: 'supported', introducedIn: '0.2.0-rc.1',
+    detect: () => hasAny(facts.primitives, ['IconChevronDownOutlineRegular', 'IconChevronDownOutlineMedium']),
+    create: () => facts.primitives,
+  })
+  add({ id: 'locale-runtime-020', capability: 'locale.runtime', supportedDsh, runtime: 'client', priority: 30, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'locale') !== undefined, create: (ctx) => read(ctx, 'locale') })
+  add({ id: 'theme-runtime-020', capability: 'theme.runtime', supportedDsh, runtime: 'client', priority: 30, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'theme') !== undefined, create: (ctx) => read(ctx, 'theme') })
+  add({ id: 'conversation-events-020', capability: 'conversation.tool-call', supportedDsh, runtime: 'client', priority: 30, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'uiConversation') !== undefined, create: (ctx) => read(ctx, 'uiConversation') })
+  add({ id: 'sidebar-right-dock-020', capability: 'sidebar.right', supportedDsh, runtime: 'client', priority: 30, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'sidebarRight') !== undefined || read(ctx, 'sidebarRightTabs') !== undefined, create: (ctx) => read(ctx, 'sidebarRight') ?? read(ctx, 'sidebarRightTabs') })
+  add({ id: 'remote-context-stream-020-client', capability: 'typert.remote', supportedDsh, runtime: 'client', priority: 30, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => hasMethods(read(ctx, 'remote'), ['$mount']), create: (ctx) => read(ctx, 'remote') })
+  add({ id: 'typert-context-registry-020-client', capability: 'typert.context', supportedDsh, runtime: 'client', priority: 10, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => hasMethods(read(ctx, 'typert.contexts'), ['getHost', 'getClient']), create: (ctx) => read(ctx, 'typert.contexts') })
+  add({ id: 'typert-remote-stream-020-client', capability: 'typert.stream', supportedDsh, runtime: 'client', priority: 10, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => hasMethods(read(ctx, 'remote'), ['$mount', '$stream']), create: (ctx) => read(ctx, 'remote') })
+  add({ id: 'client-web-boot-graph-020', capability: 'client.boot-graph', supportedDsh, runtime: 'client', priority: 10, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'modules.version') === 'client', create: (ctx) => read(ctx, 'modules') })
+}
+
+function read(context: unknown, path: string): unknown {
+  let value: unknown = context
+  for (const key of path.split('.')) {
+    if (typeof value !== 'object' || value === null) return undefined
+    value = Reflect.get(value, key)
+  }
+  return value
+}
+
+function hasMethods(value: unknown, methods: readonly string[]): boolean {
+  return typeof value === 'object' && value !== null && methods.every((method) => typeof Reflect.get(value, method) === 'function')
+}
+
+function hasAny(value: unknown, keys: readonly string[]): boolean {
+  return typeof value === 'object' && value !== null && keys.some((key) => Reflect.get(value, key) !== undefined)
+}
 
 /** PeerHost Host 能力只接受显式注入的适配器，避免把普通 DSH 服务误报为已实现。 */
 function addPeerHostHostRoutes(add: CapabilityRouteAdder): void {
@@ -50,6 +185,12 @@ function addPeerHostHostRoutes(add: CapabilityRouteAdder): void {
   addPeerHostRoute(add, 'peer-host.ws-proxy', 'peer-host-ws-proxy', 'peerHostWsProxy')
   addPeerHostRoute(add, 'peer-host.aggregate', 'peer-host-aggregate', 'peerHostAggregate')
   addPeerHostRoute(add, 'peer-host.relay-route', 'peer-host-relay-route', 'peerHostRelayRoute')
+  addPeerHostRoute(add, 'peer-host.store', 'peer-host-store-020', 'peerHostStore', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.handshake', 'peer-host-handshake-020', 'peerHostHandshake', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.http-proxy', 'peer-host-http-proxy-020', 'peerHostHttpProxy', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.ws-proxy', 'peer-host-ws-proxy-020', 'peerHostWsProxy', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.aggregate', 'peer-host-aggregate-020', 'peerHostAggregate', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.relay-route', 'peer-host-relay-route-020', 'peerHostRelayRoute', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
 }
 
 /** PeerHost Client 导航能力由独立 adapter 注入；未注入时由 Feature 诊断降级。 */
@@ -57,6 +198,8 @@ function addPeerHostClientRoutes(add: CapabilityRouteAdder): void {
   addPeerHostRoute(add, 'peer-host.native-navigation', 'peer-host-native-navigation-legacy', 'peerHostNativeNavigation', '>=0.1.5-rc.3 <=0.1.6', 'deprecated')
   addPeerHostRoute(add, 'peer-host.native-navigation', 'peer-host-native-navigation-modern', 'peerHostNativeNavigation', '>=0.1.7-rc.2 <=0.1.7-rc.2', 'supported', 20)
   addPeerHostRoute(add, 'peer-host.remote-web-context-fallback', 'peer-host-remote-web-context-fallback', 'peerHostRemoteWebContextFallback')
+  addPeerHostRoute(add, 'peer-host.native-navigation', 'peer-host-native-navigation-020', 'peerHostNativeNavigation', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
+  addPeerHostRoute(add, 'peer-host.remote-web-context-fallback', 'peer-host-remote-web-context-fallback-020', 'peerHostRemoteWebContextFallback', '>=0.2.0-rc.1 <=0.2.0-rc.1', 'supported', 30)
 }
 
 function addPeerHostRoute(

@@ -1,5 +1,4 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -9,6 +8,7 @@ import {
   type TerminalControllerFactoryResult,
 } from './controller-factory.js'
 import { terminalStorePath } from './terminal-store.js'
+import type { DshHostSettingsProvider, DshHostSettingsScope } from '../../dsh-capabilities/host/config-forms-adapter.js'
 
 const HOST_ID_FILENAME = 'host-id'
 const HOST_ID_PATTERN = /^local-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
@@ -82,8 +82,8 @@ export function terminalWorkspaceId(cwd: string): string {
  */
 export async function installTerminalController(
   ctx: Context,
-  settings: SettingsScope<CodingNsSettings>,
-  provider: Pick<SettingsProvider, 'documentPath'>,
+  settings: DshHostSettingsScope<CodingNsSettings>,
+  provider: Pick<DshHostSettingsProvider, 'documentPath'>,
   options: InstallTerminalControllerOptions = {},
 ): Promise<TerminalControllerFactoryResult> {
   const createController = options.createController ?? createTerminalController

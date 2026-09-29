@@ -5,10 +5,10 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import { homedir } from 'node:os'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { CodingNsSettings, LanAccessDshLoginSettings, LanAccessDshSettings, LoginProtectionScopes } from '../shared/contracts/config.js'
 import type { LanAccessDshConfig, LanAccessDshLoginConfig, LanAccessDshSnapshot } from '../shared/contracts/lan-access-dsh.js'
 import { CodingNsRpcError } from './rpc-table.js'
+import type { DshHostSettingsScope } from '../dsh-capabilities/host/config-forms-adapter.js'
 
 export interface LanAccessDshStream {
   pipe(destination: LanAccessDshStream): LanAccessDshStream
@@ -760,7 +760,7 @@ export function normalizeLanAccessDshConfig(value: Partial<LanAccessDshConfig>, 
 
 export function createLanAccessDshRpcHandler(
   proxy: LanAccessDshProxy,
-  settings?: SettingsScope<CodingNsSettings>,
+  settings?: DshHostSettingsScope<CodingNsSettings>,
   loginStore: LanAccessDshLoginStore = new FileLanAccessDshLoginStore(),
 ): (action: string, payload: unknown) => unknown | Promise<unknown> {
   return async (action, payload) => {

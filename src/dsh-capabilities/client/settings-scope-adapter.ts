@@ -1,5 +1,5 @@
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { CodingNsSettings } from '../../shared/contracts/config.js'
+import type { DshClientSettingsScope, LocalScopeSnapshot } from '../../client/settings-bridge.js'
 import {
   accepted,
   sameSettingsSnapshot,
@@ -15,7 +15,7 @@ import {
  * 读取快照。这里缓存上一次的快照，内容不变时不替换引用、不唤醒订阅者，避免
  * React 反复强制渲染（React #185）。
  */
-export function createLegacyClientSettingsStore(scope: SettingsScope<CodingNsSettings>): CodingNsSettingsStore<CodingNsSettings> {
+export function createLegacyClientSettingsStore(scope: DshClientSettingsScope<CodingNsSettings>): CodingNsSettingsStore<CodingNsSettings> {
   const listeners = new Set<() => void>()
   let snapshot = fromScopeSnapshot(scope.getSnapshot())
   const refresh = (): void => {
@@ -41,7 +41,7 @@ export function createLegacyClientSettingsStore(scope: SettingsScope<CodingNsSet
   }
 }
 
-function fromScopeSnapshot(snapshot: ReturnType<SettingsScope<CodingNsSettings>['getSnapshot']>): CodingNsSettingsSnapshot<CodingNsSettings> {
+function fromScopeSnapshot(snapshot: LocalScopeSnapshot<CodingNsSettings>): CodingNsSettingsSnapshot<CodingNsSettings> {
   return { value: snapshot.value, revision: snapshot.revision, writable: snapshot.writable, status: snapshot.status }
 }
 

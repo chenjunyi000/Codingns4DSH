@@ -1,4 +1,3 @@
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import type { CodingNsSettings } from '../shared/contracts/config.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
@@ -7,9 +6,19 @@ import {
   sameSettingsSnapshot,
   type CodingNsSettingsSnapshot,
   type CodingNsSettingsStore,
+  type CodingNsSettingsOperation,
 } from '../dsh-capabilities/settings-store.js'
 
-type SettingsMutation = Parameters<SettingsScope<CodingNsSettings>['mutate']>[0]
+/** DSH 0.1 SettingsScope 与 0.2 Client 设置镜像的共同最小结构。 */
+export interface DshClientSettingsScope<T> {
+  getSnapshot(): LocalScopeSnapshot<T>
+  subscribe(listener: () => void): () => void
+  mutate(operations: readonly CodingNsSettingsOperation[], expectedRevision?: number): Promise<void | boolean>
+  set(field: string, value: unknown): Promise<void | boolean>
+  unset(field: string): Promise<void | boolean>
+}
+
+type SettingsMutation = readonly CodingNsSettingsOperation[]
 type SnapshotListener = () => void
 
 interface RemoteSettingsResponse {
@@ -46,7 +55,7 @@ export class CodingNsSettingsBridge implements CodingNsSettingsStore<CodingNsSet
   private remoteLoaded = false
 
   constructor(
-    private readonly local: SettingsScope<CodingNsSettings> | undefined,
+    private readonly local: DshClientSettingsScope<CodingNsSettings> | undefined,
     private readonly rpc: CodingNsRpcClient,
   ) {
     this.snapshot = toStoreSnapshot(local?.getSnapshot() ?? UNAVAILABLE_LOCAL_SNAPSHOT)
@@ -198,32 +207,46 @@ export async function callCodingNsRpc<T>(rpc: CodingNsRpcClient, endpoint: strin
   return result.value as T
 }
 
-type JsonValue = Extract<SettingsMutation[number], { readonly op: 'set' }>['value']
+type JsonValue = null | string | boolean | number | JsonValue[] | { readonly [key: string]: JsonValue }
 
 /** 设置 RPC 只能传 JSON；在浏览器边界尽早拒绝函数、循环引用等无效值。 */
-function toJsonValue(value: unknown): JsonValue {
+function toJsonValue(value: unknown, visiting = new WeakSet<object>()): JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
   if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (Array.isArray(value)) return value.map(toJsonValue)
-  if (typeof value !== 'object') throw new TypeError('设置值必须是可序列化的 JSON')
+  if (Array.isArray(value)) {
+    if (visiting.has(value)) throw new TypeError('设置值不能包含循环引用')
+    visiting.add(value)
+    try { return value.map((entry) => toJsonValue(entry, visiting)) } finally { visiting.delete(value) }
+  }
+  if (typeof value !== 'object' || value === undefined) throw new TypeError('设置值必须是可序列化的 JSON')
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) throw new TypeError('设置值只能包含 JSON 对象、数组和标量')
+  if (visiting.has(value)) throw new TypeError('设置值不能包含循环引用')
+  visiting.add(value)
   const result: Record<string, JsonValue> = {}
-  for (const [key, entry] of Object.entries(value)) result[key] = toJsonValue(entry)
-  return result
+  try {
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry === undefined) continue
+      result[key] = toJsonValue(entry, visiting)
+    }
+    return result
+  } finally { visiting.delete(value) }
 }
 
 export function createCodingNsSettingsBridge(
-  local: SettingsScope<CodingNsSettings> | undefined,
+  local: DshClientSettingsScope<CodingNsSettings> | undefined,
   rpc: CodingNsRpcClient,
 ): CodingNsSettingsBridge {
   return new CodingNsSettingsBridge(local, rpc)
 }
 
 /** 本地镜像或占位快照中的通用字段；DSH 各版本另有 base/user/mode 等附加字段。 */
-type LocalScopeSnapshot = {
-  readonly value: CodingNsSettings | undefined
+export type LocalScopeSnapshot<T = CodingNsSettings> = {
+  readonly value: T | undefined
   readonly revision: number | undefined
   readonly writable: boolean
   readonly status: 'loading' | 'ready' | 'unavailable'
+  readonly mode?: string
 }
 
 function toStoreSnapshot(snapshot: LocalScopeSnapshot): CodingNsSettingsSnapshot<CodingNsSettings> {

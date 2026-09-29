@@ -1,5 +1,5 @@
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { CodingNsSettings } from '../../shared/contracts/config.js'
+import type { DshHostSettingsScope } from './config-forms-adapter.js'
 import type {
   CodingNsSettingsOperation,
   CodingNsSettingsSnapshot,
@@ -7,7 +7,7 @@ import type {
 } from '../settings-store.js'
 
 /** 旧版 Host SettingsScope 到 Codingns4DSH 内部设置接口的适配器。 */
-export function createLegacyHostSettingsStore<T>(scope: SettingsScope<T>): CodingNsSettingsStore<T> {
+export function createLegacyHostSettingsStore<T>(scope: DshHostSettingsScope<T>): CodingNsSettingsStore<T> {
   const listeners = new Set<() => void>()
   const unsubscribe = scope.watch(() => {
     for (const listener of listeners) listener()
@@ -31,7 +31,7 @@ export function createLegacyHostSettingsStore<T>(scope: SettingsScope<T>): Codin
       const current = scope.get() as Record<string, unknown>
       const next = { ...current }
       delete next[field]
-      await scope.replace(next)
+      await scope.replace(next as T)
       return true
     },
     dispose: () => unsubscribe(),

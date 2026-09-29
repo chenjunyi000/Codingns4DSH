@@ -39,7 +39,7 @@ test('DSH Session 允许兼容的 Host 与 Client 使用不同应用版本握手
     role: 'host',
     generation: 'g1',
     hostScope: { hostId: 'h1', kind: 'local' },
-    dshVersion: '0.1.7-rc.2',
+    dshVersion: '0.2.0-rc.1',
     capabilities: ['rpc'],
   })
   const client = new DshSession({
@@ -47,7 +47,7 @@ test('DSH Session 允许兼容的 Host 与 Client 使用不同应用版本握手
     role: 'client',
     generation: 'g1',
     hostScope: { hostId: 'h1', kind: 'local' },
-    dshVersion: '0.1.6-alpha.2',
+    dshVersion: '0.2.0-rc.1',
     capabilities: ['rpc'],
   })
 
@@ -61,8 +61,8 @@ test('DSH Session 允许兼容的 Host 与 Client 使用不同应用版本握手
 
 test('DSH Session 拒绝超出兼容范围的对端版本', async () => {
   const [left, right] = carrierPair()
-  const host = new DshSession({ carrier: left.carrier, role: 'host', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.1.6-alpha.2' })
-  const client = new DshSession({ carrier: right.carrier, role: 'client', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.1.8' })
+  const host = new DshSession({ carrier: left.carrier, role: 'host', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.2.0-rc.1' })
+  const client = new DshSession({ carrier: right.carrier, role: 'client', generation: 'g1', hostScope: { hostId: 'h1', kind: 'local' }, dshVersion: '0.2.0-rc.2' })
   host.start()
   client.start()
   await new Promise((resolve) => setImmediate(resolve))

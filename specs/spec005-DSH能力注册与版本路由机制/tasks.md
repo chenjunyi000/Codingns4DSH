@@ -9,6 +9,17 @@
 - 类型、构建和全量测试：`pnpm run typecheck`、`pnpm run build`、`pnpm test`，共 366 项测试通过。
 - 三版本 Registry fixture：`tests/dsh-capability-registry.spec.ts` 覆盖 `0.1.5-rc.3`、`0.1.6-alpha.2`、`0.1.7-rc.2`。
 
+## 维护记录
+
+### 2026-09-29：DSH 0.2.0-rc.1 适配（版本收敛）
+
+- 兼容范围收敛为 `>=0.2.0-rc.1 <=0.2.0-rc.1`；`version.json`、`package.json`（`engines.dsh`、`peerDependencies.@deepseek-ai/dsh`）、`profile/` 与 `src/shared/contracts/version.ts` 同步，`pnpm run version:check` 通过。
+- 能力矩阵为每个能力登记 `>=0.2.0-rc.1 <=0.2.0-rc.1` 的 `*-020` 路由，与 0.1.x 历史路由并列；020 探测改用 0.2.0 真实结构（`sessions`、`subagents`、`agentTeams`+`agents`、`typert.contexts`、`modules`、`connection.rpc`/`fetch`/`operator`），图标导出由客户端入口通过 `DshCapabilityRuntimeFacts` 提供。
+- 旧路由退休：`connection.peer` 的 `no-peer-context`（`deprecated`，`removableAfter=0.1.8-0`）随最低兼容版本提高而到期，已从矩阵和路由中移除；`pnpm run capability:check` 通过，能力报告已重新生成（`pnpm run capability:report`）。
+- Registry fixture 扩展为四版本：新增 `0.2.0-rc.1` 的 Host/Client fake Context 解析、缺失结构诊断与 0.1.7 不误解析 020 能力三组用例。
+- 证据文档：`docs/调查报告/20260929-DSH-0.2.0-rc.1接口与调用变化.md`、`docs/开发记录/20260929-DSH-0.2.0-rc.1适配记录.md`。
+- 验证：`pnpm run typecheck`、`pnpm run version:check`、`pnpm run capability:check`、`pnpm test`（628 项通过）。
+
 ## 这份文档是干什么的
 
 这份任务清单用于把能力注册表从设计落到代码。每个任务都明确工作边界、依赖、文件、验收和验证方式。只有完成验证并回写结果后，任务才能标记为 `DONE`。

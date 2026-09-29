@@ -5,12 +5,12 @@
 **把外部 Agent CLI、持久终端、工作区调试和远程访问，装进 DSH 原生界面。**
 
 [![npm version](https://img.shields.io/npm/v/%40jingyi0605%2Fcodingns4dsh?logo=npm)](https://www.npmjs.com/package/@jingyi0605/codingns4dsh)
-[![DSH compatibility](https://img.shields.io/badge/DSH-%3E%3D0.1.5--rc.3%20%3C%3D0.1.7--rc.2-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH compatibility](https://img.shields.io/badge/DSH-0.2.0--rc.1-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.19-3C873A?logo=node.js&logoColor=white)](https://nodejs.org)
 
 **简体中文** · [English](README.en.md)
 
-**当前版本 `@jingyi0605/codingns4dsh@0.1.7-rc.2`** · DSH **`>=0.1.5-rc.3 <=0.1.7-rc.2`**（已验证 `0.1.5-rc.3`、`0.1.6-alpha.2`、`0.1.7-rc.2`）· Node **`>= 22.19`** · macOS / Linux / Windows
+**当前版本 `@jingyi0605/codingns4dsh@0.2.0-beta.1`** · DSH **`>=0.2.0-rc.1 <=0.2.0-rc.1`**（已验证 `0.2.0-rc.1`）· Node **`>= 22.19`** · macOS / Linux / Windows
 
 **[GitHub](https://github.com/jingyi0605/Codingns4DSH)** · **[npm](https://www.npmjs.com/package/@jingyi0605/codingns4dsh)** · **QQ 群 1092985965**
 
@@ -62,7 +62,7 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 
 一切都跑在 **Host（你的电脑）** 上：Agent 进程、终端、文件、局域网/中继监听；浏览器只是视图。Agent CLI 作为 DSH 子进程使用自己的凭据与上游，模型流量不经过插件。远程访问全部可用。
 
-补充说明：Codingns4DSH 装好后侧栏终端就已存在，**终端强化** 只是把它从基础本地 PTY 切换为持久后端（macOS/Linux 用 tmux，Windows 用 ConPTY），重启后生效；在 DSH `0.1.5.x` 上 Codingns4DSH 运行于兼容模式（无多 Tab 与 Shell 选择），卡片会给出提示；**工作区调试** 目前界面文案只有中文。
+补充说明：Codingns4DSH 装好后侧栏终端就已存在，**终端强化** 只是把它从基础本地 PTY 切换为持久后端（macOS/Linux 用 tmux，Windows 用 ConPTY），重启后生效；**工作区调试** 目前界面文案只有中文。
 
 ---
 
@@ -103,6 +103,8 @@ DSH 原生部分不会被替换：对话、会话列表、侧栏、设置、权�
 </div>
 
 模型列表直接读取自各 CLI，可随时切换；按钮上还会显示当前模型与思考强度。
+
+外部 Agent 自己组装请求，上下文面板的启发式构成与真实用量不同源；这些会话的面板只保留占用百分比与总量，不显示「系统 / 工具 / 消息」明细。
 
 ### 会话增强与订阅用量
 
@@ -210,14 +212,14 @@ DSH 设置按钮旁的账户入口会显示登录状态、访问路径与延迟�
 
 ## 安装
 
-**环境要求**：DSH 在 `>=0.1.5-rc.3 <=0.1.7-rc.2` 范围内（插件与 DSH 版本独立发布，安装期与运行期都会拒绝不兼容版本）· Node.js `>= 22.19` · `PATH` 中有 `pnpm`（`dsh plugin` 转发给 pnpm）· 可选：Agent CLI，以及 macOS/Linux 上用于持久终端的 `tmux`（`brew install tmux` / `sudo apt install tmux`）。
+**环境要求**：DSH 在 `>=0.2.0-rc.1 <=0.2.0-rc.1` 范围内（插件与 DSH 版本独立发布，安装期与运行期都会拒绝不兼容版本）· Node.js `>= 22.19` · `PATH` 中有 `pnpm`（`dsh plugin` 转发给 pnpm）· 可选：Agent CLI，以及 macOS/Linux 上用于持久终端的 `tmux`（`brew install tmux` / `sudo apt install tmux`）。
 
 ### 最简单的安装方式：使用内置 `web` Profile
 
 DSH 的 `web` Profile 会在首次使用时自动初始化，不需要手动创建配置文件，也不需要执行 `--dump-config`：
 
 ```bash
-dsh plugin --profile web add @jingyi0605/codingns4dsh@0.1.7-rc.2
+dsh plugin --profile web add @jingyi0605/codingns4dsh@0.2.0-beta.1
 dsh web
 ```
 
@@ -227,7 +229,7 @@ dsh web
 
 ```bash
 dsh codingns --from-default-profile web --dump-config
-dsh plugin --profile codingns add @jingyi0605/codingns4dsh@0.1.7-rc.2
+dsh plugin --profile codingns add @jingyi0605/codingns4dsh@0.2.0-beta.1
 dsh codingns
 ```
 
@@ -248,7 +250,7 @@ dsh plugin --profile web remove @jingyi0605/codingns4dsh
 ```bash
 git clone https://github.com/jingyi0605/Codingns4DSH.git && cd Codingns4DSH
 pnpm install && pnpm build
-dsh plugin --profile web add "$PWD"                # 或 npm pack 后 add ./jingyi0605-codingns4dsh-0.1.7-rc.2.tgz
+dsh plugin --profile web add "$PWD"                # 或 npm pack 后 add ./jingyi0605-codingns4dsh-0.2.0-beta.1.tgz
 dsh web
 ```
 

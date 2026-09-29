@@ -1,11 +1,11 @@
 /** 当前经过完整验证的 DSH 版本；源文件由根目录 version.json 同步。 */
-export const DSH_VERSION = '0.1.6-alpha.2' as const
+export const DSH_VERSION = '0.2.0-rc.1' as const
 
 /** DSH 测试版本别名，供新代码表达语义，保留 DSH_VERSION 兼容旧调用方。 */
 export const DSH_TESTED_VERSION = DSH_VERSION
 
 /** 插件支持的 DSH 版本范围；插件版本与宿主版本独立发布。 */
-export const DSH_COMPATIBILITY = '>=0.1.5-rc.3 <=0.1.7-rc.2' as const
+export const DSH_COMPATIBILITY = '>=0.2.0-rc.1 <=0.2.0-rc.1' as const
 
 /** DSH Envelope/Tunnel 协议主版本。 */
 export const DSH_PROTOCOL_VERSION = 1 as const
@@ -19,7 +19,7 @@ export function isLegacyDshVersion(version: string): boolean {
 }
 
 /** Codingns4DSH 插件自身的 npm 版本。 */
-export const CODINGNS_VERSION = '0.1.7-rc.2' as const
+export const CODINGNS_VERSION = '0.2.0-beta.1' as const
 
 interface ParsedVersion {
   readonly major: number
