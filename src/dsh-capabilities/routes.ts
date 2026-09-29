@@ -160,13 +160,48 @@ function addDsh020ClientRoutes(add: CapabilityRouteAdder, supportedDsh: string, 
   add({ id: 'client-web-boot-graph-020', capability: 'client.boot-graph', supportedDsh, runtime: 'client', priority: 10, status: 'supported', introducedIn: '0.2.0-rc.1', detect: (ctx) => read(ctx, 'modules.version') === 'client', create: (ctx) => read(ctx, 'modules') })
 }
 
+/**
+ * 读取探测上下文里的服务或结构事实。
+ *
+ * Cordis 的 Context 只在调用方 fiber 的 inject 链（或祖先 fiber 提供的服务）里
+ * 解析属性；直接读未注入的服务会抛 `cannot get property "x" without inject`，
+ * 把 `a || b` 形式的探测短路成失败。因此这里统一先走 `ctx.get(...)`（Cordis 提供
+ * 的免 inject 读取），再回退到普通属性读取，让探测只依据服务形状，不受消费方
+ * inject 列表影响。
+ */
 function read(context: unknown, path: string): unknown {
-  let value: unknown = context
-  for (const key of path.split('.')) {
-    if (typeof value !== 'object' || value === null) return undefined
-    value = Reflect.get(value, key)
+  const [head, ...rest] = path.split('.')
+  if (head === undefined) return undefined
+  let value = readKey(context, head)
+  for (const key of rest) {
+    value = readProperty(value, key)
   }
   return value
+}
+
+/** 读取上下文上的服务（优先 `ctx.get`）或直接挂在上下文上的事实对象。 */
+function readKey(context: unknown, key: string): unknown {
+  if (typeof context !== 'object' || context === null) return undefined
+  const getter = readProperty(context, 'get')
+  if (typeof getter === 'function') {
+    try {
+      const value = (getter as (name: string) => unknown).call(context, key)
+      if (value !== undefined) return value
+    } catch {
+      // Cordis 读取失败按缺失处理，继续尝试普通属性。
+    }
+  }
+  return readProperty(context, key)
+}
+
+/** 读取对象属性；Cordis 代理对未注入的服务会抛错，统一按缺失处理。 */
+function readProperty(target: unknown, key: string): unknown {
+  if (typeof target !== 'object' || target === null) return undefined
+  try {
+    return Reflect.get(target, key)
+  } catch {
+    return undefined
+  }
 }
 
 function hasMethods(value: unknown, methods: readonly string[]): boolean {
@@ -225,6 +260,6 @@ function addPeerHostRoute(
 }
 
 function readPeerHostAdapter(context: unknown, field: string): unknown {
-  if (typeof context !== 'object' || context === null || Array.isArray(context)) return undefined
-  return (context as Record<string, unknown>)[field]
+  if (Array.isArray(context)) return undefined
+  return readKey(context, field)
 }

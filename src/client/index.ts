@@ -276,8 +276,8 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
     // 插件 Transport 声明 ownsHost）会为任意 entry 造出一份停在 loading 的空表单，
     // memory 模式（局域网页面）则完全没有命名空间；两种情况下绑定原生表单都会让
     // 设置页停在未就绪状态、把模块开关显示为不可操作。插件设置本来就由自己的 Host
-    // RPC 承载，退回 RPC 边界后这些页面依然可读写，也不需要宿主启动页去改页面级
-    // Transport 全局（那会覆盖 Desktop Transport）。
+    // RPC 承载，退回 RPC 边界后这些页面依然可读写；原生设置页的 Host 所有权由宿主
+    // 启动页的合并写脚本行单独声明（见 src/host/index-injection.ts）。
     debugWarn('codingns4dsh: client config form not served; falling back to Host settings RPC', {
       hasConfigForms: forms !== undefined,
     })

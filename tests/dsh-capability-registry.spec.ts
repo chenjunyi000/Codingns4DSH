@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Context } from '@deepseek-ai/cordis'
 import {
   DshCapabilityRegistry,
   DSH_CAPABILITY_MATRIX,
@@ -233,4 +234,64 @@ test('0.1.7 fixture 即使携带同名结构也不会误解析 0.2 专属能力'
   for (const capability of ['typert.context', 'typert.stream', 'session.format-v4', 'subagent.continuable', 'agent-team.native'] as const) {
     assert.equal(profile.capabilities.get(capability)?.status, 'unavailable', capability)
   }
+})
+
+test('客户端探测在 Cordis 的 inject 限制下仍解析 settings.store', async () => {
+  const app = new Context()
+  await app.plugin((ctx) => {
+    ctx.provide('theme', {})
+    ctx.provide('modules', { version: 'client' })
+    ctx.provide('configForms', { get: () => undefined })
+  })
+  let probe: Context | undefined
+  await app.plugin((ctx) => {
+    // 业务插件的 inject 链里没有 configForms：探测上下文和线上一致。
+    ctx.inject(['theme'], (child) => { probe = child })
+  })
+  assert.ok(probe, 'inject 回调没有拿到子上下文')
+  // 未注入的服务在 Cordis 代理上直接读取会抛 without-inject，旧探测因此短路失败。
+  assert.throws(() => Reflect.get(probe as Context, 'configForms'), /without inject/u)
+
+  const profile = createDshCapabilityRegistry('0.2.0-rc.1', 'client', probe, {}).getProfile(probe)
+  const resolution = profile.capabilities.get('settings.store')
+  assert.equal(resolution?.routeId, 'config-forms-020')
+  assert.equal(resolution?.status, 'ready')
+  assert.equal(profile.capabilities.get('client.boot-graph')?.status, 'ready')
+  assert.equal(profile.diagnostics.some((item) => item.code === 'CAPABILITY_DETECT_FAILED'), false)
+})
+
+test('必需能力缺失只影响该模块，同一轮同步里其余模块照常启停', async () => {
+  const profile = createCapabilityProfile('0.1.6-alpha.2', 'host', new Map([
+    ['settings.store', { capability: 'settings.store', dshVersion: '0.1.6-alpha.2', status: 'unavailable', reason: 'missing' }],
+  ]), [{ code: 'CAPABILITY_UNAVAILABLE', capability: 'settings.store', dshVersion: '0.1.6-alpha.2', message: 'missing' }])
+  const registry = new FeatureRegistry({}, profile)
+  const started: string[] = []
+  registry.register({
+    descriptor: { name: 'before', version: '1.0.0', enabledByDefault: false, dependencies: [], runtime: 'host' },
+    start: () => { started.push('before') },
+  })
+  registry.register({
+    descriptor: {
+      name: 'broken',
+      version: '1.0.0',
+      enabledByDefault: false,
+      dependencies: [],
+      runtime: 'host',
+      requires: [{ capability: 'settings.store', required: true, fallback: 'disable' }],
+    },
+    start: () => { started.push('broken') },
+  })
+  registry.register({
+    descriptor: { name: 'after', version: '1.0.0', enabledByDefault: false, dependencies: [], runtime: 'host' },
+    start: () => { started.push('after') },
+  })
+
+  await assert.rejects(
+    registry.reconcile(['before', 'broken', 'after']),
+    (error) => error instanceof FeatureRegistryError && error.code === 'FEATURE_CAPABILITY_MISSING',
+  )
+
+  assert.deepEqual(started, ['before', 'after'])
+  assert.equal(registry.getState('broken'), 'failed')
+  assert.equal(registry.getState('after'), 'enabled')
 })

@@ -225,11 +225,28 @@ export class FeatureRegistry<S = unknown, M extends FeatureModule<S> = FeatureMo
       desired: [...desired],
       states: this.list().map((item) => ({ name: item.name, state: item.state, reason: item.reason })),
     })
+    const failures: unknown[] = []
     for (const name of this.records.keys()) {
-      if (desired.has(name)) await this.start(name)
+      if (desired.has(name)) await this.step(name, () => this.start(name), failures)
     }
     for (const name of this.records.keys()) {
-      if (!desired.has(name)) await this.disable(name)
+      if (!desired.has(name)) await this.step(name, () => this.disable(name), failures)
+    }
+    if (failures.length > 0) throw failures[0]
+  }
+
+  /**
+   * 执行单个模块的启停，并把失败留给调用方汇总。
+   *
+   * 模块失败（例如必需能力缺失）只影响它自己：同一轮同步里其余模块照常启停，
+   * 失败原因通过模块状态和 trace 暴露，最后只把第一个错误抛给宿主记录。
+   */
+  private async step(name: string, operation: () => Promise<void>, failures: unknown[]): Promise<void> {
+    try {
+      await operation()
+    } catch (error) {
+      failures.push(error)
+      traceFeature('reconcile.failed', { feature: name, error: serializeError(error) })
     }
   }
 

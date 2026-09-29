@@ -7,21 +7,44 @@ export interface DshIndexInjectionEntry {
 }
 
 /**
- * 在启动页声明 Host 所有权，同时保留 Desktop 已经提供的完整 Transport。
+ * 在启动页声明 Host 所有权，让 ui-settings 对非回环页面（局域网直连、中继）
+ * 保持 host 模式，同时保留 Desktop 已经提供的完整 Transport。
  *
- * 这里只使用 DSH WebServer 支持的 JSON global 行，不在首页安装全局 setter。
- * 页面可能由 Desktop Shell 在更晚的阶段注入自己的 Transport；因此找不到
- * 已有 Transport 时必须保持不变，不能追加同名全局，否则会覆盖 Desktop 的
- * `streamBaseUrl`，让 `/api/remote.mux` 退回 `ws://app`。
+ * 页面级 `__DSH_TRANSPORT__` 同时被 Desktop 壳、中继桥和这里写入，因此注入只做
+ * 合并写、且只追加脚本行（kind: "script"）：
+ *
+ * - 不追加同名全局行。全局行由 DSH 在文档里直接赋值，一旦排在 Desktop 的行之后
+ *   就会整体覆盖 Transport，丢掉 `streamBaseUrl`，让 `/api/remote.mux` 退回
+ *   `ws://app` 并卡住插件页。
+ * - 脚本行在客户端启动前执行：已有 Transport 时只补 `ownsHost`，没有 Transport
+ *   且页面也不是 Desktop（`dshDesktopBoot` 未定义，Desktop 自己声明所有权）时
+ *   才创建 `{ ownsHost: true }`。
+ * - 未知形状（例如 Desktop 托管的字符串标记）保持原样，不被覆盖。
  */
 export function injectDshWebTransportOwnership(table: unknown[]): void {
   const index = table.findIndex((entry) => isTransportInjection(entry))
-  if (index < 0) return
+  if (index >= 0) {
+    const entry = table[index]
+    if (!isRecord(entry) || !isRecord(entry.value)) return
+    table[index] = { ...entry, value: { ...entry.value, ownsHost: true } }
+  }
 
-  const entry = table[index]
-  if (!isRecord(entry) || !isRecord(entry.value)) return
-  table[index] = { ...entry, value: { ...entry.value, ownsHost: true } }
+  table.push({ kind: 'script', placement: 'head', text: TRANSPORT_OWNERSHIP_SCRIPT })
 }
+
+/**
+ * 在客户端读取 Transport 之前补齐 Host 所有权。
+ *
+ * 只做合并写和“无 Transport 时创建”，不覆盖任何已有字段；`dshDesktopBoot`
+ * 存在时交给 Desktop 壳自己的 Transport（它已经带 `ownsHost`）。
+ */
+const TRANSPORT_OWNERSHIP_SCRIPT = [
+  '(function(){',
+  'var t=globalThis.__DSH_TRANSPORT__;',
+  'if(t===void 0||t===null){if(globalThis.dshDesktopBoot===void 0)globalThis.__DSH_TRANSPORT__={ownsHost:true};return}',
+  'if(typeof t==="object")t.ownsHost=true;',
+  '})()',
+].join('')
 
 function isTransportInjection(value: unknown): value is DshIndexInjectionEntry {
   return isRecord(value) && value.name === '__DSH_TRANSPORT__'

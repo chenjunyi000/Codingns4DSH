@@ -13,9 +13,10 @@ import { reverseProxyFeature } from '../data/build/dist/client/features/index.js
  * 也是 DSH 判定页面是否拥有 Host 的开关（`ownsHost` → `remote.$host.isLoopback`
  * → ui-settings 的 host/memory persistence）。因此：
  *
- * 1. Host 启动页只允许在 DSH 已提供 Transport 时合并 `ownsHost`，不得创建同名
- *    全局（创建会让 Desktop 壳以为页面已经登记过 Transport，`/api/remote.mux`
- *    退回 `dsh://` 并卡住插件页）。见 tests/host-index-injection.spec.ts。
+ * 1. Host 启动页只追加合并写的脚本行，不得追加同名全局行（全局行由 DSH 在文档里
+ *    直接赋值，排在 Desktop 的行之后会整体覆盖 Transport，让 `/api/remote.mux`
+ *    退回 `dsh://` 并卡住插件页）；脚本行在客户端启动前只补 `ownsHost`，Desktop
+ *    页交给壳自己的 Transport。见 tests/host-index-injection.spec.ts。
  * 2. 中继 iframe 的桥接脚本只允许合并写入，后到的启动页注入行不得把它顶掉，
  *    否则会话列表与原生设置页面会一起加载失败。
  * 3. 功能模块不得用该全局推断运行环境，也不得在 Cordis 启动后接管 Connection。
