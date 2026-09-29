@@ -70,8 +70,12 @@ test('中继 iframe 桥接 Transport 只合并，不被启动页注入覆盖', a
   assert.match(source, /globalThis\.__DSH_TRANSPORT__ = mergeTransport\(globalThis\.__DSH_TRANSPORT__\)/u)
 })
 
-test('Client 在 ConfigForm 缺失时退回 Host RPC 设置边界', async () => {
+test('Client 只绑定 Host 真正下发的 ConfigForm，否则退回 Host RPC', async () => {
   const source = await readFile(join(root, 'src/client/index.ts'), 'utf8')
-  assert.match(source, /client config form unavailable; falling back to Host settings RPC/u)
+  assert.match(source, /resolveServedConfigFormNamespace\(forms, CODINGNS_SETTINGS_ENTRY_IDS\)/u)
+  assert.match(source, /client config form not served; falling back to Host settings RPC/u)
   assert.match(source, /createCodingNsSettingsBridge\(undefined, rpc\)/u)
+  // Host 持久模式会为任意 entry 造出一份停在 loading 的空表单：按 status 猜测
+  // 会绑定一份 Host 没下发的表单，让设置页永久把所有开关显示为不可操作。
+  assert.doesNotMatch(source, /namespace fallback selected/u)
 })

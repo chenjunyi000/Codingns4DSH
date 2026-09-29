@@ -134,11 +134,17 @@ test('Client 入口兼容 DSH 0.1.7 ConfigForm，不把旧 settingsScope 作为�
   assert.match(source, /createConfigFormSettingsStore/u)
 })
 
-test('Client ConfigForm 选择 Host 实际提供的 scoped namespace，不误用旧空表单', async () => {
+test('Client ConfigForm 只绑定 Host 实际提供的 scoped namespace，不误用加载中的空表单', async () => {
   const source = await readFile(clientSource, 'utf8')
-  assert.match(source, /forms\.describe\?\.\(\)\.getSnapshot\(\)\.view\?\.namespaces/u)
-  assert.match(source, /form\.getSnapshot\(\)\.status !== 'unavailable'/u)
-  assert.match(source, /CODINGNS_SETTINGS_ENTRY_IDS\.find/u)
+  assert.match(source, /resolveServedConfigFormNamespace\(forms, CODINGNS_SETTINGS_ENTRY_IDS\)/u)
+  assert.match(source, /client config form not served; falling back to Host settings RPC/u)
+  // Host 持久模式会给任意 entry 造出一份停在 loading 的表单；按 status 猜测会
+  // 绑定一份 Host 没下发的表单，让设置页永久把所有模块开关显示为不可操作。
+  assert.doesNotMatch(source, /form\.getSnapshot\(\)\.status !== 'unavailable'/u)
+
+  const adapterSource = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../src/dsh-capabilities/client/config-forms-adapter.ts'), 'utf8')
+  assert.match(adapterSource, /forms\.describe\?\.\(\)\.getSnapshot\(\)\.view\?\.namespaces/u)
+  assert.match(adapterSource, /entryIds\.find/u)
 })
 
 test('Client 版本门禁可用 ConfigForms 标识现代 DSH', async () => {

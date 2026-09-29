@@ -47,6 +47,30 @@ const UNAVAILABLE_FORM_SNAPSHOT = Object.freeze({
   status: 'unavailable' as const,
 })
 
+/**
+ * 解析 Host 真正下发的 ConfigForm namespace。
+ *
+ * `ConfigForms.get` 对任何 entry 都会造出一份表单：Host 持久模式下它是停在
+ * `loading` 的空表单，memory 模式下才是 `unavailable`。绑定一份 Host 没有下发的
+ * 表单会让设置页永远停在未就绪状态，并把所有模块开关显示为不可操作，因此这里
+ * 只认可共享 mirror 中列出的 entry；判定不出来时返回 undefined，由调用方退回
+ * 插件自己的 Host RPC 设置边界。
+ */
+export function resolveServedConfigFormNamespace(
+  forms: DshClientConfigForms | undefined,
+  entryIds: readonly string[],
+): string | undefined {
+  if (forms === undefined) return undefined
+  try {
+    const namespaces = forms.describe?.().getSnapshot().view?.namespaces
+    debugInfo('codingns4dsh: client config form namespaces', { namespaces: namespaces?.map((item) => item.ns) })
+    return entryIds.find((id) => namespaces?.some((item) => item.ns === id))
+  } catch {
+    // mirror 尚未就绪或该版本没有共享描述：交给 Host RPC 边界，不猜测表单。
+    return undefined
+  }
+}
+
 /** 0.1.7 Client ConfigForm 路由适配器。 */
 export function createConfigFormSettingsStore(
   forms: DshClientConfigForms,

@@ -31,7 +31,7 @@ import { ensureCryptoRandomUUID } from './lan-access.js'
 import { CodingNsSettingsSection } from './settings-section.js'
 import { callCodingNsRpc, createCodingNsSettingsBridge } from './settings-bridge.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
-import { createConfigFormSettingsStore, type DshClientConfigForms, type DshConfigForm } from '../dsh-capabilities/client/config-forms-adapter.js'
+import { createConfigFormSettingsStore, resolveServedConfigFormNamespace, type DshClientConfigForms } from '../dsh-capabilities/client/config-forms-adapter.js'
 import type { CodingNsSettingsStore } from '../dsh-capabilities/settings-store.js'
 import { CodingNsWebTerminals, registerCodingNsTerminalUi } from './terminal/index.js'
 import type { TerminalRemote } from './terminal/model.js'
@@ -261,21 +261,23 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
   }
 
   const forms = ctx.get('configForms') as DshClientConfigForms | undefined
-  const form = findConfigForm(forms)
-  if (form === undefined) {
-    // DSH 只向回环页面或声明了 Host 所有权的页面下发持久设置命名空间；局域网和
-    // 中继页面会降级为 memory 模式，ConfigForm 因此缺失。设置页不能停在这里：
-    // 插件设置本来就由自己的 Host RPC 承载，退回 RPC 边界后这些页面依然可读写，
-    // 也不再需要宿主启动页去改页面级 Transport 全局（那会覆盖 Desktop Transport）。
-    debugWarn('codingns4dsh: client config form unavailable; falling back to Host settings RPC', {
+  const namespace = resolveServedConfigFormNamespace(forms, CODINGNS_SETTINGS_ENTRY_IDS)
+  if (namespace === undefined || forms === undefined) {
+    // DSH 只把 Host 真正下发的命名空间接进 ConfigForm。Host 持久模式（中继页面的
+    // 插件 Transport 声明 ownsHost）会为任意 entry 造出一份停在 loading 的空表单，
+    // memory 模式（局域网页面）则完全没有命名空间；两种情况下绑定原生表单都会让
+    // 设置页停在未就绪状态、把模块开关显示为不可操作。插件设置本来就由自己的 Host
+    // RPC 承载，退回 RPC 边界后这些页面依然可读写，也不需要宿主启动页去改页面级
+    // Transport 全局（那会覆盖 Desktop Transport）。
+    debugWarn('codingns4dsh: client config form not served; falling back to Host settings RPC', {
       hasConfigForms: forms !== undefined,
     })
     return createCodingNsSettingsBridge(undefined, rpc)
   }
-  debugInfo('codingns4dsh: client settings source=configForms', { hasConfigForms: forms !== undefined, hasForm: true })
+  debugInfo('codingns4dsh: client settings source=configForms', { namespace })
   return createConfigFormSettingsStore(
-    { get: <T>() => form as DshConfigForm<T> | undefined },
-    CODINGNS_SETTINGS_NAMESPACE,
+    forms,
+    namespace,
     {
       // DSH 0.1.7 的 ConfigForm 会把 Host 后台索引更新也纳入 revision。
       // Codingns4DSH 的路径操作是原子的，交给 Host RPC 无条件合并，避免
@@ -286,40 +288,4 @@ function createClientSettingsStore(ctx: Context, rpc: CodingNsRpcClient): Coding
       }>(rpc, 'settings/set', { ops }),
     },
   )
-}
-
-function findConfigForm(forms: DshClientConfigForms | undefined): DshConfigForm<CodingNsSettings> | undefined {
-  if (forms === undefined) return undefined
-  // ConfigForms.get 对未知 entry 也会返回一个 Form；必须先看共享 mirror 中
-  // Host 实际提供的 namespace，否则会永远拿到旧的 `codingns` 空表单。
-  try {
-    const namespaces = forms.describe?.().getSnapshot().view?.namespaces
-    debugInfo('codingns4dsh: client config form namespaces', {
-      namespaces: namespaces?.map((item) => item.ns),
-    })
-    const servedId = CODINGNS_SETTINGS_ENTRY_IDS.find((id) => namespaces?.some((item) => item.ns === id))
-    if (servedId !== undefined) {
-      const form = forms.get<CodingNsSettings>(servedId)
-      debugInfo('codingns4dsh: client config form namespace selected', { namespace: servedId, hasForm: form !== undefined })
-      return form
-    }
-  } catch {
-    // mirror 尚未就绪时继续按 scoped entry 优先的兼容顺序探测。
-  }
-  for (const id of CODINGNS_SETTINGS_ENTRY_IDS) {
-    try {
-      const form = forms.get<CodingNsSettings>(id)
-      if (form !== undefined && form.getSnapshot().status !== 'unavailable') {
-        debugInfo('codingns4dsh: client config form namespace fallback selected', {
-          namespace: id,
-          status: form.getSnapshot().status,
-          revision: form.getSnapshot().revision,
-        })
-        return form
-      }
-    } catch {
-      // 不同 0.1.7 构建可能只接受其中一个 entry id，继续尝试别名。
-    }
-  }
-  return undefined
 }

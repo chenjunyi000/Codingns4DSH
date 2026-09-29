@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createConfigSettingsStore } from '../data/build/dist/dsh-capabilities/host/config-forms-adapter.js'
-import { createConfigFormSettingsStore } from '../data/build/dist/dsh-capabilities/client/config-forms-adapter.js'
+import { createConfigFormSettingsStore, resolveServedConfigFormNamespace } from '../data/build/dist/dsh-capabilities/client/config-forms-adapter.js'
 import { createLegacyClientSettingsStore } from '../data/build/dist/dsh-capabilities/client/settings-scope-adapter.js'
 import { dispatchCodingNsRpc } from '../data/build/dist/dsh-capabilities/host/connection-rpc-adapter.js'
 import { CodingNsRpcTable } from '../data/build/dist/host/rpc-table.js'
@@ -28,6 +28,54 @@ test('0.1.7 Client ConfigForm 缺失时快照保持稳定引用', () => {
   // 设置页用 useSyncExternalStore 读取快照：每次返回新对象会让 React 在每次
   // 渲染后判定快照失效并强制再次渲染，最终以 React #185 崩溃设置分区。
   assert.equal(store.getSnapshot(), store.getSnapshot())
+})
+
+test('Host 未下发命名空间时不绑定停在 loading 的 ConfigForm', () => {
+  const requested: string[] = []
+  const forms = {
+    // Host 持久模式：ConfigForms.get 对任意 entry 都返回表单，状态停在 loading。
+    describe: () => ({ getSnapshot: () => ({ status: 'loading' as const }) }),
+    get: (namespace: string) => {
+      requested.push(namespace)
+      return {
+        getSnapshot: () => ({ value: undefined, revision: undefined, writable: false, status: 'loading' as const }),
+        subscribe: () => () => undefined,
+        mutate: async () => false,
+        set: async () => false,
+        unset: async () => false,
+      }
+    },
+  }
+
+  assert.equal(resolveServedConfigFormNamespace(forms, ['@jingyi0605/codingns4dsh', 'codingns']), undefined)
+  assert.deepEqual(requested, [], '未确认的 entry 不得被读取/绑定')
+})
+
+test('mirror 列出 Host 下发的 scoped entry 时按其命名空间选择', () => {
+  const forms = {
+    describe: () => ({
+      getSnapshot: () => ({ view: { namespaces: [{ ns: 'other-plugin' }, { ns: '@jingyi0605/codingns4dsh' }] } }),
+    }),
+    get: () => undefined,
+  }
+
+  assert.equal(resolveServedConfigFormNamespace(forms, ['@jingyi0605/codingns4dsh', 'codingns']), '@jingyi0605/codingns4dsh')
+})
+
+test('mirror 不可用、缺失或未列出本插件命名空间时不猜测表单', () => {
+  assert.equal(resolveServedConfigFormNamespace(undefined, ['codingns']), undefined)
+  assert.equal(resolveServedConfigFormNamespace({ get: () => undefined }, ['codingns']), undefined)
+  assert.equal(
+    resolveServedConfigFormNamespace({ describe: () => { throw new Error('mirror 未就绪') }, get: () => undefined }, ['codingns']),
+    undefined,
+  )
+  assert.equal(
+    resolveServedConfigFormNamespace({
+      describe: () => ({ getSnapshot: () => ({ view: { namespaces: [{ ns: 'other-plugin' }] } }) }),
+      get: () => undefined,
+    }, ['codingns']),
+    undefined,
+  )
 })
 
 test('旧版 SettingsScope 适配器内容不变时保持快照引用且不通知', () => {
