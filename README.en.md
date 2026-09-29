@@ -7,6 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/%40jingyi0605%2Fcodingns4dsh?logo=npm)](https://www.npmjs.com/package/@jingyi0605/codingns4dsh)
 [![DSH compatibility](https://img.shields.io/badge/DSH-0.2.0--rc.1-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.19-3C873A?logo=node.js&logoColor=white)](https://nodejs.org)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
 
 [简体中文](README.md) · **English**
 
@@ -23,7 +24,8 @@
   <a href="#first-run">First run</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
   <a href="#development">Development</a> ·
-  <a href="#acknowledgements">Acknowledgements</a>
+  <a href="#acknowledgements">Acknowledgements</a> ·
+  <a href="#license">License</a>
 </p>
 
 </div>
@@ -306,3 +308,13 @@ Screenshot assets and shot list: [assets/screenshots](assets/screenshots/README.
 The inspiration for Codingns4DSH — and part of its implementation approach — comes from **[CodexHost](https://github.com/BytePioneer-AI/codex-host)**, which runs Pi, Claude Code, Grok Build and other Harnesses natively inside Codex Desktop. It showed the direction Codingns4DSH follows from the other side: host *other* Harnesses as first-class Agents instead of replacing them. The multi-Harness adapter model, projecting a CLI event stream into native sessions, and keeping each Agent's sessions in the host sidebar and composer trace back to that design. Thanks to its authors and community.
 
 Codingns4DSH is an independent project and is not affiliated with CodexHost.
+
+---
+
+## License
+
+Codingns4DSH is released under the **GNU General Public License version 3 or later** (SPDX: `GPL-3.0-or-later`); the full terms are in [LICENSE](LICENSE), and the `license` field in `package.json` matches.
+
+Copyright (C) 2026 jingyi0605
+
+You may use, modify and distribute the project freely under the terms of the license; derivative works must stay under the same license, ship the complete source and keep the copyright notice, and the project comes with no warranty.

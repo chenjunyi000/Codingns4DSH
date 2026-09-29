@@ -7,6 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/%40jingyi0605%2Fcodingns4dsh?logo=npm)](https://www.npmjs.com/package/@jingyi0605/codingns4dsh)
 [![DSH compatibility](https://img.shields.io/badge/DSH-0.2.0--rc.1-4D6BFE)](https://github.com/deepseek-ai/deepseek-harness)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.19-3C873A?logo=node.js&logoColor=white)](https://nodejs.org)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
 
 **简体中文** · [English](README.en.md)
 
@@ -23,7 +24,8 @@
   <a href="#首次使用">首次使用</a> ·
   <a href="#故障排查">故障排查</a> ·
   <a href="#开发">开发</a> ·
-  <a href="#鸣谢">鸣谢</a>
+  <a href="#鸣谢">鸣谢</a> ·
+  <a href="#许可证">许可证</a>
 </p>
 
 </div>
@@ -320,3 +322,13 @@ pnpm run capability:check   # DSH 能力注册表退休检查
 Codingns4DSH 的项目灵感与部分实现思路来自 **[CodexHost](https://github.com/BytePioneer-AI/codex-host)**——它把 Pi、Claude Code、Grok Build 等 Harness 原生跑在 Codex Desktop 里，展示了 Codingns4DSH 从另一侧沿用的方向：**把其他 Harness 作为一等 Agent 接入**，而不是替换它们。多 Harness 适配器模型、把 CLI 事件流投影为宿主原生会话、让每个 Agent 的会话留在宿主侧栏与输入框，都源自该项目的设计。感谢其作者与社区。
 
 Codingns4DSH 是独立项目，与 CodexHost 无隶属关系。
+
+---
+
+## 许可证
+
+本项目以 **GNU 通用公共许可证第 3 版或更高版本**发布（SPDX：`GPL-3.0-or-later`），完整条款见 [LICENSE](LICENSE)，`package.json` 中的 `license` 字段与之保持一致。
+
+Copyright (C) 2026 jingyi0605
+
+你可以在许可证允许的范围内自由使用、修改和分发本项目；分发衍生作品时须同样以 GPL 授权、附上完整源码并保留版权声明，且本项目不提供任何担保。
