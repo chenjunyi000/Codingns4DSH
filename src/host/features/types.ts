@@ -1,9 +1,10 @@
 import type { CodingNsRpcTable } from '../rpc-table.js'
-import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { CodingNsSettings } from '../../shared/contracts/config.js'
+import type { DshHostSettingsProvider, DshHostSettingsScope } from '../../dsh-capabilities/host/config-forms-adapter.js'
 import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
 import type { TerminalProcessService } from '../terminal/terminal-process-service.js'
 import type { DebugWorkspaceService } from '../debug.js'
+import type { CodingNsNativeTeamProxy } from '../cli-adapters/native-team-proxy.js'
 
 export interface CodingNsHostEvents {
   on(name: string, listener: (...args: any[]) => any): unknown
@@ -20,9 +21,9 @@ export interface CodingNsHostServices {
   /** 当前 DSH 宿主的真实版本；由 Host 入口启动门禁解析并向功能模块传递。 */
   readonly dshVersion?: string
   /** 持久化设置；测试或嵌入式调用未提供时，局域网映射仍可手动启动。 */
-  readonly settings?: SettingsScope<CodingNsSettings>
+  readonly settings?: DshHostSettingsScope<CodingNsSettings>
   /** Host 设置提供器，供远程设置 RPC 做版本校验和持久化写入。 */
-  readonly settingsProvider?: SettingsProvider
+  readonly settingsProvider?: DshHostSettingsProvider
   /** 当前 DSH Web 服务实际监听端口，用于自动定位本机 DSH。 */
   readonly dshWebPort?: number
   /** DSH 官方生成的一次性 Web 认证 URL；只留在 Host 内部完成 Cookie 交换。 */
@@ -31,6 +32,8 @@ export interface CodingNsHostServices {
   readonly events?: CodingNsHostEvents
   /** DSH 原生会话桥接；不可用时为 undefined，插件不因此阻断启动。 */
   readonly nativeSessions?: CodingNsNativeSessionBridge
+  /** DSH 0.2 原生 Agent Team Proxy；未安装实验 Team 包时为空。 */
+  readonly nativeTeam?: CodingNsNativeTeamProxy
   /** 终端启动项和 PTY 进程服务；只由 Host RPC 使用。 */
   readonly terminalProcesses?: TerminalProcessService
   /** Workspace 级调试服务；只使用 Host 解析出的根目录。 */

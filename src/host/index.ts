@@ -21,6 +21,8 @@ import { createDshCapabilityRegistry } from '../dsh-capabilities/index.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
 import { repairLegacySessionLogs } from './session-migration-repair.js'
 import { injectDshWebTransportOwnership } from './index-injection.js'
+import type { DshHostSettingsProvider } from '../dsh-capabilities/host/config-forms-adapter.js'
+import { DshNativeTeamProxy, type AgentRegistry, type NativeTeamService } from './cli-adapters/native-team-proxy.js'
 
 export function apply(ctx?: Context): void {
   if (ctx === undefined) return
@@ -61,9 +63,10 @@ export function apply(ctx?: Context): void {
   })
 
   ctx.inject(['settings', 'connection', 'webServer'], async (hostCtx) => {
+    const settingsContext = hostCtx as Context & { readonly settings: DshHostSettingsProvider }
     debugInfo('codingns4dsh: host inject ready', {
       hasConnection: hostCtx.connection !== undefined,
-      hasSettings: hostCtx.settings !== undefined,
+      hasSettings: settingsContext.settings !== undefined,
       hasWebServer: (hostCtx as Context & { webServer?: unknown }).webServer !== undefined,
     })
     const webServerPort = (hostCtx as Context & { webServer: { port: number } }).webServer.port
@@ -84,12 +87,12 @@ export function apply(ctx?: Context): void {
     })
     debugInfo('codingns4dsh: host index injection registration ready')
     debugInfo('codingns4dsh: host settings registration begin')
-    const settings = registerCodingNsSettings(hostCtx)
+    const settings = registerCodingNsSettings(settingsContext)
     debugInfo('codingns4dsh: host settings registered')
     const workspaceRoots = new Map<string, string>()
     // controller 必须在功能模块和浏览器 Client 开始消费状态前完成装配。
     // 工厂在本次启动只读取一次开关，设置 watcher 不会热切同名 service。
-    const terminal = await installTerminalController(hostCtx, settings, hostCtx.settings, {
+    const terminal = await installTerminalController(hostCtx, settings, settingsContext.settings, {
       resolveWorkspaceRoot: (workspaceId) => workspaceRoots.get(workspaceId) ?? resolveWorkspaceRoot(hostCtx, workspaceId),
       registerWorkspaceRoot: (workspaceId, cwd) => workspaceRoots.set(workspaceId, cwd),
     })
@@ -98,11 +101,15 @@ export function apply(ctx?: Context): void {
       rpc: new CodingNsRpcTable(),
       dshVersion,
       settings,
-      settingsProvider: hostCtx.settings,
+      settingsProvider: settingsContext.settings,
       dshWebPort: webServerPort,
       dshWebAuthenticatedUrl: hostCtx.connection.authenticatedUrl(`http://127.0.0.1:${String(webServerPort)}`),
       events: { on: hostCtx.on.bind(hostCtx) },
       nativeSessions: createCodingNsNativeSessionBridge(hostCtx, dshVersion),
+      nativeTeam: new DshNativeTeamProxy(
+        readOptionalService(hostCtx, 'agentTeams') as NativeTeamService | undefined,
+        readOptionalService(hostCtx, 'agents') as AgentRegistry | undefined,
+      ),
       terminalProcesses: terminal.processService,
       resolveWorkspaceRoot: (workspaceId) => workspaceRoots.get(workspaceId) ?? resolveWorkspaceRoot(hostCtx, workspaceId),
       listWorkspaceRoots: () => [...workspaceRoots.values(), ...readWorkspaceRoots(hostCtx)],
@@ -165,6 +172,14 @@ export function apply(ctx?: Context): void {
       return settings.watch(sync)
     }, 'codingns4dsh: 功能模块启停同步')
   })
+}
+
+function readOptionalService(ctx: Context, name: string): unknown {
+  try {
+    return ctx.get(name)
+  } catch {
+    return undefined
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

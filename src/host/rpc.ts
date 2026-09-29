@@ -1,10 +1,40 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler, ConnectionRpcResult } from '@deepseek-ai/dsh-client-connection'
-import type { SettingsPathOp, SettingsProvider } from '@deepseek-ai/dsh-settings'
+// 仅启用 DSH Connection 的 Cordis Context 增强；RPC 结果契约仍使用本文件的内部类型。
+import type {} from '@deepseek-ai/dsh-client-connection'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CODINGNS_SETTINGS_NAMESPACE, isCodingNsSettingsEntryId, type CodingNsSettings } from '../shared/contracts/config.js'
 import { debugInfo, debugWarn } from '../shared/debug.js'
 import { CodingNsRpcError, type CodingNsRpcHandler, type CodingNsRpcTable } from './rpc-table.js'
+import type { DshHostSettingsProvider } from '../dsh-capabilities/host/config-forms-adapter.js'
+import type { CodingNsSettingsOperation } from '../dsh-capabilities/settings-store.js'
+
+/** 0.2 Connection handler 的 Peer 参数；旧版 handler 仍可通过可选参数调用。 */
+/** CodingNS 自有的 Connection RPC 结果契约，避免绑定 DSH 具体导出名称。 */
+type CodingNsConnectionRpcResult<T = unknown> =
+  | { readonly ok: true; readonly value: T; readonly attachments?: readonly CodingNsConnectionRpcAttachment[] }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string; readonly details: object } }
+
+interface CodingNsConnectionRpcAttachment {
+  readonly path: readonly (string | number)[]
+  readonly bytes: Uint8Array
+}
+
+type CodingNsConnectionRpcHandler = (
+  endpoint: string,
+  payload: unknown,
+  signal: AbortSignal,
+  peer?: unknown,
+) => Promise<CodingNsConnectionRpcResult<unknown>>
+
+function invokeConnectionRpcHandler(
+  handler: CodingNsConnectionRpcHandler,
+  endpoint: string,
+  payload: unknown,
+  signal: AbortSignal,
+  peer: unknown,
+): Promise<CodingNsConnectionRpcResult<unknown>> {
+  return handler(endpoint, payload, signal, peer)
+}
 
 /**
  * 创建 Codingns4DSH Host RPC 主处理器。
@@ -14,8 +44,10 @@ import { CodingNsRpcError, type CodingNsRpcHandler, type CodingNsRpcTable } from
  * 之间的唯一边界：密码只在一次 RPC 请求中经过 Host，refresh token 只进入 Host
  * 凭据存储。
  */
-export function createCodingNsRpcHandler(table: CodingNsRpcTable): ConnectionRpcHandler {
-  return async (endpoint, payload, signal) => {
+export function createCodingNsRpcHandler(table: CodingNsRpcTable): CodingNsConnectionRpcHandler {
+  // `peer` 是 DSH 0.2 Connection 注入的调用方作用域；0.1 carrier 没有该参数，
+  // 因此保留可选形态，让同一处理器可被旧版 HTTP 回退入口复用。
+  return async (endpoint, payload, signal, peer?: unknown) => {
     debugInfo('codingns4dsh: host rpc request', { endpoint })
     const target = table.resolve(endpoint)
     if (target === null) {
@@ -23,7 +55,7 @@ export function createCodingNsRpcHandler(table: CodingNsRpcTable): ConnectionRpc
       return failure('CODINGNS_RPC_NOT_FOUND', `未知 Codingns4DSH RPC: ${endpoint}`)
     }
     try {
-      const value = await target.handler(target.action, payload, { signal })
+      const value = await target.handler(target.action, payload, { signal, peer })
       debugInfo('codingns4dsh: host rpc success', { endpoint })
       return success(value)
     } catch (error) {
@@ -42,7 +74,7 @@ export function createCodingNsRpcHandler(table: CodingNsRpcTable): ConnectionRpc
 }
 
 /** 在当前 Connection 上挂载 Codingns4DSH RPC 主处理器；注销由调用方的 effect 负责。 */
-export function registerCodingNsRpc(ctx: Context, table: CodingNsRpcTable, settingsProvider?: SettingsProvider): void {
+export function registerCodingNsRpc(ctx: Context, table: CodingNsRpcTable, settingsProvider?: DshHostSettingsProvider): void {
   // 连接服务的 rpc.handle 内部会把路由注册延迟到另一个 effect；该 effect 的 owner
   // 不携带本插件的 webServer 注入，在部分 DSH 版本中会直接失败。因此这里捕获已经
   // 注入的服务实例，挂载同协议的前缀路由，避免把 RPC 请求落到 SPA fallback。
@@ -76,7 +108,7 @@ export function registerCodingNsRpc(ctx: Context, table: CodingNsRpcTable, setti
         path: `/api/codingns/${endpoint}`,
         methods: ['POST'],
         requestBody: 'buffered',
-        fetch: async (request) => handleFetchRpc(request, endpoint, handler),
+        fetch: async (request) => handleFetchRpc(request, endpoint, connection, handler),
       }))
       debugInfo('codingns4dsh: host rpc fetch routes registered', {
         prefix: '/api/codingns/',
@@ -98,7 +130,7 @@ async function handleChannelRequest(
   request: IncomingMessage,
   response: ServerResponse,
   connection: Context['connection'],
-  handler: ConnectionRpcHandler,
+  handler: CodingNsConnectionRpcHandler,
 ): Promise<void> {
   const abortController = new AbortController()
   request.once('close', () => abortController.abort())
@@ -143,7 +175,8 @@ async function handleChannelRequest(
     return
   }
   try {
-    writeRpcResponse(response, body.rpcId, await handler(endpoint, body.payload, abortController.signal))
+    const peer = (connection as Context['connection'] & { readonly operator?: unknown }).operator
+    writeRpcResponse(response, body.rpcId, await invokeConnectionRpcHandler(handler, endpoint, body.payload, abortController.signal, peer))
   } catch (error) {
     response.statusCode = 500
     response.end(`handler failure: ${String(error)}`)
@@ -175,7 +208,7 @@ async function readRequestBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-function writeRpcResponse(response: ServerResponse, rpcId: string, result: ConnectionRpcResult<unknown>): void {
+function writeRpcResponse(response: ServerResponse, rpcId: string, result: CodingNsConnectionRpcResult<unknown>): void {
   const body = JSON.stringify({ type: 'server-response', rpcId, result })
   response.statusCode = 200
   response.setHeader('content-type', 'application/json; charset=utf-8')
@@ -196,24 +229,30 @@ const CODINGNS_RPC_ENDPOINTS = [
   'fileManagement/session-changes', 'fileManagement/read', 'fileManagement/download', 'fileManagement/write', 'fileManagement/create-file', 'fileManagement/create-directory', 'fileManagement/rename', 'fileManagement/copy', 'fileManagement/move', 'fileManagement/delete', 'fileManagement/git-ignore',
   'lanAccessDsh/addresses', 'lanAccessDsh/detect', 'lanAccessDsh/get', 'lanAccessDsh/settings/get', 'lanAccessDsh/settings/set', 'lanAccessDsh/login/get', 'lanAccessDsh/login/set', 'lanAccessDsh/login/session/open', 'lanAccessDsh/login/session/refresh', 'lanAccessDsh/start', 'lanAccessDsh/stop',
   'peerHost/list', 'peerHost/diagnostics', 'peerHost/create', 'peerHost/update', 'peerHost/remove', 'peerHost/check', 'peerHost/reconnect', 'peerHost/login', 'peerHost/logout', 'peerHost/request', 'peerHost/wsEndpoint', 'peerHost/aggregate',
-  'cli/catalog', 'cli/models', 'cli/adapter/set', 'cli/session/get', 'cli/session/set', 'cli/session/list', 'cli/session/adapter-map', 'cli/session/archive', 'cli/session/steer', 'cli/session/follow-up', 'cli/session/interrupt', 'cli/subscription',
+  'cli/catalog', 'cli/models', 'cli/adapter/set', 'cli/session/get', 'cli/session/set', 'cli/session/list', 'cli/session/adapter-map', 'cli/session/archive', 'cli/session/steer', 'cli/session/follow-up', 'cli/session/interrupt', 'cli/subscription', 'cli/team/status', 'cli/team/members', 'cli/team/tasks', 'cli/team/task', 'cli/team/spawn', 'cli/team/message', 'cli/team/task/create', 'cli/team/task/update', 'cli/team/wait', 'cli/team/interrupt',
 ] as const
 
 /** 创建远程设置处理器；只允许 Codingns4DSH 自己的 namespace 和路径编辑。 */
-export function createCodingNsSettingsRpcHandler(provider: SettingsProvider): CodingNsRpcHandler {
+export function createCodingNsSettingsRpcHandler(provider: DshHostSettingsProvider): CodingNsRpcHandler {
   return async (action, payload) => {
     if (action === 'get') return readCodingNsSettings(provider)
     if (action === 'set') {
       if (!provider.writable) throw new CodingNsRpcError('CODINGNS_SETTINGS_READ_ONLY', 'Host 设置提供器当前只读')
       const input = parseSettingsMutation(payload)
-      await provider.mutate(resolveCodingNsSettingsNamespace(provider), input.ops, input.expectedRevision)
+      if (typeof provider.mutate === 'function') {
+        await provider.mutate(resolveCodingNsSettingsNamespace(provider), input.ops, input.expectedRevision)
+      } else if (typeof provider.update === 'function') {
+        await provider.update(resolveCodingNsSettingsNamespace(provider), operationsToPatch(input.ops), input.expectedRevision)
+      } else {
+        throw new CodingNsRpcError('CODINGNS_SETTINGS_UNAVAILABLE', 'Codingns4DSH 设置提供器不支持写入')
+      }
       return readCodingNsSettings(provider)
     }
     throw new CodingNsRpcError('CODINGNS_RPC_NOT_FOUND', `未知 Codingns4DSH RPC: settings/${action}`)
   }
 }
 
-function readCodingNsSettings(provider: SettingsProvider): { value: CodingNsSettings; revision: number } {
+function readCodingNsSettings(provider: DshHostSettingsProvider): { value: CodingNsSettings; revision: number } {
   const descriptor = findCodingNsSettingsDescriptor(provider)
   if (descriptor === undefined) throw new CodingNsRpcError('CODINGNS_SETTINGS_UNAVAILABLE', 'Codingns4DSH 设置尚未注册')
   // 0.1.7 的 ConfigForm namespace 由 Bundle entry id 决定。包名改为 scoped 后，
@@ -228,15 +267,15 @@ function readCodingNsSettings(provider: SettingsProvider): { value: CodingNsSett
   return { value: clientValue, revision: descriptor.revision }
 }
 
-function findCodingNsSettingsDescriptor(provider: Pick<SettingsProvider, 'describe'>) {
+function findCodingNsSettingsDescriptor(provider: Pick<DshHostSettingsProvider, 'describe'>) {
   return provider.describe({ redactSecrets: true }).find((item) => isCodingNsSettingsEntryId(item.ns))
 }
 
-function resolveCodingNsSettingsNamespace(provider: Pick<SettingsProvider, 'describe'>): string {
+function resolveCodingNsSettingsNamespace(provider: Pick<DshHostSettingsProvider, 'describe'>): string {
   return findCodingNsSettingsDescriptor(provider)?.ns ?? CODINGNS_SETTINGS_NAMESPACE
 }
 
-function parseSettingsMutation(value: unknown): { ops: SettingsPathOp[]; expectedRevision?: number } {
+function parseSettingsMutation(value: unknown): { ops: CodingNsSettingsOperation[]; expectedRevision?: number } {
   if (!isRecord(value) || !Array.isArray(value.ops) || value.ops.length === 0 || value.ops.length > 8) {
     throw new TypeError('settings/set 参数必须包含 1 到 8 个 ops')
   }
@@ -248,7 +287,7 @@ function parseSettingsMutation(value: unknown): { ops: SettingsPathOp[]; expecte
   return expectedRevisionValue === undefined ? { ops } : { ops, expectedRevision: expectedRevisionValue }
 }
 
-function parseSettingsOp(value: unknown): SettingsPathOp {
+function parseSettingsOp(value: unknown): CodingNsSettingsOperation {
   if (!isRecord(value) || (value.op !== 'set' && value.op !== 'unset') || !Array.isArray(value.path)) {
     throw new TypeError('设置操作必须是 { op, path, value? }')
   }
@@ -262,11 +301,24 @@ function parseSettingsOp(value: unknown): SettingsPathOp {
   return { op: 'set', path, value: value.value }
 }
 
+/** 兼容仅暴露 update 的旧设置提供器；0.2 SettingsForms 优先走 mutate。 */
+function operationsToPatch(operations: readonly CodingNsSettingsOperation[]): Record<string, unknown> {
+  const patch: Record<string, unknown> = {}
+  for (const operation of operations) {
+    if (operation.path.length !== 1) throw new TypeError('设置提供器 update 回退只支持一级字段')
+    if (operation.op === 'set') patch[operation.path[0]!] = operation.value
+  }
+  return patch
+}
+
 function isAllowedSettingsPath(path: readonly string[]): boolean {
-  if (path.length === 1) return ['controlBaseUrl', 'controlBaseUrls', 'terminalEnhancement', 'workspaceSessionEnhancement'].includes(path[0] ?? '')
-  if (path[0] === 'modules') return path.length === 2 && ['lanAccess', 'reverseProxy', 'cliAdapters', 'terminalEnhancement', 'workspaceSessionEnhancement', 'debug', 'gitManagement', 'fileManagement', 'peerHost'].includes(path[1] ?? '')
+  if (path.length === 1) return ['controlBaseUrl', 'controlBaseUrls', 'terminalEnhancement', 'workspaceSessionEnhancement', 'subscriptionUsage'].includes(path[0] ?? '')
+  if (path[0] === 'modules') return path.length === 2 && ['lanAccess', 'reverseProxy', 'cliAdapters', 'terminalEnhancement', 'workspaceSessionEnhancement', 'debug', 'gitManagement', 'fileManagement', 'peerHost', 'subscriptionUsage'].includes(path[1] ?? '')
   if (path[0] === 'workspaceSessionEnhancement') {
     return path.length === 2 && ['showAdapterLogo', 'showArchivedSessions', 'showWorkspaceHiding', 'hiddenWorkspaceIds', 'showSubscriptionUsage', 'showQuickPhrases', 'rememberConversationRightbarRatio', 'quickPhrases', 'quickPhrasesSeeded'].includes(path[1] ?? '')
+  }
+  if (path[0] === 'subscriptionUsage') {
+    return path.length === 2 && ['timeoutSecs', 'refreshIntervalMins'].includes(path[1] ?? '')
   }
   if (path[0] === 'fileManagement') {
     return path.length === 2 && ['menuEnhancement', 'fileEditor', 'sessionChangedFiles'].includes(path[1] ?? '')
@@ -281,7 +333,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function handleFetchRpc(
   request: Request,
   endpoint: string,
-  handler: ConnectionRpcHandler,
+  connection: Context['connection'],
+  handler: CodingNsConnectionRpcHandler,
 ): Promise<Response> {
   debugInfo('codingns4dsh: host fetch rpc request', {
     endpoint,
@@ -300,16 +353,17 @@ async function handleFetchRpc(
   if (typeof envelope.rpcId !== 'string' || (method !== endpoint && method !== `codingns/${endpoint}`)) {
     return new Response('invalid RPC envelope', { status: 400 })
   }
-  const result = await handler(endpoint, envelope.payload, request.signal)
+  const peer = (connection as Context['connection'] & { readonly operator?: unknown }).operator
+  const result = await invokeConnectionRpcHandler(handler, endpoint, envelope.payload, request.signal, peer)
   debugInfo('codingns4dsh: host fetch rpc response', { endpoint, ok: result.ok })
   return Response.json({ type: 'server-response', rpcId: envelope.rpcId, result })
 }
 
-function success(value: unknown): ConnectionRpcResult<unknown> {
+function success(value: unknown): CodingNsConnectionRpcResult<unknown> {
   return { ok: true, value }
 }
 
-function failure(code: string, message: string): ConnectionRpcResult<unknown> {
+function failure(code: string, message: string): CodingNsConnectionRpcResult<unknown> {
   return { ok: false, error: { code, message, details: {} } }
 }
 

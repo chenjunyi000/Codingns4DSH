@@ -8,6 +8,7 @@ import type {
   CodingNsCliSessionConfig,
   CodingNsCliSessionRecord,
   CodingNsCliTurnInput,
+  CodingNsCliTeamDiagnostic,
 } from '../../shared/contracts/cli-adapter.js'
 import { CodingNsRpcError } from '../rpc-table.js'
 import type {
@@ -20,7 +21,7 @@ import { readLegacyImportedAdapterPreferences } from './legacy-session-settings.
 import { knownCodexContextWindow } from './model-catalog.js'
 import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
 import type { CodingNsSettings, CodingNsCliAdapterPreference } from '../../shared/contracts/config.js'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { DshHostSettingsScope } from '../../dsh-capabilities/host/config-forms-adapter.js'
 
 type CodingNsCliDetection = Pick<CodingNsCliAdapterDescriptor, 'installed' | 'version' | 'command'>
 
@@ -91,7 +92,7 @@ export class CodingNsCliAdapterRegistry {
       readonly modelCacheTtlMs?: number
       readonly modelRetryTtlMs?: number
       /** 适配器级最近模型选择的持久化设置。 */
-      readonly settings?: SettingsScope<CodingNsSettings>
+      readonly settings?: DshHostSettingsScope<CodingNsSettings>
     } = {},
   ) {
     this.sessionStore = options.sessionStore
@@ -139,7 +140,7 @@ export class CodingNsCliAdapterRegistry {
 
   private readonly sessionStore: CodingNsCliSessionStore | undefined
   private readonly nativeSessions: CodingNsNativeSessionBridge | undefined
-  private readonly settings: SettingsScope<CodingNsSettings> | undefined
+  private readonly settings: DshHostSettingsScope<CodingNsSettings> | undefined
   private readonly preferences = new Map<CodingNsCliAdapterId, { modelId?: string; effortId?: string }>()
 
   /** Host 启动后预热安装状态；定时器让同步 CLI 探测不阻塞功能模块装配。 */
@@ -192,6 +193,19 @@ export class CodingNsCliAdapterRegistry {
     return Object.fromEntries(this.enabled.entries())
   }
 
+  /**
+   * DSH 0.2 的 Team 必须由原生 TeamService 创建 continuable child、mailbox
+   * 和 task board。当前外部 CLI 仍是独立进程，不能伪装成原生成员；统一返回
+   * 可诊断结果，避免 Client 把普通 CLI 会话误显示成 Team 成员。
+   */
+  teamDiagnostic(): CodingNsCliTeamDiagnostic {
+    return {
+      supported: false,
+      code: 'DSH_TEAM_NATIVE_UNAVAILABLE',
+      message: '当前插件仅提供外部 CLI 会话适配器，尚未接入 DSH 0.2 原生 Agent Team 生命周期。',
+    }
+  }
+
   setSession(sessionId: string, config: CodingNsCliSessionConfig): CodingNsCliSessionConfig {
     if (sessionId.trim() === '') throw new CodingNsRpcError('CODINGNS_CLI_INVALID_SESSION', 'sessionId 不能为空')
     // dsh 是 DSH 自带的默认 Agent，不对应一个外部驱动，但仍需要作为会话
@@ -230,6 +244,24 @@ export class CodingNsCliAdapterRegistry {
         : sameAdapter && !providerIdentityChanged && previous?.rawStoreRef
           ? { rawStoreRef: previous.rawStoreRef }
           : {}),
+      ...(config.parentSessionId?.trim()
+        ? { parentSessionId: config.parentSessionId.trim() }
+        : sameAdapter && previous?.parentSessionId ? { parentSessionId: previous.parentSessionId } : {}),
+      ...(config.origin === 'user' || config.origin === 'subagent' || config.origin === 'plugin'
+        ? { origin: config.origin }
+        : sameAdapter && previous?.origin ? { origin: previous.origin } : {}),
+      ...(config.delegationDepth !== undefined && Number.isSafeInteger(config.delegationDepth) && config.delegationDepth >= 0
+        ? { delegationDepth: config.delegationDepth }
+        : sameAdapter && previous?.delegationDepth !== undefined ? { delegationDepth: previous.delegationDepth } : {}),
+      ...(config.continuationId?.trim()
+        ? { continuationId: config.continuationId.trim() }
+        : sameAdapter && previous?.continuationId ? { continuationId: previous.continuationId } : {}),
+      ...(config.teamId?.trim()
+        ? { teamId: config.teamId.trim() }
+        : sameAdapter && previous?.teamId ? { teamId: previous.teamId } : {}),
+      ...(config.teamMemberId?.trim()
+        ? { teamMemberId: config.teamMemberId.trim() }
+        : sameAdapter && previous?.teamMemberId ? { teamMemberId: previous.teamMemberId } : {}),
     }
     this.sessions.set(sessionId, normalized)
     this.sessionStore?.upsert(sessionId, normalized)

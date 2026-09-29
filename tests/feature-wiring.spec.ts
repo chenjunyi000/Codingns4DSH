@@ -334,6 +334,30 @@ test('远程设置 RPC 返回版本并只允许修改 Codingns4DSH 字段', asyn
     handler('set', { ops: [{ op: 'set', path: ['modules', 'auth'], value: false }] }),
     /禁止修改设置字段/u,
   )
+  await handler('set', {
+    ops: [
+      { op: 'set', path: ['modules', 'subscriptionUsage'], value: true },
+      { op: 'set', path: ['subscriptionUsage', 'timeoutSecs'], value: 30 },
+    ],
+  })
+  assert.deepEqual(received, {
+    ops: [
+      { op: 'set', path: ['modules', 'subscriptionUsage'], value: true },
+      { op: 'set', path: ['subscriptionUsage', 'timeoutSecs'], value: 30 },
+    ],
+    expectedRevision: undefined,
+  })
+  await handler('set', {
+    ops: [{ op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 }],
+  })
+  assert.deepEqual(received, {
+    ops: [{ op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 }],
+    expectedRevision: undefined,
+  })
+  await assert.rejects(
+    handler('set', { ops: [{ op: 'set', path: ['subscriptionUsage', 'unknownField'], value: 1 }] }),
+    /禁止修改设置字段/u,
+  )
 })
 
 test('远程设置 RPC 兼容 DSH 0.1.7 的插件 entry id', async () => {

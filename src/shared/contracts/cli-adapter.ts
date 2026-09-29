@@ -19,6 +19,10 @@ export type CodingNsCliCapability =
   | 'models'
   | 'stream'
   | 'resume'
+  /** DSH 0.2 continuable child 生命周期；声明不代表已接入原生 Team。 */
+  | 'continuable'
+  /** DSH 0.2 Agent Team proxy 边界；当前插件未声明此能力。 */
+  | 'team-proxy'
   | 'interrupt'
   | 'tool-events'
   | 'reasoning'
@@ -47,6 +51,13 @@ export interface CodingNsCliModelCatalog {
   readonly currentEffort: string | null
 }
 
+/** DSH 0.2 Agent Team 能力诊断；明确区分“未接入”与“可用”。 */
+export interface CodingNsCliTeamDiagnostic {
+  readonly supported: boolean
+  readonly code: 'DSH_TEAM_NATIVE_UNAVAILABLE' | 'DSH_TEAM_PROXY_READY'
+  readonly message: string
+}
+
 /** 每个 DSH 会话绑定的 CLI 选择；不包含凭据。 */
 export interface CodingNsCliSessionConfig {
   readonly adapterId: CodingNsCliAdapterId
@@ -57,6 +68,17 @@ export interface CodingNsCliSessionConfig {
   /** 外部运行时会话标识，只保存在 Host 会话表中。 */
   readonly providerSessionId?: string
   readonly rawStoreRef?: string
+  /** DSH 0.2 Session V4 的父会话关系；外部 Provider 不得自行伪造。 */
+  readonly parentSessionId?: string
+  /** 会话来源，供 V4 projection 区分 subagent 与普通用户会话。 */
+  readonly origin?: 'user' | 'subagent' | 'plugin'
+  /** 子 Agent 委托深度；仅由 Host/Team adapter 写入。 */
+  readonly delegationDepth?: number
+  /** Continuable child 的稳定标识。 */
+  readonly continuationId?: string
+  /** 原生 Team 投影中的 Team 和成员标识。 */
+  readonly teamId?: string
+  readonly teamMemberId?: string
 }
 
 /** Client 展示会话 Agent 时使用的最小脱敏绑定。 */

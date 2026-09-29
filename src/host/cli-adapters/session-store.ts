@@ -1,4 +1,4 @@
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { DshHostSettingsScope } from '../../dsh-capabilities/host/config-forms-adapter.js'
 import type {
   CodingNsCliAdapterId,
   CodingNsCliSessionConfig,
@@ -22,7 +22,7 @@ export interface CodingNsCliSessionPersistence {
 }
 
 export interface CodingNsCliSessionStoreOptions {
-  readonly settings?: SettingsScope<CodingNsSettings>
+  readonly settings?: DshHostSettingsScope<CodingNsSettings>
   readonly persistence?: CodingNsCliSessionPersistence
 }
 
@@ -33,6 +33,12 @@ export interface CodingNsCliSessionPatch {
   readonly providerId?: string
   readonly providerSessionId?: string
   readonly rawStoreRef?: string
+  readonly parentSessionId?: string
+  readonly origin?: CodingNsCliSessionRecord['origin']
+  readonly delegationDepth?: number
+  readonly continuationId?: string
+  readonly teamId?: string
+  readonly teamMemberId?: string
   readonly title?: string
   readonly cwd?: string
   readonly status?: CodingNsCliSessionStatus
@@ -58,7 +64,7 @@ export interface CodingNsCliProviderStatePatch {
  */
 export class CodingNsCliSessionStore {
   private readonly records = new Map<string, CodingNsCliSessionRecord>()
-  private readonly settings: SettingsScope<CodingNsSettings> | undefined
+  private readonly settings: DshHostSettingsScope<CodingNsSettings> | undefined
   private readonly persistence: CodingNsCliSessionPersistence | undefined
   private readonly legacyImportedRecords: readonly CodingNsCliSessionRecord[]
   private writeTail: Promise<void> = Promise.resolve()
@@ -144,6 +150,12 @@ export class CodingNsCliSessionStore {
       ...(patch.providerId?.trim() ? { providerId: patch.providerId.trim() } : base?.providerId ? { providerId: base.providerId } : {}),
       ...(providerSessionId ? { providerSessionId } : base?.providerSessionId ? { providerSessionId: base.providerSessionId } : {}),
       ...(patch.rawStoreRef?.trim() ? { rawStoreRef: patch.rawStoreRef.trim() } : providerBase?.rawStoreRef ? { rawStoreRef: providerBase.rawStoreRef } : {}),
+      ...(stringValue(patch.parentSessionId) ? { parentSessionId: stringValue(patch.parentSessionId)! } : base?.parentSessionId ? { parentSessionId: base.parentSessionId } : {}),
+      ...(isSessionOrigin(patch.origin) ? { origin: patch.origin } : base?.origin ? { origin: base.origin } : {}),
+      ...(finiteNonNegativeInteger(patch.delegationDepth) ? { delegationDepth: patch.delegationDepth } : base?.delegationDepth === undefined ? {} : { delegationDepth: base.delegationDepth }),
+      ...(stringValue(patch.continuationId) ? { continuationId: stringValue(patch.continuationId)! } : base?.continuationId ? { continuationId: base.continuationId } : {}),
+      ...(stringValue(patch.teamId) ? { teamId: stringValue(patch.teamId)! } : base?.teamId ? { teamId: base.teamId } : {}),
+      ...(stringValue(patch.teamMemberId) ? { teamMemberId: stringValue(patch.teamMemberId)! } : base?.teamMemberId ? { teamMemberId: base.teamMemberId } : {}),
       ...(patch.title?.trim() ? { title: patch.title.trim() } : base?.title ? { title: base.title } : {}),
       ...(patch.cwd?.trim() ? { cwd: patch.cwd.trim() } : base?.cwd ? { cwd: base.cwd } : {}),
       ...(patch.lastError?.trim() ? { lastError: patch.lastError.trim() } : {}),
@@ -208,6 +220,7 @@ export class CodingNsCliSessionStore {
     if (typeof value.dshSessionId !== 'string' || value.dshSessionId.trim() === '') return
     if (typeof value.adapterId !== 'string' || value.adapterId.trim() === '') return
     if (!isStatus(value.status) || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string') return
+    const origin = isSessionOrigin(value.origin) ? value.origin : undefined
     this.records.set(value.dshSessionId, {
       dshSessionId: value.dshSessionId,
       adapterId: value.adapterId,
@@ -216,6 +229,12 @@ export class CodingNsCliSessionStore {
       ...(stringValue(value.providerId) ? { providerId: stringValue(value.providerId)! } : {}),
       ...(stringValue(value.providerSessionId) ? { providerSessionId: stringValue(value.providerSessionId)! } : {}),
       ...(stringValue(value.rawStoreRef) ? { rawStoreRef: stringValue(value.rawStoreRef)! } : {}),
+      ...(stringValue(value.parentSessionId) ? { parentSessionId: stringValue(value.parentSessionId)! } : {}),
+      ...(origin === undefined ? {} : { origin }),
+      ...(finiteNonNegativeInteger(value.delegationDepth) ? { delegationDepth: value.delegationDepth } : {}),
+      ...(stringValue(value.continuationId) ? { continuationId: stringValue(value.continuationId)! } : {}),
+      ...(stringValue(value.teamId) ? { teamId: stringValue(value.teamId)! } : {}),
+      ...(stringValue(value.teamMemberId) ? { teamMemberId: stringValue(value.teamMemberId)! } : {}),
       ...(stringValue(value.title) ? { title: stringValue(value.title)! } : {}),
       ...(stringValue(value.cwd) ? { cwd: stringValue(value.cwd)! } : {}),
       ...(stringValue(value.lastError) ? { lastError: stringValue(value.lastError)! } : {}),
@@ -261,6 +280,14 @@ function isProviderState(value: unknown): value is CodingNsCliProviderSessionSta
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
+}
+
+function isSessionOrigin(value: unknown): value is CodingNsCliSessionRecord['origin'] {
+  return value === 'user' || value === 'subagent' || value === 'plugin'
+}
+
+function finiteNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

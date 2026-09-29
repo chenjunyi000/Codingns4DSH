@@ -83,6 +83,32 @@ test('Host 会话索引串行持久化并支持归档筛选', async () => {
   assert.equal(store.get('dsh-1')?.providerState, undefined)
 })
 
+test('Session V4 委托元数据可持久化，Team 诊断明确返回未接入', () => {
+  const store = new CodingNsCliSessionStore()
+  store.upsert('child-1', {
+    adapterId: 'codex',
+    parentSessionId: 'lead-1',
+    origin: 'subagent',
+    delegationDepth: 1,
+    continuationId: 'continuation-1',
+    teamId: 'team-1',
+    teamMemberId: 'member-1',
+  })
+  assert.deepEqual(store.get('child-1'), {
+    dshSessionId: 'child-1',
+    adapterId: 'codex',
+    parentSessionId: 'lead-1',
+    origin: 'subagent',
+    delegationDepth: 1,
+    continuationId: 'continuation-1',
+    teamId: 'team-1',
+    teamMemberId: 'member-1',
+    status: 'idle',
+    createdAt: store.get('child-1')?.createdAt,
+    updatedAt: store.get('child-1')?.updatedAt,
+  })
+})
+
 test('设置服务写入失败时不会让 Host 会话索引队列崩溃', async () => {
   const store = new CodingNsCliSessionStore({
     settings: {

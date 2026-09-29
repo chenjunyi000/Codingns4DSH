@@ -13,6 +13,7 @@ import { CodingNsCliSessionStore } from './session-store.js'
 import { CodingNsDshMessageProjector } from './dsh-message-projector.js'
 import { CommandCodeSubscriptionService } from './command-code-subscription.js'
 import { ProviderSubscriptionService } from './provider-subscription.js'
+import { normalizeSubscriptionUsageSettings, type CodingNsSettings } from '../../shared/contracts/config.js'
 import type { CodingNsHostServices } from '../features/types.js'
 
 export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapterRegistry } = {}): FeatureModule<CodingNsHostServices> {
@@ -25,8 +26,13 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
       runtime: 'host',
     },
     start(context) {
-      const commandCodeSubscription = new CommandCodeSubscriptionService()
-      const subscriptions = new ProviderSubscriptionService({ commandCode: commandCodeSubscription })
+      // 用量查询超时对所有适配器统一生效：同一个 timeoutMs 下发给全部网络读取器，
+      // 设置变更时整体重建，避免旧超时继续生效。
+      const buildSubscriptions = (settings: CodingNsSettings | undefined): ProviderSubscriptionService => {
+        const timeoutMs = normalizeSubscriptionUsageSettings(settings?.subscriptionUsage).timeoutSecs * 1000
+        return new ProviderSubscriptionService({ commandCode: new CommandCodeSubscriptionService({ timeoutMs }), timeoutMs })
+      }
+      let subscriptions = buildSubscriptions(context.services.settings?.get())
       const sessionStore = new CodingNsCliSessionStore(context.services.settings === undefined ? {} : { settings: context.services.settings })
       const nativeSessions = context.services.nativeSessions
       if (nativeSessions !== undefined) {
@@ -88,6 +94,16 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           case 'session/steer': return registry.steer(readSessionId(payload), readPrompt(payload), false)
           case 'session/follow-up': return registry.steer(readSessionId(payload), readPrompt(payload), true)
           case 'session/interrupt': return registry.interrupt(readSessionId(payload))
+          case 'team/status': return context.services.nativeTeam?.diagnostic() ?? registry.teamDiagnostic()
+          case 'team/members': return requireTeam(context).invoke('members', payload)
+          case 'team/tasks': return requireTeam(context).invoke('tasks', payload)
+          case 'team/task': return requireTeam(context).invoke('task', payload)
+          case 'team/spawn': return requireTeam(context).invoke('spawn', payload)
+          case 'team/message': return requireTeam(context).invoke('message', payload)
+          case 'team/task/create': return requireTeam(context).invoke('task/create', payload)
+          case 'team/task/update': return requireTeam(context).invoke('task/update', payload)
+          case 'team/wait': return requireTeam(context).invoke('wait', payload)
+          case 'team/interrupt': return requireTeam(context).invoke('interrupt', payload)
           case 'subscription': {
             const subscription = readSubscriptionRequest(payload)
             return subscriptions.read(subscription.adapterId, subscription.providerId)
@@ -102,6 +118,7 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
           registry.applyEnabledSettings(next.agentAdapters)
           registry.syncPreferences(next.agentAdapterPreferences)
           sessionStore.sync(next.cliSessions)
+          subscriptions = buildSubscriptions(next)
         }))
       }
 
@@ -211,6 +228,11 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
       context.resources.add(async () => { await registry.dispose(); await sessionStore.flush() })
     },
   }
+}
+
+function requireTeam(context: { services: CodingNsHostServices }) {
+  if (context.services.nativeTeam === undefined) throw new Error('DSH_TEAM_NATIVE_UNAVAILABLE')
+  return context.services.nativeTeam
 }
 
 /**
