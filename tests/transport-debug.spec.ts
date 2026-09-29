@@ -21,3 +21,32 @@ test('Tunnel 调试日志只记录调用方提供的元数据', () => {
   assert.equal(records[0]?.operation, 'web.boot.get')
   assert.equal(records[0]?.bodyBytes, 64)
 })
+
+test('调试日志保留 DSH 请求路由元数据但剥掉查询串与正文', () => {
+  const records: Readonly<Record<string, unknown>>[] = []
+  const logger = createDshTransportDebugLogger({ enabled: true, side: 'host', component: 'web-provider', sink: (record) => records.push(record) })
+  logger.log('web.provider.request.response', {
+    sessionId: 'web_1',
+    path: '/api/settings/describe?token=secret-token',
+    method: 'POST',
+    status: 200,
+    errorCode: 'WEB_REQUEST_FAILED',
+    // 以下字段必须继续被丢弃
+    url: 'http://127.0.0.1:13080/api',
+    filePath: '/workspace/private.txt',
+    cookie: 'session-cookie-secret',
+    body: '响应正文',
+    error: '错误详情',
+  })
+  assert.deepEqual(records[0], {
+    at: (records[0] as { at?: unknown }).at,
+    side: 'host',
+    component: 'web-provider',
+    event: 'web.provider.request.response',
+    sessionId: 'web_1',
+    path: '/api/settings/describe',
+    method: 'POST',
+    status: 200,
+    errorCode: 'WEB_REQUEST_FAILED',
+  })
+})

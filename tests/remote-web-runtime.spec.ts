@@ -286,3 +286,40 @@ test('Remote Web 将 /api/remote.mux 的 Buffer 文本帧恢复为 encoding=text
   listeners.get('close')?.({} as Event)
   await running
 })
+
+test('Web 请求用稳定错误码区分「会话已失效」与「路径非法」', async () => {
+  // 中继页面空白只能靠错误码定位：旧实现把 provider 抛出的普通 Error 一律
+  // 归成 WEB_RUNTIME_FAILED，日志里看不出是哪种失败。
+  const callRequest = async (payload: (sessionId: string) => unknown): Promise<string[]> => {
+    const feature = createRemoteWebRuntimeFeature({
+      provider: {
+        async openSession() { return { sessionId: 'web-9', dshVersion: '0.2.0-rc.1' } },
+        async getBoot() { throw new Error('unused') },
+        async getAsset() { throw new Error('unused') },
+        async getPluginManifest() { return [] },
+        async getPluginBundle() { throw new Error('unused') },
+        async openWebSocket() { throw new Error('unused') },
+        async request() { return { status: 200, headers: [], body: '{}' } },
+      } as DshWebRuntimeProvider,
+    })
+    const opened = context('web.session.open', 's-open', {})
+    await feature.handleStream?.(opened.value)
+    const session = JSON.parse(new TextDecoder().decode(opened.sent[0]?.body)) as { sessionId: string }
+    const call = context('web.request', 's-req', payload(session.sessionId))
+    await feature.handleStream?.(call.value)
+    return call.sent.map((envelope) => envelope.type === 'stream.error'
+      ? `${envelope.type}:${String(envelope.meta.errorCode)}`
+      : envelope.type)
+  }
+
+  // feature 只发自己的响应/错误帧；stream.accepted 由网关负责。
+  assert.deepEqual(await callRequest(() => ({ sessionId: 'missing', path: '/api/x' })), [
+    'stream.error:WEB_SESSION_NOT_FOUND',
+  ])
+  assert.deepEqual(await callRequest((sessionId) => ({ sessionId, path: '/api/../etc/passwd' })), [
+    'stream.error:WEB_PATH_INVALID',
+  ])
+  assert.deepEqual(await callRequest((sessionId) => ({ sessionId, path: '/api/settings/describe' })), [
+    'web.request.response',
+  ])
+})

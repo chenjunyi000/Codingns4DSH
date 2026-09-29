@@ -48,6 +48,11 @@ export function createDshTransportDebugLogger(options: DshTransportDebugOptions 
 /**
  * 调试字段采用正向白名单。Transport 可能同时处理 token、URL、命令和正文，
  * 因此不能依赖调用方自觉脱敏；未知字段和错误正文直接丢弃。
+ *
+ * `path` / `method` / `status` / `errorCode` 是 DSH Web 请求的路由元数据：
+ * 没有它们就无法区分「请求没到达 Host」和「请求到达但返回空结果」，
+ * 中继设置页空白这类问题只能靠日志猜。这些字段只能是 HTTP 路径与状态，
+ * 禁止把查询串、Cookie、请求/响应正文塞进来。
  */
 export function sanitizeDshTransportDebugFields(fields: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const allowed = new Set([
@@ -56,14 +61,25 @@ export function sanitizeDshTransportDebugFields(fields: Readonly<Record<string, 
     'channel', 'channelLabel', 'operation', 'feature', 'type', 'code', 'state', 'role',
     'streams', 'activeStreams', 'openingStreams', 'maxStreams', 'fragmentId', 'chunkCount',
     'totalBytes', 'payloadBytes', 'bufferedAmount', 'highWaterMark', 'lowWaterMark', 'dataType',
-    'valueType', 'trafficRemainingBytes',
+    'valueType', 'trafficRemainingBytes', 'path', 'method', 'status', 'errorCode',
   ])
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
     if (!allowed.has(key)) continue
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) result[key] = value
+    if (typeof value === 'string') {
+      result[key] = key === 'path' ? sanitizeDebugPath(value) : value
+      continue
+    }
+    if (typeof value === 'number' || typeof value === 'boolean' || value === null) result[key] = value
   }
   return result
+}
+
+/** 路径只保留 pathname，去掉查询串与可能带凭据的片段。 */
+function sanitizeDebugPath(value: string): string {
+  const query = value.indexOf('?')
+  const trimmed = query === -1 ? value : value.slice(0, query)
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed
 }
 
 /** 解析统一的 Codingns4DSH 调试开关，保留旧隧道变量作为兼容别名。 */

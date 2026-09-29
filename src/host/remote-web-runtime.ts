@@ -173,8 +173,16 @@ export function createRemoteWebRuntimeFeature(options: RemoteWebRuntimeFeatureOp
             throw new RemoteWebRuntimeError('WEB_OPERATION_UNSUPPORTED', `不支持的 DSH Web operation: ${operation}`)
         }
       } catch (error) {
-        debug.log('web.request.error', { operation, streamId: context.envelope.streamId, error: error instanceof Error ? error.message : String(error) })
-        context.send('stream.error', { errorCode: error instanceof RemoteWebRuntimeError ? error.code : 'WEB_RUNTIME_FAILED', detail: error instanceof Error ? error.message : 'DSH Web Runtime 失败', retryable: false })
+        // 稳定错误码 + 请求路径是定位中继设置页空白这类问题的最小信息；
+        // 报文正文与凭据仍然不进日志。
+        const errorCode = error instanceof RemoteWebRuntimeError ? error.code : 'WEB_RUNTIME_FAILED'
+        debug.log('web.request.error', {
+          operation,
+          streamId: context.envelope.streamId,
+          errorCode,
+          ...(isRecord(request) && typeof request.path === 'string' ? { path: request.path } : {}),
+        })
+        context.send('stream.error', { errorCode, detail: error instanceof Error ? error.message : 'DSH Web Runtime 失败', retryable: false })
       } finally {
         if (operation !== 'web.ws.open') {
           context.close()
@@ -398,16 +406,26 @@ export function createLocalDshWebRuntimeProvider(options: LocalDshWebRuntimeProv
     },
     async getPluginBundle(session, _pluginId, path) { return this.getAsset(session, path) },
     async request(session, input) {
-      ensureSession(sessions, session)
-      const path = normalizePath(input.path)
-      if (!allowed.some((prefix) => path === prefix || path.startsWith(prefix))) throw new Error('DSH Web 请求路径不在白名单内')
-      const init: RequestInit = { method: input.method ?? 'GET' }
-      if (input.headers !== undefined) init.headers = Object.fromEntries(input.headers)
-      if (input.body !== undefined) init.body = normalizeConnectionRpcBody(path, input.method ?? 'GET', input.body)
-      await ensureAuthenticated()
-      const response = await fetchLocal(path, init)
-      debug.log('web.provider.request.response', { sessionId: session.sessionId, path, method: input.method ?? 'GET', status: response.status })
-      return { status: response.status, headers: [...response.headers.entries()], body: await response.text() }
+      const method = input.method ?? 'GET'
+      let path = input.path
+      try {
+        ensureSession(sessions, session)
+        path = normalizePath(input.path)
+        if (!allowed.some((prefix) => path === prefix || path.startsWith(prefix))) throw new RemoteWebRuntimeError('WEB_PATH_NOT_ALLOWED', 'DSH Web 请求路径不在白名单内')
+        const init: RequestInit = { method }
+        if (input.headers !== undefined) init.headers = Object.fromEntries(input.headers)
+        if (input.body !== undefined) init.body = normalizeConnectionRpcBody(path, method, input.body)
+        await ensureAuthenticated()
+        const response = await fetchLocal(path, init)
+        debug.log('web.provider.request.response', { sessionId: session.sessionId, path, method, status: response.status })
+        return { status: response.status, headers: [...response.headers.entries()], body: await response.text() }
+      } catch (error) {
+        // 失败原因只以稳定错误码进入日志：路径和状态足够定位是哪类请求，
+        // 具体报文仍然不进日志。
+        const errorCode = error instanceof RemoteWebRuntimeError ? error.code : 'WEB_REQUEST_FAILED'
+        debug.log('web.provider.request.error', { sessionId: safeSessionId(session), path, method, errorCode })
+        throw error instanceof RemoteWebRuntimeError ? error : new RemoteWebRuntimeError(errorCode, error instanceof Error ? error.message : String(error))
+      }
     },
     async openWebSocket(session, path) {
       ensureSession(sessions, session)
@@ -564,11 +582,16 @@ async function readAsset(response: Response): Promise<DshWebAsset> {
 }
 
 function ensureSession(sessions: ReadonlyMap<string, DshWebSession>, session: DshWebSession): void {
-  if (sessions.get(session.sessionId) !== session) throw new Error('DSH Web Session 已失效')
+  if (sessions.get(session.sessionId) !== session) throw new RemoteWebRuntimeError('WEB_SESSION_NOT_FOUND', 'DSH Web Session 已失效')
+}
+
+/** 会话可能已经不在 map 里（例如 Host 重启或旧 iframe 的收尾请求），日志取不到 id 也要能记录。 */
+function safeSessionId(session: DshWebSession | undefined): string | undefined {
+  return session === undefined ? undefined : session.sessionId
 }
 
 function normalizePath(value: string): string {
-  if (!value.startsWith('/') || value.includes('\\') || value.split('/').some((part) => part === '..')) throw new Error('DSH Web 路径无效')
+  if (!value.startsWith('/') || value.includes('\\') || value.split('/').some((part) => part === '..')) throw new RemoteWebRuntimeError('WEB_PATH_INVALID', 'DSH Web 路径无效')
   return value
 }
 
