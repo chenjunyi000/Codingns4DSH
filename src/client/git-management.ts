@@ -3,7 +3,7 @@ import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { GitBranchSnapshot, GitChangeItem, GitCommitChangedFile, GitCommitDiff, GitHistoryItem, GitStatus } from '../shared/contracts/git.js'
+import type { GitBranchSnapshot, GitChangeItem, GitCommitChangedFile, GitCommitDiff, GitDiff, GitHistoryItem, GitHistoryRef, GitStatus } from '../shared/contracts/git.js'
 import type { CodingNsClientFeatureModule, CodingNsRpcClient, CodingNsRpcResult } from './features/types.js'
 import { CODINGNS_RPC_CHANNEL } from '../shared/contracts/transport.js'
 import { debugWarn } from '../shared/debug.js'
@@ -146,15 +146,37 @@ function GitPanel(props: GitTabProps): ReactElement {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<SettingsNotice | null>(null)
   const [diffView, setDiffView] = useState<GitCommitDiff | null>(null)
+  const [fileDiff, setFileDiff] = useState<{ readonly path: string; readonly staged: boolean; readonly diff: GitDiff } | null>(null)
+  const [singleColumn, setSingleColumn] = useState(false)
+  const [activeColumn, setActiveColumn] = useState<'files' | 'history'>('files')
   const [historyTotalCount, setHistoryTotalCount] = useState(0)
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false)
+  const contentGridRef = useRef<HTMLDivElement | null>(null)
   const historyExpanded = useRef(false)
+  const gridVisible = status !== null && status.snapshot.enabled !== false
 
   useEffect(() => {
     if (toast === null) return
     const timer = globalThis.setTimeout(() => setToast(null), 3200)
     return () => globalThis.clearTimeout(timer)
   }, [toast])
+
+  useEffect(() => {
+    const element = contentGridRef.current
+    if (element === null) { setSingleColumn(false); return }
+    const update = (): void => {
+      const tracks = getComputedStyle(element).gridTemplateColumns.split(' ').filter((track) => track !== '')
+      setSingleColumn(tracks.length <= 1)
+    }
+    update()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update)
+      return () => window.removeEventListener('resize', update)
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [gridVisible])
 
   const notify = (kind: SettingsNotice['kind'], message: string): void => setToast({ kind, message })
 
@@ -169,6 +191,7 @@ function GitPanel(props: GitTabProps): ReactElement {
     historyExpanded.current = false
     setBranches(null)
     setDiffView(null)
+    setFileDiff(null)
     const load = async (resolvedWorkspaceId: string): Promise<void> => {
       const cached = readCache(resolvedWorkspaceId)
       // 已经手动展开历史后，定时刷新只能更新状态和分支，不能用首屏缓存覆盖已加载的分页。
@@ -265,6 +288,15 @@ function GitPanel(props: GitTabProps): ReactElement {
       setToast(null)
     }).catch((error: unknown) => notify('error', error instanceof Error ? error.message : String(error))).finally(() => setBusy(false))
   }
+  const openFileDiff = (path: string, staged: boolean): void => {
+    if (workspaceId === undefined) return
+    setBusy(true)
+    notify('info', '正在读取文件 Diff…')
+    void call<GitDiff>(props.rpc, 'git/diff', { workspaceId, path, staged }).then((value) => {
+      setFileDiff({ path, staged, diff: value })
+      setToast(null)
+    }).catch((error: unknown) => notify('error', error instanceof Error ? error.message : String(error))).finally(() => setBusy(false))
+  }
   const loadMoreHistory = (): void => {
     if (workspaceId === undefined || historyLoadingMore || history.length >= historyTotalCount) return
     setHistoryLoadingMore(true)
@@ -285,8 +317,12 @@ function GitPanel(props: GitTabProps): ReactElement {
   const discardAll = (): void => { void run('git/discard', { targets: changes.map((item) => item.path) }) }
   return createElement('section', { style: panelStyle, 'data-git-management-panel': 'true' },
     createElement('header', { style: headerStyle },
-      createElement('div', { style: { minWidth: 0 } }, createElement('h1', { style: titleStyle }, 'Git'), createElement('div', { style: branchStyle, title: status?.snapshot.repoRoot }, status?.snapshot.branch ?? '读取中')),
+      createElement('div', { style: { minWidth: 0 } }, createElement('h1', { style: titleStyle }, 'Git')),
       createElement('div', { style: headerActionsStyle },
+        singleColumn ? createElement('div', { style: columnSwitchStyle, role: 'group', 'aria-label': '切换文件与版本视图' },
+          createElement('button', { type: 'button', onClick: () => setActiveColumn('files'), style: activeColumn === 'files' ? columnSwitchActiveButtonStyle : columnSwitchButtonStyle, title: '切换文件', 'aria-label': '切换文件', 'aria-pressed': activeColumn === 'files' }, '切换文件'),
+          createElement('button', { type: 'button', onClick: () => setActiveColumn('history'), style: activeColumn === 'history' ? columnSwitchActiveButtonStyle : columnSwitchButtonStyle, title: '切换版本', 'aria-label': '切换版本', 'aria-pressed': activeColumn === 'history' }, '切换版本'),
+        ) : null,
         createElement(GitOperationsMenu, { busy, hasRemote: Boolean(status?.snapshot.hasRemote || branches?.remote.length), canUndo: history.length > 0, hasMoreVersions: history.length < historyTotalCount, stagedCount: staged.length, unstagedCount: unstaged.length, onStageAll: stageAll, onDiscardAll: discardAll, onLoadMore: loadMoreHistory, onOperation: runGitOperation }),
       ),
     ),
@@ -299,8 +335,9 @@ function GitPanel(props: GitTabProps): ReactElement {
     ) : null,
     status !== null ? createElement('div', { style: summaryStyle }, `${staged.length} 个已暂存 · ${unstaged.length} 个未暂存 · ${historyTotalCount} 条提交`) : null,
     diffView !== null ? createElement(DiffViewer, { diff: diffView, onClose: () => setDiffView(null) }) : null,
-    status !== null && status.snapshot.enabled !== false ? createElement('div', { style: contentGridStyle },
-      createElement('div', { style: columnStyle },
+    fileDiff !== null ? createElement(FileDiffViewer, { path: fileDiff.path, staged: fileDiff.staged, diff: fileDiff.diff, onClose: () => setFileDiff(null) }) : null,
+    status !== null && status.snapshot.enabled !== false ? createElement('div', { ref: contentGridRef, style: contentGridStyle },
+      singleColumn && activeColumn !== 'files' ? null : createElement('div', { style: columnStyle },
         createElement('section', { style: commitSectionStyle },
           createElement('div', { style: commitEditorRowStyle },
             createElement('textarea', { value: subject, disabled: busy || workspaceId === undefined, onChange: (event: { currentTarget: { value: string } }) => setSubject(event.currentTarget.value), onKeyDown: (event: { key: string; preventDefault: () => void }) => { if (event.key === 'Enter') event.preventDefault() }, placeholder: '在这里输入提交信息', rows: 1, style: commitSubjectStyle }),
@@ -311,17 +348,17 @@ function GitPanel(props: GitTabProps): ReactElement {
             createElement('button', { type: 'button', disabled: busy || workspaceId === undefined || staged.length === 0 || subject.trim().length === 0, onClick: commit, style: submitActionStyle }, '提交'),
           ),
         ),
-        staged.length > 0 ? createElement(ChangeSection, { title: '暂存文件', items: staged, busy, onAction: (action, path) => void run(`git/${action}`, { targets: [path] }), onBatchAction: (action, paths) => void run(`git/${action}`, { targets: paths }), onBulkAction: () => void run('git/unstage', { targets: staged.map((item) => item.path) }) }) : null,
-        unstaged.length > 0 ? createElement(ChangeSection, { title: '未提交文件', items: unstaged, busy, onAction: (action, path) => void run(`git/${action}`, { targets: [path] }), onBatchAction: (action, paths) => void run(`git/${action}`, { targets: paths }), onBulkAction: () => void run('git/stage', { targets: unstaged.map((item) => item.path) }) }) : null,
+        staged.length > 0 ? createElement(ChangeSection, { title: '暂存文件', items: staged, busy, onOpenDiff: openFileDiff, onAction: (action, path) => void run(`git/${action}`, { targets: [path] }), onBatchAction: (action, paths) => void run(`git/${action}`, { targets: paths }), onBulkAction: () => void run('git/unstage', { targets: staged.map((item) => item.path) }) }) : null,
+        unstaged.length > 0 ? createElement(ChangeSection, { title: '未提交文件', items: unstaged, busy, onOpenDiff: openFileDiff, onAction: (action, path) => void run(`git/${action}`, { targets: [path] }), onBatchAction: (action, paths) => void run(`git/${action}`, { targets: paths }), onBulkAction: () => void run('git/stage', { targets: unstaged.map((item) => item.path) }) }) : null,
       ),
-      createElement('div', { style: columnStyle },
+      singleColumn && activeColumn !== 'history' ? null : createElement('div', { style: columnStyle },
         createElement(HistorySection, { history, totalCount: historyTotalCount, hasMore: history.length < historyTotalCount, loadingMore: historyLoadingMore, onLoadMore: loadMoreHistory, branches, busy, onSwitch: (branchName) => void run('git/switch', { branchName, create: false }, (value) => setBranches(normalizeBranchSnapshot(value as GitBranchSnapshot))), onCopy: copyCommitHash, onCopyMessage: copyCommitMessage, onViewDiff: openCommitDiff, onUndo: () => runGitOperation('undo') }),
       ),
     ) : null,
   )
 }
 
-function ChangeSection({ title, items, busy, onAction, onBatchAction, onBulkAction }: { readonly title: string; readonly items: readonly GitChangeItem[]; readonly busy: boolean; readonly onAction: (action: 'stage' | 'unstage' | 'discard', path: string) => void; readonly onBatchAction: (action: 'stage' | 'unstage' | 'discard', paths: readonly string[]) => void; readonly onBulkAction: () => void }): ReactElement {
+function ChangeSection({ title, items, busy, onOpenDiff, onAction, onBatchAction, onBulkAction }: { readonly title: string; readonly items: readonly GitChangeItem[]; readonly busy: boolean; readonly onOpenDiff: (path: string, staged: boolean) => void; readonly onAction: (action: 'stage' | 'unstage' | 'discard', path: string) => void; readonly onBatchAction: (action: 'stage' | 'unstage' | 'discard', paths: readonly string[]) => void; readonly onBulkAction: () => void }): ReactElement {
   const [hoveredPath, setHoveredPath] = useState<string | null>(null)
   const nodes = buildChangeTree(items)
   const staged = title === '暂存文件'
@@ -342,7 +379,7 @@ function ChangeSection({ title, items, busy, onAction, onBatchAction, onBulkActi
       )
     }
     const isHovered = hoveredPath === node.path
-    return createElement('div', { key: `file:${node.path}`, style: { ...treeRowStyle, paddingLeft: 28 + depth * 14 }, onMouseEnter: () => setHoveredPath(node.path), onMouseLeave: () => setHoveredPath(null) },
+    return createElement('div', { key: `file:${node.path}`, style: { ...treeRowStyle, paddingLeft: 28 + depth * 14 }, onMouseEnter: () => setHoveredPath(node.path), onMouseLeave: () => setHoveredPath(null), onDoubleClick: () => onOpenDiff(node.path, staged) },
       createElement('span', { style: fileIconStyle }, fileIcon(node.name)),
       createElement('span', { title: node.path, style: fileNameStyle }, node.name),
       createElement('span', { style: fileStatusStyle }, changeStatus(node.item, staged)),
@@ -384,7 +421,6 @@ interface ParsedDiffLine {
 function DiffViewer({ diff, onClose }: { readonly diff: GitCommitDiff; readonly onClose: () => void }): ReactElement {
   const providedFiles = diff.files ?? []
   const files = providedFiles.length > 0 ? providedFiles : parseDiffFiles(diff.content)
-  const lines = parseDiffLines(diff.content)
   return createElement('div', { style: diffOverlayStyle },
     createElement('section', { role: 'dialog', 'aria-modal': true, 'aria-label': '提交 Diff', style: diffStyle },
       createElement('div', { style: sectionHeaderStyle }, createElement('strong', undefined, `提交 Diff · ${diff.commitHash.slice(0, 8)}`), createElement('button', { type: 'button', onClick: onClose, style: iconButtonStyle, title: '关闭 Diff', 'aria-label': '关闭 Diff' }, '×')),
@@ -395,7 +431,37 @@ function DiffViewer({ diff, onClose }: { readonly diff: GitCommitDiff; readonly 
         ),
         createElement('section', { style: diffDiffSectionStyle },
           createElement('div', { style: diffSectionHeaderStyle }, createElement('strong', undefined, 'Diff'), diff.truncated ? createElement('span', { style: diffTruncatedStyle }, '内容已截断') : null),
-          lines.length === 0 ? createElement('div', { style: diffEmptyStyle }, '当前没有可显示的文本差异。') : createElement('div', { style: diffLinesStyle }, ...lines.map((line, index) => createElement('div', { key: `${index}:${line.kind}:${line.text}`, style: diffLineStyle(line.kind) }, createElement('span', { style: diffLineNumberStyle }, line.oldLineNo === null ? '' : String(line.oldLineNo)), createElement('span', { style: diffLineNumberStyle }, line.newLineNo === null ? '' : String(line.newLineNo)), createElement('code', { style: diffCodeStyle }, `${diffLinePrefix(line.kind)}${line.text}`)))),
+          createElement(DiffLines, { content: diff.content }),
+        ),
+      ),
+    ),
+  )
+}
+
+function DiffLines({ content }: { readonly content: string }): ReactElement {
+  const lines = parseDiffLines(content)
+  if (lines.length === 0) return createElement('div', { style: diffEmptyStyle }, '当前没有可显示的文本差异。')
+  return createElement('div', { style: diffLinesStyle }, ...lines.map((line, index) => createElement('div', { key: `${index}:${line.kind}:${line.text}`, style: diffLineStyle(line.kind) }, createElement('span', { style: diffLineNumberStyle }, line.oldLineNo === null ? '' : String(line.oldLineNo)), createElement('span', { style: diffLineNumberStyle }, line.newLineNo === null ? '' : String(line.newLineNo)), createElement('code', { style: diffCodeStyle }, `${diffLinePrefix(line.kind)}${line.text}`))))
+}
+
+function FileDiffViewer({ path, staged, diff, onClose }: { readonly path: string; readonly staged: boolean; readonly diff: GitDiff; readonly onClose: () => void }): ReactElement {
+  return createElement('div', { style: diffOverlayStyle },
+    createElement('section', { role: 'dialog', 'aria-modal': true, 'aria-label': '文件 Diff', style: diffStyle },
+      createElement('div', { style: sectionHeaderStyle },
+        createElement('strong', { style: fileDiffTitleStyle, title: path }, `文件 Diff · ${path}`),
+        createElement('div', { style: rowActionsStyle },
+          createElement('span', { style: diffCountStyle }, staged ? '已暂存' : '未暂存'),
+          createElement('button', { type: 'button', onClick: onClose, style: iconButtonStyle, title: '关闭 Diff', 'aria-label': '关闭 Diff' }, '×'),
+        ),
+      ),
+      createElement('div', { style: diffBodyStyle },
+        createElement('section', { style: diffDiffSectionStyle },
+          createElement('div', { style: diffSectionHeaderStyle },
+            createElement('strong', undefined, staged ? '暂存区 Diff（相对 HEAD）' : '工作区 Diff'),
+            diff.binary ? createElement('span', { style: diffBinaryStyle }, '二进制文件') : null,
+            diff.truncated ? createElement('span', { style: diffTruncatedStyle }, '内容已截断') : null,
+          ),
+          createElement(DiffLines, { content: diff.content }),
         ),
       ),
     ),
@@ -456,21 +522,27 @@ function diffLineStyle(kind: ParsedDiffLine['kind']): CSSProperties {
 function HistorySection({ history, totalCount, hasMore, loadingMore, onLoadMore, branches, busy, onSwitch, onCopy, onCopyMessage, onViewDiff, onUndo }: { readonly history: readonly GitHistoryItem[]; readonly totalCount: number; readonly hasMore: boolean; readonly loadingMore: boolean; readonly onLoadMore: () => void; readonly branches: GitBranchSnapshot | null; readonly busy: boolean; readonly onSwitch: (branchName: string) => void; readonly onCopy: (commitHash: string) => void; readonly onCopyMessage: (message: string) => void; readonly onViewDiff: (commitHash: string) => void; readonly onUndo: () => void }): ReactElement {
   const rows = groupHistoryByDate(history).flatMap((group) => [
     createElement('div', { key: `date:${group.key}`, style: historyDateHeaderStyle }, createElement('time', { dateTime: group.key, style: historyDateHeaderTextStyle }, group.label)),
-    ...group.items.map(({ item, index, timeLabel }) => createElement('div', { key: item.commitHash, style: historyRowStyle },
-      createElement('code', { style: hashStyle }, item.commitHash.slice(0, 8)),
-      createElement('span', { style: fileNameStyle, title: item.subject }, item.subject),
-      createElement('time', { style: historyTimeStyle, dateTime: item.authoredAt }, timeLabel),
-      createElement('details', { style: menuStyle },
-        createElement('summary', { style: menuSummaryStyle, title: '版本操作菜单', 'aria-label': '版本操作菜单' }, '⋯'),
-        createElement('div', { style: menuPopupStyle },
-          createElement('button', { type: 'button', onClick: () => onViewDiff(item.commitHash), style: menuButtonStyle }, '查看更改文件与 Diff'),
-          createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Commit Hash'),
-          createElement('button', { type: 'button', onClick: () => onCopyMessage(buildCommitMessageText(item.subject, item.body)), style: menuButtonStyle }, '复制提交信息'),
-          createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Git 版本号'),
-          index === 0 ? createElement('button', { type: 'button', disabled: busy, onClick: onUndo, style: dangerMenuButtonStyle }, '撤销上次提交') : null,
+    ...group.items.map(({ item, index, timeLabel }) => {
+      const refs = item.refs ?? []
+      return createElement('div', { key: item.commitHash, style: historyRowStyle },
+        createElement('div', { style: historyRowMainStyle },
+          createElement('code', { style: hashStyle }, item.commitHash.slice(0, 8)),
+          createElement('span', { style: fileNameStyle, title: item.subject }, item.subject),
+          createElement('time', { style: historyTimeStyle, dateTime: item.authoredAt }, timeLabel),
+          createElement('details', { style: menuStyle },
+            createElement('summary', { style: menuSummaryStyle, title: '版本操作菜单', 'aria-label': '版本操作菜单' }, '⋯'),
+            createElement('div', { style: menuPopupStyle },
+              createElement('button', { type: 'button', onClick: () => onViewDiff(item.commitHash), style: menuButtonStyle }, '查看更改文件与 Diff'),
+              createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Commit Hash'),
+              createElement('button', { type: 'button', onClick: () => onCopyMessage(buildCommitMessageText(item.subject, item.body)), style: menuButtonStyle }, '复制提交信息'),
+              createElement('button', { type: 'button', onClick: () => onCopy(item.commitHash), style: menuButtonStyle }, '复制 Git 版本号'),
+              index === 0 ? createElement('button', { type: 'button', disabled: busy, onClick: onUndo, style: dangerMenuButtonStyle }, '撤销上次提交') : null,
+            ),
+          ),
         ),
-      ),
-    )),
+        refs.length === 0 ? null : createElement('div', { style: historyRefListStyle }, ...refs.map((ref) => createElement('span', { key: `${ref.kind}:${ref.name}`, title: ref.name, style: historyRefPillStyle(ref.kind, ref.remoteName) }, ref.name))),
+      )
+    }),
   ])
   return createElement('section', { style: sectionStyle },
     createElement('div', { style: sectionHeaderStyle }, createElement('strong', undefined, `Git 版本 (${totalCount})`), branches === null ? null : createElement('select', { value: branches.currentBranch, disabled: busy, onChange: (event: { currentTarget: { value: string } }) => onSwitch(event.currentTarget.value), style: branchSelectStyle }, ...branches.local.map((branch) => createElement('option', { key: branch.name, value: branch.name }, branch.name)))),
@@ -780,12 +852,33 @@ function formatHistoryTimestamp(value: string): { readonly key: string; readonly
 }
 function buildCommitMessageText(subject: string, body: string): string { const normalizedSubject = subject.trim(); const normalizedBody = body.trim(); return normalizedBody ? `${normalizedSubject}\n\n${normalizedBody}` : normalizedSubject }
 
-const panelStyle: CSSProperties = { position: 'relative', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%', padding: '16px 18px 24px', overflow: 'auto', background: dshThemeColor.pageBackground, color: dshThemeColor.labelPrimary }
+const REMOTE_REF_PALETTE = ['#8b5cf6', '#ef4444', '#10b981', '#f59e0b', '#06b6d4', '#ec4899'] as const
+
+function resolveRemotePaletteIndex(remoteName: string | null): number {
+  if (remoteName === null) return 0
+  let hash = 0
+  for (const character of remoteName) hash = (hash * 33 + character.charCodeAt(0)) >>> 0
+  return hash % REMOTE_REF_PALETTE.length
+}
+
+function historyRefPillStyle(kind: GitHistoryRef['kind'], remoteName: string | null): CSSProperties {
+  if (kind === 'remote') {
+    const color = REMOTE_REF_PALETTE[resolveRemotePaletteIndex(remoteName)]!
+    return { ...historyRefPillBaseStyle, border: `1px solid color-mix(in srgb, ${color} 34%, transparent)`, background: `color-mix(in srgb, ${color} 14%, transparent)`, color }
+  }
+  const color = kind === 'head' ? '#4f9cff' : '#67b0ff'
+  const mix = kind === 'head' ? { border: 36, background: 18 } : { border: 28, background: 12 }
+  return { ...historyRefPillBaseStyle, border: `1px solid color-mix(in srgb, ${color} ${mix.border}%, transparent)`, background: `color-mix(in srgb, ${color} ${mix.background}%, transparent)`, color: '#2b74d8' }
+}
+
+const panelStyle: CSSProperties = { position: 'relative', userSelect: 'none', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%', padding: '16px 18px 24px', overflow: 'auto', background: dshThemeColor.pageBackground, color: dshThemeColor.labelPrimary }
 const headerStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingBottom: 10, borderBottom: `1px solid ${dshThemeColor.border}` }
 const titleStyle: CSSProperties = { margin: 0, fontSize: 20, lineHeight: 1.2 }
 const tabTitleStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', minWidth: 0, color: dshThemeColor.labelPrimary, fontSize: 12 }
 const headerActionsStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4 }
-const branchStyle: CSSProperties = { marginTop: 4, overflow: 'hidden', color: dshThemeColor.labelSecondary, fontSize: 12, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+const columnSwitchStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 2, padding: 2, border: `1px solid ${dshThemeColor.border}`, borderRadius: 5, background: dshThemeColor.pageBackground }
+const columnSwitchButtonStyle: CSSProperties = { border: 0, borderRadius: 3, padding: '3px 6px', color: dshThemeColor.labelSecondary, background: 'transparent', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }
+const columnSwitchActiveButtonStyle: CSSProperties = { ...columnSwitchButtonStyle, color: dshThemeColor.accent, background: 'color-mix(in srgb, currentColor 12%, transparent)', fontWeight: 600 }
 const summaryStyle: CSSProperties = { color: dshThemeColor.labelSecondary, fontSize: 12 }
 const contentGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', alignItems: 'start', gap: 12 }
 const columnStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }
@@ -799,7 +892,10 @@ const folderIconStyle: CSSProperties = { color: dshThemeColor.accent, fontSize: 
 const fileIconStyle: CSSProperties = { width: 12, color: dshThemeColor.labelTertiary, fontSize: 12, textAlign: 'center' }
 const fileNameStyle: CSSProperties = { minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const fileStatusStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontFamily: 'monospace', fontSize: 11 }
-const historyRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, fontSize: 12 }
+const historyRowStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12 }
+const historyRowMainStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, minHeight: 28 }
+const historyRefListStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '4px 6px', paddingLeft: 2 }
+const historyRefPillBaseStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 18, padding: '0 8px', borderRadius: 999, fontSize: 10, lineHeight: 1, whiteSpace: 'nowrap' }
 const historyDateHeaderStyle: CSSProperties = { paddingTop: 6, color: dshThemeColor.labelSecondary, fontSize: 11, fontWeight: 600 }
 const historyDateHeaderTextStyle: CSSProperties = { display: 'block' }
 const hashStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontSize: 11 }
@@ -822,6 +918,7 @@ const diffFileStatusStyle: CSSProperties = { display: 'inline-flex', alignItems:
 const diffFileNameStyle: CSSProperties = { display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, overflow: 'hidden' }
 const diffFileOldPathStyle: CSSProperties = { overflow: 'hidden', color: dshThemeColor.labelTertiary, textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }
 const diffBinaryStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontSize: 11 }
+const fileDiffTitleStyle: CSSProperties = { ...fileNameStyle, fontSize: 12 }
 const diffTruncatedStyle: CSSProperties = { color: dshThemeColor.labelTertiary, fontSize: 11 }
 const diffEmptyStyle: CSSProperties = { padding: 10, color: dshThemeColor.labelTertiary, fontSize: 12 }
 const diffLinesStyle: CSSProperties = { overflow: 'auto', border: `1px solid ${dshThemeColor.border}`, borderRadius: 4, background: dshThemeColor.pageBackground, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }

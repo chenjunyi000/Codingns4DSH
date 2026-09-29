@@ -39,6 +39,11 @@ async function git(cwd: string, args: readonly string[]): Promise<void> {
   await execFile('git', args, { cwd })
 }
 
+async function gitOutput(cwd: string, args: readonly string[]): Promise<string> {
+  const result = await execFile('git', args, { cwd, encoding: 'utf8' }) as unknown as { stdout: string }
+  return result.stdout.trim()
+}
+
 test('Git Host 模块能处理未初始化目录、状态、暂存、提交和历史', async () => {
   const root = await mkdtemp(`${tmpdir()}/codingns-git-`)
   try {
@@ -114,15 +119,54 @@ test('Git Host 模块支持提交 Diff 和撤销最近提交', async () => {
   }
 })
 
+test('Git Host 历史记录带分支标签并支持文件 Diff', async () => {
+  const root = await mkdtemp(`${tmpdir()}/codingns-git-refs-`)
+  try {
+    const { table } = startGitFeature(new Map([['workspace-refs', root]]))
+    await rpc(table, 'git/init', { workspaceId: 'workspace-refs' })
+    await git(root, ['config', 'user.name', 'CodingNS Test'])
+    await git(root, ['config', 'user.email', 'codingns-test@example.invalid'])
+    await writeFile(`${root}/README.md`, 'refs\n', 'utf8')
+
+    const unstaged = await rpc(table, 'git/diff', { workspaceId: 'workspace-refs', path: 'README.md', staged: false }) as { staged: boolean; content: string }
+    assert.equal(unstaged.staged, false)
+    assert.match(unstaged.content, /\+refs/u)
+
+    await rpc(table, 'git/stage', { workspaceId: 'workspace-refs', targets: ['README.md'] })
+    const staged = await rpc(table, 'git/diff', { workspaceId: 'workspace-refs', path: 'README.md', staged: true }) as { staged: boolean; content: string }
+    assert.equal(staged.staged, true)
+    assert.match(staged.content, /\+refs/u)
+
+    await rpc(table, 'git/commit', { workspaceId: 'workspace-refs', subject: '记录分支标签' })
+    await git(root, ['branch', 'feature/refs'])
+    const currentBranch = await gitOutput(root, ['branch', '--show-current'])
+
+    const history = await rpc(table, 'git/history', { workspaceId: 'workspace-refs', limit: 5 }) as { items: readonly { refs: readonly { name: string; kind: string; remoteName: string | null }[] }[] }
+    const refs = history.items[0]?.refs ?? []
+    assert.ok(refs.some((ref) => ref.name === currentBranch && ref.kind === 'head'), `期望当前分支以 head 出现，实际 ${JSON.stringify(refs)}`)
+    assert.ok(refs.some((ref) => ref.name === 'feature/refs' && ref.kind === 'local'), `期望本地分支以 local 出现，实际 ${JSON.stringify(refs)}`)
+
+    const branches = await rpc(table, 'git/branches', { workspaceId: 'workspace-refs' }) as { currentBranch: string; local: readonly { name: string; current: boolean }[] }
+    assert.equal(branches.currentBranch, currentBranch)
+    assert.deepEqual(branches.local.map((branch) => branch.name).sort(), ['feature/refs', currentBranch].sort())
+    assert.deepEqual(branches.local.filter((branch) => branch.current).map((branch) => branch.name), [currentBranch])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('Git Client 与 Host 接线包含侧栏面板和所有版本 RPC', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { dsh: { client: { inject: string[] } } }
   assert.ok(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'))
   assert.ok(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-workspace'))
   const source = await readFile(new URL('../src/client/git-management.ts', import.meta.url), 'utf8')
   const hostRpc = await readFile(new URL('../src/host/rpc.ts', import.meta.url), 'utf8')
-  for (const marker of ['sidebarRightTabs.register', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'git/status', 'git/commit', 'git/commit-diff', 'git/history', 'git/branches', 'git/${action}', 'buildChangeTree', 'collectTreeTargets', 'onBatchAction', '撤销目录暂存', '撤销目录变更', 'hoveredPath', 'contentGridStyle', 'commitSectionStyle', 'commitEditorRowStyle', '在这里输入提交信息', '生成提交信息', 'commitActionsStyle', '暂存全部', '查看所有版本', "onOperation('refresh')", 'groupHistoryByDate', 'historyDateHeaderStyle', 'historyTimeStyle', 'formatHistoryTimestamp']) {
+  for (const marker of ['sidebarRightTabs.register', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'git/status', 'git/commit', 'git/commit-diff', 'git/history', 'git/branches', 'git/${action}', 'buildChangeTree', 'collectTreeTargets', 'onBatchAction', '撤销目录暂存', '撤销目录变更', 'hoveredPath', 'contentGridStyle', 'commitSectionStyle', 'commitEditorRowStyle', '在这里输入提交信息', '生成提交信息', 'commitActionsStyle', '暂存全部', '查看所有版本', "onOperation('refresh')", 'groupHistoryByDate', 'historyDateHeaderStyle', 'historyTimeStyle', 'formatHistoryTimestamp', '切换文件', '切换版本', 'columnSwitchStyle', 'columnSwitchActiveButtonStyle', 'singleColumn && activeColumn !== \'history\'', 'contentGridRef', 'ResizeObserver', 'onDoubleClick', "'git/diff'", 'FileDiffViewer', 'historyRefPillStyle', 'historyRefListStyle', 'REMOTE_REF_PALETTE', "position: 'relative', userSelect: 'none'"]) {
     assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
   }
+  assert.doesNotMatch(source, /snapshot\.repoRoot/u)
+  assert.match(source, /historyRowMainStyle: CSSProperties = \{[^}]*minHeight: 28/u)
+  assert.doesNotMatch(source, /historyRowStyle: CSSProperties = \{[^}]*padding/u)
   assert.match(source, /cached !== null && !historyExpanded\.current/u)
   assert.match(source, /preserveExpandedHistory = action === 'git\/status'/u)
   assert.doesNotMatch(source, /sidebar\.panellist/u)

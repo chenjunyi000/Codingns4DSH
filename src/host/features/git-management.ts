@@ -218,16 +218,17 @@ async function readHistory(_workspaceId: string, root: string, rawLimit: unknown
   const offset = Math.max(0, Math.min(1_000_000, Number.isSafeInteger(rawOffset) ? Number(rawOffset) : 0))
   let result: { stdout: string; stderr: string }
   try {
-    result = await runGit(root, ['log', `--skip=${String(offset)}`, `--max-count=${String(limit)}`, '--format=%H%x1f%an%x1f%aI%x1f%s%x1f%b%x1e'])
+    result = await runGit(root, ['log', `--skip=${String(offset)}`, `--max-count=${String(limit)}`, '--decorate=short', '--format=%H%x1f%an%x1f%aI%x1f%s%x1f%b%x1f%D%x1e'])
   } catch (error) {
     if (isEmptyRepositoryError(error)) return { items: [], cursor: String(offset), nextCursor: null, totalCount: 0 }
     throw error
   }
+  const refByShortName = new Map((await readRefRecords(root)).map((record) => [record.shortName, record] as const))
   const items: GitHistoryItem[] = []
   for (const record of result.stdout.split('\x1e')) {
     const fields = record.trim().split('\x1f')
     if (fields.length < 5 || !fields[0]) continue
-    items.push({ commitHash: fields[0]!, authorName: fields[1] ?? '', authoredAt: fields[2] ?? '', subject: fields[3] ?? '', body: fields[4] ?? '', refs: [] })
+    items.push({ commitHash: fields[0]!, authorName: fields[1] ?? '', authoredAt: fields[2] ?? '', subject: fields[3] ?? '', body: fields[4] ?? '', refs: parseHistoryRefs(fields[5] ?? '', refByShortName) })
   }
   let total = 0
   try {
@@ -238,23 +239,53 @@ async function readHistory(_workspaceId: string, root: string, rawLimit: unknown
   return { items, cursor: String(offset), nextCursor: offset + items.length < total ? String(offset + items.length) : null, totalCount: total }
 }
 
+interface GitRefRecord {
+  readonly fullName: string
+  readonly shortName: string
+  readonly commitHash: string
+  readonly upstream: string | null
+  readonly current: boolean
+  readonly kind: 'local' | 'remote'
+  readonly remoteName: string | null
+}
+
+/** 读取本地与远程分支的 ref 表；记录之间换行分隔，字段使用 Git 原生支持的 NUL 分隔符（for-each-ref 不展开 %xNN）。 */
+async function readRefRecords(root: string): Promise<readonly GitRefRecord[]> {
+  const result = await runGit(root, ['for-each-ref', '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(HEAD)', 'refs/heads', 'refs/remotes'])
+  const records: GitRefRecord[] = []
+  for (const line of result.stdout.split(/\r?\n/u)) {
+    if (line === '') continue
+    const [fullName = '', shortName = '', commitHash = '', upstream = '', head = ''] = line.split('\0')
+    if (shortName === '') continue
+    const remote = fullName.startsWith('refs/remotes/')
+    records.push({ fullName, shortName, commitHash, upstream: upstream.trim() || null, current: head.trim() === '*', kind: remote ? 'remote' : 'local', remoteName: remote && shortName.includes('/') ? shortName.split('/')[0] ?? null : null })
+  }
+  return records
+}
+
+/** 解析 git log 的 %D 装饰字段：标签不显示，HEAD -> 分支 记为 head，其余通过 ref 表补全类型。 */
+function parseHistoryRefs(decoration: string, refByShortName: ReadonlyMap<string, GitRefRecord>): readonly GitHistoryRef[] {
+  const refs: GitHistoryRef[] = []
+  for (const rawToken of decoration.split(',')) {
+    const token = rawToken.trim()
+    if (token === '' || token.startsWith('tag: ')) continue
+    if (token.startsWith('HEAD -> ')) {
+      const name = token.slice('HEAD -> '.length).trim()
+      if (name !== '') refs.push({ name, kind: 'head', remoteName: null })
+      continue
+    }
+    const record = refByShortName.get(token)
+    if (record === undefined || record.shortName.endsWith('/HEAD')) continue
+    refs.push({ name: record.shortName, kind: record.kind, remoteName: record.remoteName })
+  }
+  return refs
+}
+
 async function readBranches(root: string): Promise<GitBranchSnapshot> {
   const currentBranch = (await runGit(root, ['branch', '--show-current'])).stdout.trim() || 'HEAD'
-  // for-each-ref 不展开 %xNN；使用 Git 原生支持的 NUL 字段分隔符，避免分支名被污染。
-  const result = await runGit(root, ['for-each-ref', '--format=%(refname)%00%(refname:short)%00%(HEAD)%00%(upstream:short)', 'refs/heads', 'refs/remotes'])
-  const local: GitBranchItem[] = []
-  const remote: GitBranchItem[] = []
-  const fields = result.stdout.replace(/\r?\n$/u, '').split('\0')
-  for (let index = 0; index + 3 < fields.length; index += 4) {
-    const fullName = fields[index] ?? ''
-    const name = fields[index + 1] ?? ''
-    const head = fields[index + 2] ?? ''
-    const upstream = fields[index + 3] ?? ''
-    if (!name) continue
-    const item = { name, current: head === '*', upstream: upstream || null, remote: fullName.startsWith('refs/remotes/') }
-    ;(item.remote ? remote : local).push(item)
-  }
-  return { currentBranch, local, remote }
+  const records = await readRefRecords(root)
+  const toItem = (record: GitRefRecord): GitBranchItem => ({ name: record.shortName, current: record.current, upstream: record.upstream, remote: record.kind === 'remote' })
+  return { currentBranch, local: records.filter((record) => record.kind === 'local').map(toItem), remote: records.filter((record) => record.kind === 'remote').map(toItem) }
 }
 
 async function switchBranch(root: string, branchName: string, create: boolean): Promise<GitBranchSnapshot> {
