@@ -19,15 +19,21 @@ export class ProviderSubscriptionService {
   readonly sub2api: Sub2ApiUsageService
   readonly deepseek: DeepseekSubscriptionService
   readonly official: OfficialProviderSubscriptionService
+  readonly kimi: KimiSubscriptionService
+  readonly grok: GrokSubscriptionService
 
   constructor(options: ProviderSubscriptionOptions = {}) {
+    // 全局超时只作为缺省值；单项服务显式给出的 timeoutMs 优先。
+    const shared = options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }
     this.commandCode = options.commandCode
-    this.codex = new CodexSubscriptionService(options.codex)
-    this.claudeCode = new ClaudeCodeSubscriptionService(options.claudeCode)
+    this.codex = new CodexSubscriptionService({ ...shared, ...options.codex })
+    this.claudeCode = new ClaudeCodeSubscriptionService({ ...shared, ...options.claudeCode })
     this.opencode = new OpenCodeSubscriptionService(options.opencode)
-    this.sub2api = new Sub2ApiUsageService(options.sub2api)
-    this.deepseek = new DeepseekSubscriptionService(options.deepseek)
-    this.official = new OfficialProviderSubscriptionService(options.official)
+    this.sub2api = new Sub2ApiUsageService({ ...shared, ...options.sub2api })
+    this.deepseek = new DeepseekSubscriptionService({ ...shared, ...options.deepseek })
+    this.official = new OfficialProviderSubscriptionService({ ...shared, ...options.official })
+    this.kimi = new KimiSubscriptionService({ ...shared, ...options.kimi })
+    this.grok = new GrokSubscriptionService({ ...shared, ...options.grok })
   }
 
   read(adapterId: string, providerId?: string): Promise<CliSubscriptionUsage | null> {
@@ -40,6 +46,7 @@ export class ProviderSubscriptionService {
       case 'codex': return this.codex.read()
       case 'claude-code': return this.claudeCode.read()
       case 'opencode': return this.opencode.read()
+      case 'kimi': return this.kimi.read().then((usage) => usage === null ? null : withProvider(usage, identifyModelProvider({ name: 'kimi-coding' }), ''))
       default: return Promise.resolve(null)
     }
   }
@@ -70,6 +77,7 @@ export class ProviderSubscriptionService {
     if (hasThirdPartySource) return this.sub2api.read(adapterId)
     if (adapterId === 'codex') return this.codex.read().then((usage) => usage === null ? null : withProvider(usage, identifyModelProvider({ name: 'openai-codex' }), ''))
     if (adapterId === 'claude-code') return this.claudeCode.read().then((usage) => usage === null ? null : withProvider(usage, identifyModelProvider({ name: 'anthropic' }), ''))
+    if (adapterId === 'grok') return this.grok.read().then((usage) => usage === null ? null : withProvider(usage, identifyModelProvider({ name: 'xai' }), ''))
     return null
   }
 }
@@ -82,6 +90,10 @@ export interface ProviderSubscriptionOptions {
   readonly sub2api?: Sub2ApiUsageOptions
   readonly deepseek?: DeepseekSubscriptionOptions
   readonly official?: OfficialProviderSubscriptionOptions
+  readonly kimi?: KimiSubscriptionOptions
+  readonly grok?: GrokSubscriptionOptions
+  /** 所有读取器共用的网络超时（毫秒）；单项服务显式给出时优先。 */
+  readonly timeoutMs?: number
 }
 
 export interface SubscriptionReader { read(): Promise<CliSubscriptionUsage | null> }
@@ -340,6 +352,342 @@ export class OpenCodeSubscriptionService implements SubscriptionReader {
   }
 }
 
+export interface KimiSubscriptionOptions {
+  readonly fetch?: FetchLike
+  readonly timeoutMs?: number
+  readonly credentials?: readonly string[]
+}
+
+/** 读取 Kimi Code 官方套餐额度；本地 OAuth 凭据只在 Host 内使用，不做刷新只读访问令牌。 */
+export class KimiSubscriptionService implements SubscriptionReader {
+  private readonly request: FetchLike
+  private readonly timeoutMs: number
+  private readonly credentialPaths: readonly string[]
+
+  constructor(options: KimiSubscriptionOptions = {}) {
+    this.request = options.fetch ?? fetch
+    this.timeoutMs = options.timeoutMs ?? 8_000
+    this.credentialPaths = options.credentials ?? defaultKimiCredentialPaths()
+  }
+
+  async read(): Promise<CliSubscriptionUsage | null> {
+    const token = this.readAccessToken()
+    if (token === null) return null
+    for (const baseUrl of kimiCodeBaseUrls(token.region)) {
+      const usage = await this.readUsage(baseUrl, token.value)
+      if (usage !== null) return usage
+    }
+    return null
+  }
+
+  private readAccessToken(): { readonly value: string; readonly region: string | null } | null {
+    for (const path of this.credentialPaths) {
+      const credentials = readJson(path)
+      const token = textValue(credentials?.access_token)
+      if (token === null) continue
+      const expiresAt = numberValue(credentials?.expires_at)
+      // 访问令牌有效期很短；已过期或临期的令牌直接跳过，由 CLI 自己负责刷新。
+      if (expiresAt !== null && expiresAt * 1000 <= Date.now() + 30_000) continue
+      return { value: token, region: kimiTokenRegion(token) }
+    }
+    return null
+  }
+
+  private async readUsage(baseUrl: string, token: string): Promise<CliSubscriptionUsage | null> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await this.request(`${baseUrl}/usages`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        signal: controller.signal,
+      })
+      if (!response.ok) return null
+      return normalizeKimiUsage(await response.json())
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+}
+
+export interface GrokSubscriptionOptions {
+  readonly fetch?: FetchLike
+  readonly timeoutMs?: number
+  readonly credentials?: readonly string[]
+}
+
+const GROK_BILLING_ENDPOINT = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig'
+const GROK_OIDC_SCOPE_PREFIX = 'https://auth.x.ai::'
+const GROK_LEGACY_SESSION_SCOPE = 'https://accounts.x.ai/sign-in'
+
+/** 读取 Grok（xAI）官方 SuperGrok 订阅额度；只读 Grok CLI 的 OAuth 凭据（~/.grok/auth.json），不做刷新，过期令牌也照常尝试以容忍时钟偏差。 */
+export class GrokSubscriptionService implements SubscriptionReader {
+  private readonly request: FetchLike
+  private readonly timeoutMs: number
+  private readonly credentialPaths: readonly string[]
+
+  constructor(options: GrokSubscriptionOptions = {}) {
+    this.request = options.fetch ?? fetch
+    this.timeoutMs = options.timeoutMs ?? 15_000
+    this.credentialPaths = options.credentials ?? defaultGrokCredentialPaths()
+  }
+
+  async read(): Promise<CliSubscriptionUsage | null> {
+    const token = this.readAccessToken()
+    if (token === null) return null
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      // 空 gRPC-web 帧（1 字节 flags + 4 字节大端长度 0）即可取回账单快照。
+      const response = await this.request(GROK_BILLING_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: 'https://grok.com',
+          Referer: 'https://grok.com/?_s=usage',
+          Accept: '*/*',
+          'Content-Type': 'application/grpc-web+proto',
+          'x-grpc-web': '1',
+          'x-user-agent': 'connect-es/2.1.1',
+        },
+        body: new Uint8Array(5),
+        signal: controller.signal,
+      })
+      // 鉴权失败与其他 HTTP 错误都不展示陈旧数据；令牌过期时由 Grok CLI 重新登录后恢复。
+      if (!response.ok) return null
+      const headerStatus = numberValue(response.headers.get('grpc-status') ?? undefined)
+      if (headerStatus !== null && headerStatus !== 0) return null
+      const raw = new Uint8Array(await response.arrayBuffer())
+      const trailerStatus = numberValue(grpcWebTrailerFields(raw)['grpc-status'])
+      if (trailerStatus !== null && trailerStatus !== 0) return null
+      const nowSecs = Math.floor(Date.now() / 1000)
+      const snapshot = parseGrokBillingPayload(raw, nowSecs)
+      if (snapshot === null) return null
+      const usedPercent = clamp(snapshot.usedPercent)
+      return {
+        authenticated: true,
+        planType: null,
+        primary: { usedPercent, remainingPercent: 100 - usedPercent, windowDurationMins: grokWindowDurationMins(snapshot.resetsAt, nowSecs), resetsAt: snapshot.resetsAt },
+        secondary: null,
+        monthly: null,
+        rateLimitReachedType: null,
+        resetCredits: null,
+        capturedAt: new Date().toISOString(),
+      }
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private readAccessToken(): string | null {
+    for (const path of this.credentialPaths) {
+      const auth = readJson(path)
+      if (auth === null) continue
+      const token = selectGrokAuthToken(auth)
+      if (token !== null) return token
+    }
+    return null
+  }
+}
+
+function defaultGrokCredentialPaths(): string[] {
+  return [join(process.env.GROK_HOME ?? join(homedir(), '.grok'), 'auth.json')]
+}
+
+/** auth.json 以 OIDC scope URL 为键；优先 SuperGrok 的 auth.x.ai 条目，回退 legacy 登录条目，残缺条目不遮蔽健康条目。 */
+function selectGrokAuthToken(auth: Record<string, unknown>): string | null {
+  let oidc: string | null = null
+  let legacy: string | null = null
+  for (const [scope, value] of Object.entries(auth)) {
+    const key = textValue(recordValue(value)?.key)
+    if (key === null) continue
+    if (scope.startsWith(GROK_OIDC_SCOPE_PREFIX)) oidc = key
+    else if (scope === GROK_LEGACY_SESSION_SCOPE || scope.includes('/sign-in')) legacy = key
+  }
+  return oidc ?? legacy
+}
+
+/** 按重置时间距今的天数推断窗口长度（4–12 天按周窗口、20–45 天按月窗口），无法推断时留空由客户端使用兜底标签。 */
+function grokWindowDurationMins(resetsAt: number | null, nowSecs: number): number | null {
+  if (resetsAt === null) return null
+  const days = Math.round((resetsAt - nowSecs) / 86_400)
+  if (days >= 4 && days <= 12) return 7 * 24 * 60
+  if (days >= 20 && days <= 45) return 30 * 24 * 60
+  return null
+}
+
+interface GrokBillingSnapshot { readonly usedPercent: number; readonly resetsAt: number | null }
+
+interface GrokProtobufScan {
+  readonly fixed32: { readonly path: readonly number[]; readonly value: number; readonly order: number }[]
+  readonly varint: { readonly path: readonly number[]; readonly value: number }[]
+}
+
+/**
+ * 账单端点没有公开 .proto，按字段路径启发式提取（移植自 cc-switch / CodexBar）：
+ * 百分比取路径末段为 1、值域 [0,100] 的最浅 fixed32 字段；重置时间取落在合理 Unix 秒区间且
+ * 晚于当前时刻的 varint（优先路径 [1,5,1]）；proto3 会省略 0 值字段，存在重置时间与周期标记时按 0% 处理。
+ */
+function parseGrokBillingPayload(data: Uint8Array, nowSecs: number): GrokBillingSnapshot | null {
+  let payloads = grpcWebDataFrames(data)
+  if (payloads.length === 0 && looksLikeProtobufPayload(data)) payloads = [data]
+  if (payloads.length === 0) return null
+  const scan: GrokProtobufScan = { fixed32: [], varint: [] }
+  for (const payload of payloads) scanGrokProtobuf(payload, 0, [], 0, scan)
+  const percent = scan.fixed32
+    .filter((field) => field.path.at(-1) === 1 && Number.isFinite(field.value) && field.value >= 0 && field.value <= 100)
+    .sort((left, right) => (left.path.length - right.path.length) || (left.order - right.order))[0]?.value
+  const resetCandidates = scan.varint.filter((field) => field.value >= 1_700_000_000 && field.value <= 2_100_000_000 && field.value > nowSecs)
+  const preferred = resetCandidates.filter((field) => field.path.length === 3 && field.path[0] === 1 && field.path[1] === 5 && field.path[2] === 1)
+  const resetPool = preferred.length > 0 ? preferred : resetCandidates
+  const reset = resetPool.length > 0 ? Math.min(...resetPool.map((field) => field.value)) : null
+  const hasUsagePeriod = scan.varint.some((field) =>
+    (field.path.length >= 2 && field.path[0] === 1 && field.path[1] === 6)
+    || (field.path.length === 3 && field.path[0] === 1 && field.path[1] === 8 && field.path[2] === 1 && (field.value === 1 || field.value === 2)))
+  const usedPercent = percent ?? (scan.fixed32.length === 0 && reset !== null && hasUsagePeriod ? 0 : undefined)
+  if (usedPercent === undefined) return null
+  return { usedPercent, resetsAt: reset }
+}
+
+/** 拆出 gRPC-web data 帧（flags 高位 0x80 的 trailer 帧跳过）；任一帧长度非法时返回空，调用方再按裸 protobuf 兜底。 */
+function grpcWebDataFrames(data: Uint8Array): Uint8Array[] {
+  const frames: Uint8Array[] = []
+  let index = 0
+  while (index < data.length) {
+    if (index + 5 > data.length) return []
+    const flags = data[index]!
+    const length = data[index + 1]! * 16_777_216 + data[index + 2]! * 65_536 + data[index + 3]! * 256 + data[index + 4]!
+    const start = index + 5
+    const end = start + length
+    if (end > data.length) return []
+    if ((flags & 0x80) === 0) frames.push(data.subarray(start, end))
+    index = end
+  }
+  return frames
+}
+
+/** 响应体没有帧头时，看首字节是否像合法 protobuf tag（某些成功请求直接返回裸 protobuf）。 */
+function looksLikeProtobufPayload(data: Uint8Array): boolean {
+  const first = data[0]
+  if (first === undefined) return false
+  const wireType = first & 0x07
+  return first >> 3 > 0 && (wireType === 0 || wireType === 1 || wireType === 2 || wireType === 5)
+}
+
+/** 从 trailer 帧（flags & 0x80）解析 grpc-status / grpc-message 等字段。 */
+function grpcWebTrailerFields(data: Uint8Array): Record<string, string> {
+  const fields: Record<string, string> = {}
+  let index = 0
+  while (index + 5 <= data.length) {
+    const flags = data[index]!
+    const length = data[index + 1]! * 16_777_216 + data[index + 2]! * 65_536 + data[index + 3]! * 256 + data[index + 4]!
+    const start = index + 5
+    const end = start + length
+    if (end > data.length) break
+    if ((flags & 0x80) !== 0) {
+      for (const line of new TextDecoder().decode(data.subarray(start, end)).split(/\r?\n/u)) {
+        const separator = line.indexOf(':')
+        if (separator <= 0) continue
+        fields[line.slice(0, separator).trim().toLowerCase()] = grokPercentDecode(line.slice(separator + 1).trim())
+      }
+    }
+    index = end
+  }
+  return fields
+}
+
+/** gRPC message 使用 percent-encoding；解码失败的序列原样保留。 */
+function grokPercentDecode(input: string): string {
+  const bytes = new TextEncoder().encode(input)
+  const out: number[] = []
+  let index = 0
+  while (index < bytes.length) {
+    if (bytes[index] === 0x25 && index + 2 < bytes.length) {
+      const hex = String.fromCharCode(bytes[index + 1]!, bytes[index + 2]!)
+      if (/^[0-9a-fA-F]{2}$/u.test(hex)) {
+        out.push(parseInt(hex, 16))
+        index += 3
+        continue
+      }
+    }
+    out.push(bytes[index]!)
+    index += 1
+  }
+  return new TextDecoder().decode(new Uint8Array(out))
+}
+
+function readGrokVarint(bytes: Uint8Array, state: { index: number }): number | null {
+  let value = 0
+  let shift = 0
+  while (state.index < bytes.length && shift < 64) {
+    const byte = bytes[state.index]!
+    state.index += 1
+    value += (byte & 0x7f) * 2 ** shift
+    if ((byte & 0x80) === 0) return value
+    shift += 7
+  }
+  return null
+}
+
+/** 递归扫描 protobuf 消息，收集 varint 与 fixed32 字段；length-delimited 一律按嵌套消息试扫（深度 ≤4），无法解析时从字段起点 +1 重新同步。 */
+function scanGrokProtobuf(bytes: Uint8Array, depth: number, path: readonly number[], order: number, scan: GrokProtobufScan): number {
+  let index = 0
+  let nextOrder = order
+  while (index < bytes.length) {
+    const fieldStart = index
+    const keyState = { index }
+    const key = readGrokVarint(bytes, keyState)
+    index = keyState.index
+    if (key === null || key === 0) {
+      index = fieldStart + 1
+      continue
+    }
+    const fieldPath = [...path, Math.floor(key / 8)]
+    const wireType = key & 0x07
+    if (wireType === 0) {
+      const valueState = { index }
+      const value = readGrokVarint(bytes, valueState)
+      if (value === null) {
+        index = fieldStart + 1
+        continue
+      }
+      index = valueState.index
+      scan.varint.push({ path: fieldPath, value })
+      continue
+    }
+    if (wireType === 1) {
+      if (index + 8 > bytes.length) return nextOrder
+      index += 8
+      continue
+    }
+    if (wireType === 2) {
+      const lengthState = { index }
+      const length = readGrokVarint(bytes, lengthState)
+      index = lengthState.index
+      if (length === null || length > bytes.length - index) {
+        index = fieldStart + 1
+        continue
+      }
+      const end = index + length
+      if (depth < 4) nextOrder = scanGrokProtobuf(bytes.subarray(index, end), depth + 1, fieldPath, nextOrder, scan)
+      index = end
+      continue
+    }
+    if (wireType === 5) {
+      if (index + 4 > bytes.length) return nextOrder
+      scan.fixed32.push({ path: fieldPath, value: new DataView(bytes.buffer, bytes.byteOffset + index, 4).getFloat32(0, true), order: nextOrder })
+      nextOrder += 1
+      index += 4
+      continue
+    }
+    index = fieldStart + 1
+  }
+  return nextOrder
+}
+
 function normalizeCodexSnapshot(value: unknown): CliSubscriptionUsage | null {
   const root = recordValue(value)
   const source = recordValue(root?.rateLimits ?? root?.rate_limits) ?? root
@@ -408,6 +756,63 @@ function normalizeOpenCodeSnapshot(value: Record<string, unknown>): CliSubscript
 
 function hasSubscriptionWindow(value: CliSubscriptionUsage | null): value is CliSubscriptionUsage {
   return value !== null && (value.primary !== null || value.secondary !== null || value.monthly !== null)
+}
+
+function defaultKimiCredentialPaths(): string[] {
+  return [
+    join(process.env.KIMI_CODE_HOME ?? join(homedir(), '.kimi-code'), 'credentials', 'kimi-code.json'),
+    join(process.env.KIMI_HOME ?? join(homedir(), '.kimi'), 'credentials', 'kimi-code.json'),
+  ]
+}
+
+/** 只解析 JWT payload 中的 region 字段用于选择就近接入点；签名校验由服务端负责。 */
+function kimiTokenRegion(token: string): string | null {
+  const parts = token.split('.')
+  const payloadPart = parts[1]
+  if (payloadPart === undefined) return null
+  try {
+    const payload = recordValue(JSON.parse(Buffer.from(payloadPart.replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8')))
+    return textValue(payload?.region)
+  } catch {
+    return null
+  }
+}
+
+function kimiCodeBaseUrls(region: string | null): string[] {
+  const override = textValue(process.env.KIMI_CODE_BASE_URL)
+  if (override !== null) return [override.replace(/\/+$/u, '')]
+  const mainland = 'https://api.kimi.com/coding/v1'
+  const global = 'https://api.kimi.ai/coding/v1'
+  return region === 'cn' ? [mainland, global] : [global, mainland]
+}
+
+function normalizeKimiUsage(value: unknown): CliSubscriptionUsage | null {
+  const usages = recordValue(recordValue(value)?.usages)
+  if (usages === null) return null
+  const primary = normalizeKimiQuotaWindow(usages.limit_5h ?? usages.limit5h, 5 * 60)
+  const secondary = normalizeKimiQuotaWindow(usages.limit_7d ?? usages.limit7d, 7 * 24 * 60)
+  const monthly = normalizeKimiQuotaWindow(usages.limit_month_code ?? usages.limitMonthCode, null)
+    ?? normalizeKimiQuotaWindow(usages.limit_month_total ?? usages.limitMonthTotal, null)
+  if (primary === null && secondary === null && monthly === null) return null
+  return {
+    authenticated: true,
+    planType: null,
+    primary,
+    secondary,
+    monthly,
+    rateLimitReachedType: null,
+    resetCredits: null,
+    capturedAt: new Date().toISOString(),
+  }
+}
+
+function normalizeKimiQuotaWindow(value: unknown, windowDurationMins: number | null): CliSubscriptionWindow | null {
+  const source = recordValue(value)
+  if (source === null) return null
+  const usedRatio = numberValue(source.used_ratio ?? source.usedRatio)
+  if (usedRatio === null) return null
+  const usedPercent = clamp(usedRatio * 100)
+  return { usedPercent, remainingPercent: 100 - usedPercent, windowDurationMins, resetsAt: timestampValue(source.reset_time ?? source.resetAt) }
 }
 
 function hasThirdPartyCodexConfig(homeDirectory: string): boolean {

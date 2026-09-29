@@ -1,4 +1,4 @@
-import { DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS } from '../../shared/contracts/config.js'
+import { DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS, normalizeSubscriptionUsageSettings } from '../../shared/contracts/config.js'
 import {
   clearSessionAdapters,
   fetchSessionAdapters,
@@ -41,6 +41,7 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
     let adapterRefreshTimer: ReturnType<typeof globalThis.setInterval> | undefined
     let disposeSubscription: (() => void) | undefined
     let disposeQuickPhrases: (() => void) | undefined
+    let lastSubscriptionUsageSignature: string | null = null
 
     const disableLogo = (): void => {
       generation += 1
@@ -85,7 +86,10 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
     }
     const enableSubscription = (): void => {
       if (disposeSubscription !== undefined || context.services.slots === undefined) return
-      disposeSubscription = registerSubscriptionSlot(context.services.slots, context.services.rpc)
+      // 查询间隔对所有适配器统一生效：slot 内部的自动刷新定时器读取同一份设置。
+      disposeSubscription = registerSubscriptionSlot(context.services.slots, context.services.rpc, () => (
+        normalizeSubscriptionUsageSettings(context.services.settings.getSnapshot().value?.subscriptionUsage).refreshIntervalMins
+      ))
     }
     const disableSubscription = (): void => {
       disposeSubscription?.()
@@ -146,9 +150,11 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showAdapterLogo
       if (showAdapterLogo) enableLogo()
       else disableLogo()
+      // 订阅/用量展示同时受独立「用量查询」模块开关控制；模块关闭后不再发起任何用量查询。
+      const usageQueryEnabled = context.services.settings.getSnapshot().value?.modules?.subscriptionUsage ?? true
       const showSubscriptionUsage = workspaceSettings?.showSubscriptionUsage
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showSubscriptionUsage
-      if (showSubscriptionUsage) enableSubscription()
+      if (showSubscriptionUsage && usageQueryEnabled) enableSubscription()
       else disableSubscription()
       const showQuickPhrases = workspaceSettings?.showQuickPhrases
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showQuickPhrases
@@ -158,6 +164,17 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.rememberConversationRightbarRatio
       if (rememberConversationRightbarRatio) enableRightbarMemory()
       else disableRightbarMemory()
+      // 用量查询间隔变更后立即重挂 slot，让新间隔马上生效，而不是等下一次开关切换。
+      const subscriptionUsageSignature = JSON.stringify(context.services.settings.getSnapshot().value?.subscriptionUsage ?? null)
+      if (lastSubscriptionUsageSignature === null) {
+        lastSubscriptionUsageSignature = subscriptionUsageSignature
+      } else if (subscriptionUsageSignature !== lastSubscriptionUsageSignature) {
+        lastSubscriptionUsageSignature = subscriptionUsageSignature
+        if (disposeSubscription !== undefined) {
+          disableSubscription()
+          if (showSubscriptionUsage && usageQueryEnabled) enableSubscription()
+        }
+      }
     }
 
     sync()

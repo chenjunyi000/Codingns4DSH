@@ -3,9 +3,11 @@ import type { ReactElement } from 'react'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { CliSubscriptionUsage, CliSubscriptionWindow, DeepseekUsage, ProviderBalanceUsage, Sub2ApiModelUsage, Sub2ApiUsage, Sub2ApiUsagePoint } from '../shared/contracts/subscription.js'
+import { DEFAULT_SUBSCRIPTION_USAGE_SETTINGS } from '../shared/contracts/config.js'
 import type { CodingNsRpcClient } from './features/types.js'
 import { callCliRpc } from './cli-catalog.js'
 import { providerIconUrl } from './provider-icons.js'
+import { subscribeSessionAdapters } from './session-adapter-cache.js'
 import { dshPopupSurfaceStyle, dshThemeColor } from './theme.js'
 import type { SessionSnapshot } from './cli-slots.js'
 
@@ -21,6 +23,8 @@ interface SubscriptionSlotProps {
   readonly rpc: CodingNsRpcClient
   readonly sessionId?: string
   readonly useSession?: SessionSelector
+  /** 读取当前自动查询间隔（分钟）；缺省或 0 表示不自动查询。 */
+  readonly getRefreshIntervalMins?: () => number
 }
 
 const SUBSCRIPTION_STYLE_ID = 'codingns4dsh-subscription-responsive-style'
@@ -36,14 +40,14 @@ function installSubscriptionStyles(): void {
 }
 
 /** 在 DSH 原生步骤统计左侧显示当前 Agent 的订阅余量。 */
-export function registerSubscriptionSlot(slots: SlotRegistry, rpc: CodingNsRpcClient): () => void {
+export function registerSubscriptionSlot(slots: SlotRegistry, rpc: CodingNsRpcClient, getRefreshIntervalMins?: () => number): () => void {
   installSubscriptionStyles()
   return slots.inject('conversation.composer.dock', () => slots.register({
     name: 'conversation.composer.dock',
     id: 'codingns4dsh-subscription',
     order: -20,
     label: 'Agent 订阅余量',
-    inject: (sessionId: string) => ({ rpc, sessionId }),
+    inject: (sessionId: string) => ({ rpc, sessionId, ...(getRefreshIntervalMins === undefined ? {} : { getRefreshIntervalMins }) }),
   }, CommandCodeSubscriptionSlot))
 }
 
@@ -57,6 +61,10 @@ function CommandCodeSubscriptionSlot(props: SubscriptionSlotProps): ReactElement
   const [clock, setClock] = useState(() => Date.now())
   const rootRef = useRef<HTMLDivElement>(null)
   const modelSelectionRevision = props.useSession?.((value) => JSON.stringify(value.modelSelection))
+  // 切换 Agent 可能只改变 Host 侧会话配置，DSH 会话快照不一定会更新；订阅适配器
+  // 缓存的变更才能真正触发重新查询，否则底部会一直显示上一个 Agent 的订阅数据。
+  const [adapterRevision, bumpAdapterRevision] = useState(0)
+  useEffect(() => subscribeSessionAdapters(() => { bumpAdapterRevision((value) => value + 1) }), [])
 
   useEffect(() => {
     const sessionId = props.sessionId?.trim()
@@ -108,12 +116,13 @@ function CommandCodeSubscriptionSlot(props: SubscriptionSlotProps): ReactElement
       }
     }
     void refresh()
-    const timer = globalThis.setInterval(() => { void refresh() }, 5 * 60_000)
+    const intervalMins = props.getRefreshIntervalMins?.() ?? DEFAULT_SUBSCRIPTION_USAGE_SETTINGS.refreshIntervalMins
+    const timer = intervalMins > 0 ? globalThis.setInterval(() => { void refresh() }, intervalMins * 60_000) : undefined
     return () => {
       active = false
-      globalThis.clearInterval(timer)
+      if (timer !== undefined) globalThis.clearInterval(timer)
     }
-  }, [props.rpc, props.sessionId, modelSelectionRevision])
+  }, [props.rpc, props.sessionId, props.getRefreshIntervalMins, modelSelectionRevision, adapterRevision])
 
   useEffect(() => {
     if (!eligible || usage === null) return
@@ -330,8 +339,8 @@ function resolveDisplayWindow(usage: CliSubscriptionUsage): CliSubscriptionWindo
 function selectDeepseekBalance(usage: DeepseekUsage): DeepseekUsage['balances'][number] | null {
   return usage.balances.find((balance) => balance.currency.toUpperCase() === 'USD') ?? usage.balances[0] ?? null
 }
-function isSubscriptionAdapter(adapterId: unknown): adapterId is 'command-code' | 'codex' | 'claude-code' | 'dsh' | 'grok' | 'opencode' {
-  return adapterId === 'command-code' || adapterId === 'codex' || adapterId === 'claude-code' || adapterId === 'dsh' || adapterId === 'grok' || adapterId === 'opencode'
+function isSubscriptionAdapter(adapterId: unknown): adapterId is 'command-code' | 'codex' | 'claude-code' | 'dsh' | 'grok' | 'kimi' | 'opencode' {
+  return adapterId === 'command-code' || adapterId === 'codex' || adapterId === 'claude-code' || adapterId === 'dsh' || adapterId === 'grok' || adapterId === 'kimi' || adapterId === 'opencode'
 }
 function isRemoteWebContext(): boolean {
   return (globalThis as { __CODINGNS4DSH_REMOTE_WEB_CONTEXT__?: unknown }).__CODINGNS4DSH_REMOTE_WEB_CONTEXT__ === true
@@ -349,6 +358,7 @@ function subscriptionProviderName(adapterId: string | null, providerId: string |
     case 'claude-code': return 'Claude Code'
     case 'dsh': return 'DSH'
     case 'grok': return 'Grok'
+    case 'kimi': return 'Kimi Code'
     case 'opencode': return 'OpenCode'
     default: return 'Agent'
   }

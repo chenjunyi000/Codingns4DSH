@@ -22,6 +22,8 @@ export interface CodingNsSettings {
   workspaceSessionEnhancement: WorkspaceSessionEnhancementSettings
   /** DSH 文件管理侧栏的独立增强选项。 */
   fileManagement: FileManagementSettings
+  /** 用量查询设置：超时控制单次网络查询，间隔控制自动刷新。 */
+  subscriptionUsage: SubscriptionUsageSettings
   /**
    * 功能模块启用意图：模块名 -> 是否启用。
    *
@@ -34,6 +36,32 @@ export interface CodingNsSettings {
   cliSessions?: CodingNsCliSessionRecord[]
   /** 适配器级最近选择；新建会话时作为默认模型和思考强度。 */
   agentAdapterPreferences?: Record<string, CodingNsCliAdapterPreference>
+}
+
+/** 用量查询设置：超时控制单次网络查询，间隔控制自动刷新。 */
+export interface SubscriptionUsageSettings {
+  /** 单次用量查询的网络超时（秒）。 */
+  timeoutSecs: number
+  /** 自动查询间隔（分钟）；0 表示不自动查询。 */
+  refreshIntervalMins: number
+}
+
+export const DEFAULT_SUBSCRIPTION_USAGE_SETTINGS: SubscriptionUsageSettings = { timeoutSecs: 10, refreshIntervalMins: 5 }
+export const SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS = { min: 3, max: 120 } as const
+export const SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS = { min: 0, max: 1440 } as const
+
+/** 归一化用量查询设置：缺省字段回填默认值，越界值收敛到允许范围。 */
+export function normalizeSubscriptionUsageSettings(value: unknown): SubscriptionUsageSettings {
+  const record = typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  return {
+    timeoutSecs: clampSettingsInteger(record.timeoutSecs, SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS, DEFAULT_SUBSCRIPTION_USAGE_SETTINGS.timeoutSecs),
+    refreshIntervalMins: clampSettingsInteger(record.refreshIntervalMins, SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS, DEFAULT_SUBSCRIPTION_USAGE_SETTINGS.refreshIntervalMins),
+  }
+}
+
+function clampSettingsInteger(value: unknown, limits: { readonly min: number; readonly max: number }, fallback: number): number {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback
+  return Math.min(limits.max, Math.max(limits.min, numeric))
 }
 
 /** 0.1.7 ConfigForm 面向用户的持久化配置；Host-only 会话索引不在其中。 */
@@ -167,6 +195,7 @@ export const CODINGNS_LAN_ACCESS_DSH_FIELD = 'lanAccessDsh'
 export const CODINGNS_TERMINAL_ENHANCEMENT_FIELD = 'terminalEnhancement'
 export const CODINGNS_WORKSPACE_SESSION_ENHANCEMENT_FIELD = 'workspaceSessionEnhancement'
 export const CODINGNS_FILE_MANAGEMENT_FIELD = 'fileManagement'
+export const CODINGNS_SUBSCRIPTION_USAGE_FIELD = 'subscriptionUsage'
 export const DEFAULT_CODINGNS_CONTROL_BASE_URL = 'https://channel.codingns.com:1443'
 export const DEFAULT_CODINGNS_CONTROL_BASE_URLS = [DEFAULT_CODINGNS_CONTROL_BASE_URL]
 /** 控制站的网页登录地址，用于注册 Codingns4DSH 账号。 */
@@ -209,6 +238,7 @@ export const DEFAULT_CODINGNS_SETTINGS: CodingNsSettings = {
   terminalEnhancement: DEFAULT_TERMINAL_ENHANCEMENT_SETTINGS,
   workspaceSessionEnhancement: DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
   fileManagement: DEFAULT_FILE_MANAGEMENT_SETTINGS,
+  subscriptionUsage: DEFAULT_SUBSCRIPTION_USAGE_SETTINGS,
   lanAccessDsh: {
     autoStart: false,
     listenHost: '0.0.0.0',

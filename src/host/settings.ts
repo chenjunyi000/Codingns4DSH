@@ -1,10 +1,13 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
-import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { DshHostSettingsProvider, DshHostSettingsScope } from '../dsh-capabilities/host/config-forms-adapter.js'
 import {
   CODINGNS_SETTINGS_NAMESPACE,
   isCodingNsSettingsEntryId,
   DEFAULT_CODINGNS_SETTINGS,
+  SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS,
+  SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS,
   type CodingNsConfig,
   type CodingNsSettings,
 } from '../shared/contracts/config.js'
@@ -16,7 +19,7 @@ import { debugInfo } from '../shared/debug.js'
  * 模块开关用字典表达：新增模块只是字典里多一个键，既不需要改这个 schema，
  * 也不需要改 CodingNsSettings 接口。
  */
-export const CodingNsSettingsSchema: z<CodingNsSettings> = z.object({
+export const CodingNsSettingsSchema = z.object({
   controlBaseUrl: z.string().default(DEFAULT_CODINGNS_SETTINGS.controlBaseUrl),
   controlBaseUrls: z.array(z.string()).default(DEFAULT_CODINGNS_SETTINGS.controlBaseUrls),
   modules: z.dict(z.boolean()).default(DEFAULT_CODINGNS_SETTINGS.modules),
@@ -82,7 +85,17 @@ export const CodingNsSettingsSchema: z<CodingNsSettings> = z.object({
     fileEditor: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.fileEditor),
     sessionChangedFiles: z.boolean().default(DEFAULT_CODINGNS_SETTINGS.fileManagement.sessionChangedFiles),
   }).default(DEFAULT_CODINGNS_SETTINGS.fileManagement),
-})
+  subscriptionUsage: z.object({
+    timeoutSecs: z.number().step(1)
+      .min(SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS.min)
+      .max(SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS.max)
+      .default(DEFAULT_CODINGNS_SETTINGS.subscriptionUsage.timeoutSecs),
+    refreshIntervalMins: z.number().step(1)
+      .min(SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS.min)
+      .max(SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS.max)
+      .default(DEFAULT_CODINGNS_SETTINGS.subscriptionUsage.refreshIntervalMins),
+  }).default(DEFAULT_CODINGNS_SETTINGS.subscriptionUsage),
+}) as unknown as z<CodingNsSettings>
 
 /**
  * DSH 0.1.7 只会把 `volatile` 配置投影成可编辑 ConfigForm。
@@ -96,11 +109,11 @@ let lastConfigDescriptorSignature: string | undefined
 
 /** 颜色字段只接受完整十六进制颜色，`null` 表示继承 DSH 原生值。 */
 function nullableColorSchema(): z<string | null> {
-  return z.union([z.string().pattern(/^#[0-9A-Fa-f]{6}$/u), z.const(null)]).default(null)
+  return z.union([z.string().pattern(/^#[0-9A-Fa-f]{6}$/u), z.const(null)]).default(null) as unknown as z<string | null>
 }
 
 function nullableNumberSchema(min: number, max: number): z<number | null> {
-  return z.union([z.number().min(min).max(max), z.const(null)]).default(null)
+  return z.union([z.number().min(min).max(max), z.const(null)]).default(null) as unknown as z<number | null>
 }
 
 /**
@@ -109,31 +122,28 @@ function nullableNumberSchema(min: number, max: number): z<number | null> {
  * 必须在已经注入 `settings` 的上下文里调用。返回的 scope 既用于读取当前值，
  * 也通过 watch 驱动功能模块启停。
  */
-export function registerCodingNsSettings(ctx: Context): SettingsScope<CodingNsSettings> {
-  const settings: SettingsProvider = ctx.settings
-  const legacyRegister = (settings as SettingsProvider & {
-    register?: (
+export function registerCodingNsSettings(ctx: Context): DshHostSettingsScope<CodingNsSettings> {
+  const settings = ctx.settings as unknown as DshHostSettingsProvider
+  const legacyRegister = (settings as DshHostSettingsProvider & {
+    readonly register?: (
       namespace: string,
       schema: typeof CodingNsSettingsSchema,
       options?: { readonly applies?: 'live' | 'restart' },
-    ) => SettingsScope<CodingNsSettings>
+    ) => DshHostSettingsScope<CodingNsSettings>
   }).register
   if (typeof legacyRegister === 'function') {
     debugInfo('codingns4dsh: host settings source=legacy-settings')
     return legacyRegister.call(settings, CODINGNS_SETTINGS_NAMESPACE, CodingNsSettingsSchema, {
       applies: 'live',
-    })
+    }) as DshHostSettingsScope<CodingNsSettings>
   }
   debugInfo('codingns4dsh: host settings source=config-forms')
   return createConfigSettingsScope(ctx, settings)
 }
 
 /** 将 DSH 0.1.7 SettingsForms 适配成 Host 业务沿用的 SettingsScope。 */
-function createConfigSettingsScope(ctx: Context, settings: SettingsProvider): SettingsScope<CodingNsSettings> {
-  const provider = settings as SettingsProvider & {
-    update?: (namespace: string, patch: object, expectedRevision?: number) => Promise<void>
-    replace?: (namespace: string, section: object, expectedRevision?: number) => Promise<void>
-  }
+function createConfigSettingsScope(ctx: Context, settings: DshHostSettingsProvider): DshHostSettingsScope<CodingNsSettings> {
+  const provider = settings
   let previous = readConfigSettings(provider)
   const listeners = new Set<(next: CodingNsSettings, prev: CodingNsSettings) => void | Promise<void>>()
   const eventContext = ctx as Context & {
@@ -167,7 +177,7 @@ function createConfigSettingsScope(ctx: Context, settings: SettingsProvider): Se
   }
 }
 
-function readConfigSettings(settings: Pick<SettingsProvider, 'describe'>): CodingNsSettings {
+function readConfigSettings(settings: Pick<DshHostSettingsProvider, 'describe'>): CodingNsSettings {
   const descriptor = findConfigSettingsDescriptor(settings)
   if (descriptor === undefined) {
     console.warn('codingns4dsh: host ConfigForms 未找到设置 namespace，使用默认值')
@@ -177,7 +187,7 @@ function readConfigSettings(settings: Pick<SettingsProvider, 'describe'>): Codin
 }
 
 /** DSH 0.1.7 使用插件 entry id；旧 SettingsScope 使用显式 namespace。 */
-function findConfigSettingsDescriptor(settings: Pick<SettingsProvider, 'describe'>) {
+function findConfigSettingsDescriptor(settings: Pick<DshHostSettingsProvider, 'describe'>) {
   const descriptors = settings.describe({ redactSecrets: false })
   const signature = JSON.stringify(descriptors.map((item) => ({
     ns: item.ns,
@@ -192,7 +202,7 @@ function findConfigSettingsDescriptor(settings: Pick<SettingsProvider, 'describe
   return descriptors.find((item) => isCodingNsSettingsNamespace(item.ns))
 }
 
-function resolveConfigSettingsNamespace(settings: Pick<SettingsProvider, 'describe'>): string {
+function resolveConfigSettingsNamespace(settings: Pick<DshHostSettingsProvider, 'describe'>): string {
   return findConfigSettingsDescriptor(settings)?.ns ?? CODINGNS_SETTINGS_NAMESPACE
 }
 

@@ -315,6 +315,67 @@ test('模块总开关释放资源，子开关实时启停并保留设置值', as
   assert.equal(value.workspaceSessionEnhancement.showAdapterLogo, true)
 })
 
+test('用量查询模块开关与间隔设置驱动订阅 slot 重挂', async () => {
+  clearSessionAdapters()
+  let value = {
+    modules: { subscriptionUsage: true },
+    subscriptionUsage: { timeoutSecs: 10, refreshIntervalMins: 5 },
+    workspaceSessionEnhancement: { showAdapterLogo: false, showArchivedSessions: false, showSubscriptionUsage: true },
+  }
+  const listeners = new Set()
+  let slotDefinition
+  let registrations = 0
+  let disposals = 0
+  const slots = {
+    inject(_name, register) {
+      register()
+      registrations += 1
+      return () => { disposals += 1 }
+    },
+    register(definition) {
+      slotDefinition = definition
+      return () => undefined
+    },
+  }
+  const settings = {
+    getSnapshot() {
+      return { status: 'ready', writable: true, value }
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+  const services = {
+    settings,
+    rpc: { async call() { return { ok: true, value: {} } } },
+    slots,
+  }
+  const resources = new FeatureResourceScopeImpl()
+  workspaceSessionEnhancementFeature.start({
+    descriptor: workspaceSessionEnhancementFeature.descriptor,
+    resources,
+    services,
+  })
+
+  assert.equal(registrations, 1)
+  assert.equal(slotDefinition.inject('session-usage').getRefreshIntervalMins(), 5)
+
+  value = { ...value, subscriptionUsage: { timeoutSecs: 20, refreshIntervalMins: 15 } }
+  for (const listener of [...listeners]) listener()
+  assert.equal(disposals, 1, '间隔变化后应立即释放旧 slot')
+  assert.equal(registrations, 2)
+  assert.equal(slotDefinition.inject('session-usage').getRefreshIntervalMins(), 15)
+
+  value = { ...value, modules: { subscriptionUsage: false } }
+  for (const listener of [...listeners]) listener()
+  assert.equal(disposals, 2)
+  assert.equal(registrations, 2, '关闭用量查询模块后不再注册订阅 slot')
+
+  await resources.dispose()
+  assert.equal(listeners.size, 0)
+})
+
 function attachFiber(row, props, wrappers = 0) {
   let fiber = { memoizedProps: props }
   for (let index = 0; index < wrappers; index += 1) {
