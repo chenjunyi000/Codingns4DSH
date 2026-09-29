@@ -405,11 +405,15 @@ export function createCodingNsNativeSessionBridge(ctx: Context, dshVersion?: str
             model: event.model?.trim() || 'external-agent',
           })
           // DSH 前端的 compaction 节点由紧随 summary 的 checkpoint 替换事件生成。
+          // DSH 0.1.7 起会话格式只接受生产者自持的 source.kind，旧的 plugin 包装
+          // 会让整轮持久化失败；0.1.6 及更早仍由 dsh-compaction 的 plugin 标记识别。
           session.append('user/message', {
             id: `codingns-compaction-${state.compactionId}`,
             role: 'user',
             content: [{ type: 'text', text: summary }],
-            source: { kind: 'plugin', plugin: 'compact' },
+            source: modernInjectedSource
+              ? { kind: 'compact-checkpoint', compactionId: state.compactionId }
+              : { kind: 'plugin', plugin: 'compact' },
           }, {
             surfaceOp: { op: 'replace', startSeq: range.start, endSeq: range.end },
             sourceEventSeqs: range.seqs,

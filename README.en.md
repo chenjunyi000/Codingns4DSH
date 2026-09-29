@@ -10,7 +10,7 @@
 
 [简体中文](README.md) · **English**
 
-**Current release `@jingyi0605/codingns4dsh@0.1.7-rc.2`** · DSH **`>=0.1.5-rc.3 <=0.1.7-rc.2`** (validated `0.1.5-rc.3`, `0.1.6-alpha.2`, `0.1.7-rc.2`) · Node **`>= 22.19`** · macOS / Linux / Windows
+**Current release `@jingyi0605/codingns4dsh@0.1.7-rc.3`** · DSH **`>=0.1.5-rc.3 <=0.1.7-rc.2`** (validated `0.1.5-rc.3`, `0.1.6-alpha.2`, `0.1.7-rc.2`) · Node **`>= 22.19`** · macOS / Linux / Windows
 
 **[GitHub](https://github.com/jingyi0605/Codingns4DSH)** · **[npm](https://www.npmjs.com/package/@jingyi0605/codingns4dsh)** · **QQ group 1092985965**
 
@@ -203,7 +203,7 @@ The “access” line tells you whether you entered DSH Web locally, over the LA
 DSH automatically initializes the `web` profile on first use. You do not need to create a config file or run `--dump-config`:
 
 ```bash
-dsh plugin --profile web add @jingyi0605/codingns4dsh@0.1.7-rc.2
+dsh plugin --profile web add @jingyi0605/codingns4dsh@0.1.7-rc.3
 dsh web
 ```
 
@@ -213,7 +213,7 @@ If you do not want to modify the built-in `web` profile, create a separate profi
 
 ```bash
 dsh codingns --from-default-profile web --dump-config
-dsh plugin --profile codingns add @jingyi0605/codingns4dsh@0.1.7-rc.2
+dsh plugin --profile codingns add @jingyi0605/codingns4dsh@0.1.7-rc.3
 dsh codingns
 ```
 
