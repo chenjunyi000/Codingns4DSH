@@ -11,6 +11,8 @@ import { archiveCliSession, callCliRpc, errorMessage, listCliSessions, restoreCl
 import { dshFormRootStyle, dshPopupSurfaceStyle, dshSettingsButtonStyle, dshSettingsListRowStyle, dshThemeColor } from '../theme.js'
 import { useCodingNsTranslator } from '../locale.js'
 import { registerExternalToolStreamUi } from '../external-tool-stream.js'
+import { startContextBreakdownDom } from '../context-breakdown-dom.js'
+import { fetchSessionAdapters, replaceSessionAdapters, sessionAdapterId } from '../session-adapter-cache.js'
 
 /** 外部 Agent 集成模块。Agent 进程在 Host 运行，浏览器只读取目录和状态。 */
 export const cliAdaptersFeature: CodingNsClientFeatureModule = {
@@ -30,6 +32,15 @@ export const cliAdaptersFeature: CodingNsClientFeatureModule = {
     },
   },
   start: async (context) => {
+    // 外部 Agent 的上下文由 Agent 自己组装，上下文面板的启发式构成与真实用量
+    // 不同源；对这类适配器的会话隐藏构成明细，只保留百分比与总量。
+    const contextBreakdownDom = startContextBreakdownDom({
+      adapterIdForSession: sessionAdapterId,
+      refreshAdapters: async () => {
+        replaceSessionAdapters(await fetchSessionAdapters(context.services.rpc))
+      },
+    })
+    context.resources.add(() => contextBreakdownDom.dispose())
     const slots = context.services.slots
     if (slots === undefined) return
     context.resources.add(registerExternalToolStreamUi(context.services))

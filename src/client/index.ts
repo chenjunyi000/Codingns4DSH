@@ -6,6 +6,7 @@
  * 驱动模块 start/disable 与资源清理。入口只负责装配与依赖声明。
  */
 import type { Context } from '@deepseek-ai/cordis'
+import * as dshUiPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TypertDisposer, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -96,6 +97,13 @@ export {
   WORKSPACE_SESSION_HIDDEN_MENU_ATTRIBUTE,
   WORKSPACE_SESSION_HIDDEN_LIST_ATTRIBUTE,
 } from './workspace-session-visibility-dom.js'
+export {
+  startContextBreakdownDom,
+  CONTEXT_BREAKDOWN_HIDDEN_ATTRIBUTE,
+  CONTEXT_BREAKDOWN_STYLE_ID,
+  CONTEXT_BREAKDOWN_CONVERSATION_ATTRIBUTE,
+  DEFAULT_CONTEXT_BREAKDOWN_HIDDEN_ADAPTERS,
+} from './context-breakdown-dom.js'
 export { CodingNsTerminalView, CodingNsWebTerminals, registerCodingNsTerminalUi } from './terminal/index.js'
 export { registerSubscriptionSlot, registerCommandCodeSubscriptionSlot, CommandCodeSubscriptionSlot } from './subscription-slot.js'
 
@@ -165,7 +173,8 @@ export function apply(ctx?: Context): void {
     debugInfo('codingns4dsh: client account bar registration begin')
     const disposeAccountBar = startCodingNsAccountBar(connection.rpc, undefined, settings)
     debugInfo('codingns4dsh: client account bar registration ready')
-    const capabilityProfile = createDshCapabilityRegistry(dshVersion, 'client', settingsCtx).getProfile(settingsCtx)
+    // 图标导出由客户端静态导入决定，无法从 Context 探测；随装配一起交给注册表。
+    const capabilityProfile = createDshCapabilityRegistry(dshVersion, 'client', settingsCtx, { primitives: dshUiPrimitives }).getProfile(settingsCtx)
     debugInfo('codingns4dsh: client capabilities resolved', {
       dshVersion,
       capabilities: [...capabilityProfile.capabilities.entries()].map(([capability, resolution]) => ({ capability, status: resolution.status, route: resolution.routeId, reason: resolution.reason ?? null })),
