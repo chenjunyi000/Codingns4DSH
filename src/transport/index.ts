@@ -1,4 +1,4 @@
-export { createDataChannelCarrier, createRelayTunnelHostCarrier, TUNNEL_DATA_CHANNEL_LABEL, DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES, DATA_CHANNEL_FRAGMENT_HEADER_BYTES, DATA_CHANNEL_MAX_REASSEMBLY_BYTES, type CodingNsCarrier, type DataChannelLike, type DataChannelCarrierOptions } from './carrier.js'
+export { createDataChannelCarrier, createRelayTunnelHostCarrier, TUNNEL_DATA_CHANNEL_LABEL, DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES, DATA_CHANNEL_FRAGMENT_HEADER_BYTES, DATA_CHANNEL_MAX_REASSEMBLY_BYTES, DATA_CHANNEL_MAX_MESSAGE_BYTES, type CodingNsCarrier, type DataChannelLike, type DataChannelCarrierOptions } from './carrier.js'
 export {
   encodeFrame,
   decodeFrame,

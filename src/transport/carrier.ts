@@ -2,10 +2,20 @@
 import { decodeFrame } from './frame.js'
 import { createDshTransportDebugLogger, type DshTransportDebugLogger } from './debug.js'
 export const TUNNEL_DATA_CHANNEL_LABEL = 'codingns-tunnel'
-/** DataChannel 单消息保守上限；实际对端协商值可能只有 256 KiB。 */
+/** 单个分片的正文上限；整帧为正文加上分片头。 */
 export const DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES = 64 * 1024
 export const DATA_CHANNEL_FRAGMENT_HEADER_BYTES = 20
 export const DATA_CHANNEL_MAX_REASSEMBLY_BYTES = 16 * 1024 * 1024
+/**
+ * Host 侧向浏览器宣告的 SCTP max-message-size（256 KiB）。
+ *
+ * 浏览器按对端 SDP 里的 max-message-size 限制 `RTCDataChannel.send()`；werift 默认
+ * 只宣告 64 KiB，而 Carrier 的整分片是 64 KiB 正文加 20 字节头，因此浏览器侧只要
+ * 发送超过 64 KiB 的消息就会抛 `Trying to send message larger than max-message-size`。
+ * 中继下的设置写入、附件和大字段都属于这一类，必须把上限抬到浏览器自身
+ * （Chrome/Firefox 为 256 KiB）能接受的水平。
+ */
+export const DATA_CHANNEL_MAX_MESSAGE_BYTES = 256 * 1024
 const DATA_CHANNEL_FRAGMENT_MAGIC = new Uint8Array([0x44, 0x53, 0x46, 0x01])
 export interface CodingNsCarrier {
   readonly state: 'connecting' | 'open' | 'closed'
@@ -111,6 +121,20 @@ export function createDataChannelCarrier(channel: DataChannelLike, options: Data
     closeListeners.clear()
   }
   const onClose = () => { state = 'closed'; clearFragments(); logger.log('data-channel.close', { label: channel.label ?? null }); notifyClosed('DataChannel closed'); listeners.clear() }
+  /**
+   * 物理线路已经不可继续使用时统一收敛：分片缺帧、非法帧和背压超时都必须让上层
+   * 立刻失败。早期实现只在重组超时时删掉半成品分片，请求因此永远得不到回应，
+   * 表现成「设置页一直空白但没有任何报错」。
+   */
+  const failCarrier = (error: Error): void => {
+    if (state === 'closed') return
+    logger.log('carrier.failed', { error: error.message })
+    state = 'closed'
+    clearFragments()
+    notifyClosed(error.message)
+    listeners.clear()
+    try { channel.close() } catch { /* 关闭路径尽力而为 */ }
+  }
   const processBytes = (bytes: Uint8Array | null, value: unknown): void => {
     if (!bytes) {
       logger.log('carrier.receive.invalid', { dataType: Object.prototype.toString.call(value), valueType: typeof value })
@@ -123,10 +147,7 @@ export function createDataChannelCarrier(channel: DataChannelLike, options: Data
       for (const listener of [...listeners]) listener(complete)
     } catch (error) {
       logger.log('carrier.fragment.error', { physicalBytes: bytes.byteLength, prefix: bytesToHex(bytes.subarray(0, 8)), error: error instanceof Error ? error.message : String(error) })
-      state = 'closed'
-      clearFragments()
-      listeners.clear()
-      channel.close()
+      failCarrier(error instanceof Error ? error : new Error(String(error)))
     }
   }
   const onMessage = (event: Event) => {
@@ -185,7 +206,10 @@ export function createDataChannelCarrier(channel: DataChannelLike, options: Data
     const parsed = decodeFragment(data, maxReassemblyBytes)
     let assembly = fragments.get(parsed.fragmentId)
     if (!assembly) {
-      const timer = setTimeout(() => fragments.delete(parsed.fragmentId), reassemblyTimeoutMs)
+      const timer = setTimeout(() => {
+        fragments.delete(parsed.fragmentId)
+        failCarrier(new Error(`DataChannel 分片重组超时（${String(parsed.chunkCount)} 片，共 ${String(parsed.totalBytes)} 字节）`))
+      }, reassemblyTimeoutMs)
       assembly = { totalBytes: parsed.totalBytes, chunkCount: parsed.chunkCount, chunks: new Map(), receivedBytes: 0, timer }
       fragments.set(parsed.fragmentId, assembly)
       logger.log('carrier.fragment.receive', { fragmentId: parsed.fragmentId, chunkCount: parsed.chunkCount, totalBytes: parsed.totalBytes })
@@ -197,15 +221,7 @@ export function createDataChannelCarrier(channel: DataChannelLike, options: Data
     if (assembly.chunks.size !== assembly.chunkCount) return null
     clearTimeout(assembly.timer)
     fragments.delete(parsed.fragmentId)
-    const result = new Uint8Array(assembly.totalBytes)
-    let offset = 0
-    for (let index = 0; index < assembly.chunkCount; index += 1) {
-      const chunk = assembly.chunks.get(index)
-      if (!chunk) throw new Error('DataChannel 分片缺失')
-      result.set(chunk, offset)
-      offset += chunk.byteLength
-    }
-    if (offset !== assembly.totalBytes) throw new Error('DataChannel 分片总长度不一致')
+    const result = assembleChunks(assembly)
     logger.log('carrier.fragment.complete', { fragmentId: parsed.fragmentId, chunks: assembly.chunkCount, totalBytes: result.byteLength })
     return result
   }
@@ -213,8 +229,10 @@ export function createDataChannelCarrier(channel: DataChannelLike, options: Data
     get state() { return state },
     send(data) {
       if (!(data instanceof Uint8Array)) return Promise.reject(new TypeError('Carrier 只接受 Uint8Array'))
-      chain = chain.then(() => sendLogical(data))
-      return chain
+      const result = chain.then(() => sendLogical(data))
+      // 串行链只负责保序：单次发送失败不能让后续发送永久失败。
+      chain = result.then(() => undefined, () => undefined)
+      return result
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
     onClosed(listener) { if (closeNotified) { listener('DataChannel closed'); return () => undefined } closeListeners.add(listener); return () => closeListeners.delete(listener) },
@@ -239,20 +257,46 @@ function encodeFragment(fragmentId: number, index: number, chunkCount: number, t
   return result
 }
 
+/**
+ * 按分片头校验单个分片，不假设发送端的固定正文长度。
+ *
+ * 旧版本（以及线上已部署的 H5 运行时）以 64 KiB 正文分片，只有最后一片更短；
+ * 分片长度由发送端决定，接收端必须按「除最后一片外长度一致」来校验，否则任何
+ * 分片长度调整都会让新旧两端无法互通。单帧正文仍限制在
+ * `DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES` 以内，避免一次分配过大内存。
+ */
 function decodeFragment(data: Uint8Array, maxReassemblyBytes: number): { fragmentId: number; index: number; chunkCount: number; totalBytes: number; body: Uint8Array } {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
   const fragmentId = view.getUint32(4)
   const index = view.getUint32(8)
   const chunkCount = view.getUint32(12)
   const totalBytes = view.getUint32(16)
-  if (chunkCount === 0 || totalBytes <= DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES || totalBytes > maxReassemblyBytes || index >= chunkCount) throw new Error('DataChannel 分片头无效')
-  const expectedCount = Math.ceil(totalBytes / DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES)
-  if (chunkCount !== expectedCount) throw new Error('DataChannel 分片数量无效')
-  const offset = index * DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES
-  const expectedBytes = Math.min(DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES, totalBytes - offset)
+  if (chunkCount < 2 || totalBytes < 2 || totalBytes > maxReassemblyBytes || index >= chunkCount) throw new Error('DataChannel 分片头无效')
   const body = data.subarray(DATA_CHANNEL_FRAGMENT_HEADER_BYTES)
-  if (body.byteLength !== expectedBytes) throw new Error('DataChannel 分片长度无效')
+  if (body.byteLength === 0 || body.byteLength > DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES) throw new Error('DataChannel 分片长度无效')
   return { fragmentId, index, chunkCount, totalBytes, body: body.slice() }
+}
+
+/** 收齐全部索引后按发送端的分片长度重组，并校验长度自洽。 */
+function assembleChunks(assembly: FragmentAssembly): Uint8Array {
+  const first = assembly.chunks.get(0)
+  if (first === undefined) throw new Error('DataChannel 分片缺失')
+  const chunkBytes = first.byteLength
+  if (chunkBytes === 0 || chunkBytes > DATA_CHANNEL_FRAGMENT_PAYLOAD_BYTES) throw new Error('DataChannel 分片长度无效')
+  if (assembly.chunkCount !== Math.ceil(assembly.totalBytes / chunkBytes)) throw new Error('DataChannel 分片数量无效')
+  const lastBytes = assembly.totalBytes - chunkBytes * (assembly.chunkCount - 1)
+  if (lastBytes < 1 || lastBytes > chunkBytes) throw new Error('DataChannel 分片长度无效')
+  const result = new Uint8Array(assembly.totalBytes)
+  let offset = 0
+  for (let index = 0; index < assembly.chunkCount; index += 1) {
+    const chunk = assembly.chunks.get(index)
+    if (!chunk) throw new Error('DataChannel 分片缺失')
+    if (chunk.byteLength !== (index === assembly.chunkCount - 1 ? lastBytes : chunkBytes)) throw new Error('DataChannel 分片长度不一致')
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  if (offset !== assembly.totalBytes) throw new Error('DataChannel 分片总长度不一致')
+  return result
 }
 
 function toBytes(value: unknown): Uint8Array | Promise<Uint8Array | null> | null {

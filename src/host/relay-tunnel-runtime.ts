@@ -22,6 +22,7 @@ import {
 } from '../transport/webrtc-host.js'
 import { DshGateway, type DshGatewayFeature } from '../transport/dsh-gateway.js'
 import { createDshTransportDebugLogger, type DshTransportDebugLogger } from '../transport/debug.js'
+import { DATA_CHANNEL_MAX_MESSAGE_BYTES } from '../transport/carrier.js'
 
 /** Relay Tunnel 规定的 DataChannel label，不允许使用插件自定义值。 */
 export const CODINGNS_TUNNEL_DATA_CHANNEL_LABEL = 'codingns-tunnel'
@@ -280,7 +281,15 @@ function isSignalingOpen(socket: unknown): boolean {
 export function createWeriftPeerConnectionFactory(identity?: HostDtlsIdentityMaterial): NonNullable<HostRelayRuntimeOptions['peerConnectionFactory']> {
   return ({ iceServers, iceTransportPolicy }) => {
     const certificate = identity ? new RTCCertificate(identity.privateKeyPem, identity.certPem, identity.signatureHash as never) : undefined
-    const peer = new RTCPeerConnection({ iceServers, iceTransportPolicy, ...(certificate ? { certificates: [certificate] } : {}) })
+    // 浏览器按对端 SDP 宣告的 max-message-size 限制 RTCDataChannel.send()。werift 默认
+    // 只宣告 64 KiB，而 Carrier 的整分片是 64 KiB 正文加 20 字节头，浏览器一旦发送
+    // 超过 64 KiB 的消息就会抛错，中继下的原生设置与附件因此失败。
+    const peer = new RTCPeerConnection({
+      iceServers,
+      iceTransportPolicy,
+      maxMessageSize: DATA_CHANNEL_MAX_MESSAGE_BYTES,
+      ...(certificate ? { certificates: [certificate] } : {}),
+    })
     const adapted: HostPeerConnectionLike = {
       get connectionState() { return peer.connectionState },
       get iceConnectionState() { return peer.iceConnectionState },
