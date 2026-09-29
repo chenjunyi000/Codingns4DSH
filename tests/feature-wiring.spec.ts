@@ -336,22 +336,15 @@ test('远程设置 RPC 返回版本并只允许修改 Codingns4DSH 字段', asyn
   )
   await handler('set', {
     ops: [
-      { op: 'set', path: ['modules', 'subscriptionUsage'], value: true },
       { op: 'set', path: ['subscriptionUsage', 'timeoutSecs'], value: 30 },
+      { op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 },
     ],
   })
   assert.deepEqual(received, {
     ops: [
-      { op: 'set', path: ['modules', 'subscriptionUsage'], value: true },
       { op: 'set', path: ['subscriptionUsage', 'timeoutSecs'], value: 30 },
+      { op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 },
     ],
-    expectedRevision: undefined,
-  })
-  await handler('set', {
-    ops: [{ op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 }],
-  })
-  assert.deepEqual(received, {
-    ops: [{ op: 'set', path: ['subscriptionUsage', 'refreshIntervalMins'], value: 15 }],
     expectedRevision: undefined,
   })
   await assert.rejects(

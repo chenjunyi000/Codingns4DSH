@@ -160,6 +160,7 @@ export type {
   Sub2ApiUsage,
   Sub2ApiUsagePoint,
 } from './contracts/subscription.js'
+export { isSubscriptionUsageFresh } from './contracts/subscription.js'
 export type {
   AggregateWorkspaceSummary,
   AggregateHostResult,

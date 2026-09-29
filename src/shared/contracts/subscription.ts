@@ -121,3 +121,16 @@ export interface Sub2ApiUsage {
   readonly tpm: number | null
   readonly averageDurationMs: number | null
 }
+
+/**
+ * 判断上一次用量查询结果是否仍在可复用窗口内。
+ *
+ * 间隔 ≤ 0 表示不自动查询：此时不复用旧结果，每次挂载都重新查询一次。
+ * 该判定由 Client 侧底部用量入口使用，避免每次进入会话都请求上游。
+ */
+export function isSubscriptionUsageFresh(capturedAtMs: number, nowMs: number, refreshIntervalMins: number): boolean {
+  if (!Number.isFinite(refreshIntervalMins) || refreshIntervalMins <= 0) return false
+  if (!Number.isFinite(capturedAtMs) || !Number.isFinite(nowMs)) return false
+  const age = nowMs - capturedAtMs
+  return age >= 0 && age < refreshIntervalMins * 60_000
+}

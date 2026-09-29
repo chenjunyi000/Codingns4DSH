@@ -7,6 +7,7 @@ import {
   DEFAULT_SUBSCRIPTION_USAGE_SETTINGS,
   SUBSCRIPTION_USAGE_REFRESH_INTERVAL_MINS_LIMITS,
   SUBSCRIPTION_USAGE_TIMEOUT_SECS_LIMITS,
+  isSubscriptionUsageFresh,
   normalizeSubscriptionUsageSettings,
 } from '../data/build/dist/shared/index.js'
 import {
@@ -164,3 +165,14 @@ function varint(value) {
   bytes.push(rest)
   return bytes
 }
+
+test('用量结果只在刷新间隔内复用', () => {
+  const now = 1_700_000_000_000
+  assert.equal(isSubscriptionUsageFresh(now - 60_000, now, 5), true)
+  assert.equal(isSubscriptionUsageFresh(now - 5 * 60_000, now, 5), false)
+  assert.equal(isSubscriptionUsageFresh(now - 5 * 60_000 + 1, now, 5), true)
+  assert.equal(isSubscriptionUsageFresh(now - 60_000, now, 0), false)
+  assert.equal(isSubscriptionUsageFresh(now - 60_000, now, -1), false)
+  assert.equal(isSubscriptionUsageFresh(now + 1_000, now, 5), false)
+  assert.equal(isSubscriptionUsageFresh(Number.NaN, now, 5), false)
+})

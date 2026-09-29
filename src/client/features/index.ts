@@ -6,7 +6,6 @@ import { loginProtectionFeature } from './login-protection.js'
 import { cliAdaptersFeature } from './cli-adapters.js'
 import { terminalEnhancementFeature } from './terminal-enhancement.js'
 import { workspaceSessionEnhancementFeature } from './workspace-session-enhancement.js'
-import { subscriptionUsageFeature } from './subscription-usage.js'
 import { debugFeature } from './debug.js'
 import { gitManagementFeature } from '../git-management.js'
 import { fileManagementFeature } from './file-management.js'
@@ -20,7 +19,6 @@ export const CLIENT_FEATURES: readonly CodingNsClientFeatureModule[] = [
   reverseProxyFeature,
   cliAdaptersFeature,
   workspaceSessionEnhancementFeature,
-  subscriptionUsageFeature,
   terminalEnhancementFeature,
   debugFeature,
   gitManagementFeature,
@@ -53,7 +51,7 @@ export function settingsModules(
   return entries
 }
 
-export { lanAccessFeature, loginProtectionFeature, reverseProxyFeature, cliAdaptersFeature, workspaceSessionEnhancementFeature, subscriptionUsageFeature, terminalEnhancementFeature, debugFeature, gitManagementFeature, fileManagementFeature, peerHostFeature }
+export { lanAccessFeature, loginProtectionFeature, reverseProxyFeature, cliAdaptersFeature, workspaceSessionEnhancementFeature, terminalEnhancementFeature, debugFeature, gitManagementFeature, fileManagementFeature, peerHostFeature }
 export { startBrowserRelayConnection } from './reverse-proxy.js'
 export { LanAccessPanel } from './lan-access-panel.js'
 export { startPeerHostConnectionButton, PEER_HOST_BUTTON_ATTRIBUTE, PEER_HOST_OPEN_EVENT } from '../peer-host-connection-button.js'
@@ -68,7 +66,7 @@ export { ReverseProxyPanel } from './reverse-proxy-panel.js'
 export { CliAdaptersPanel } from './cli-adapters.js'
 export { TerminalEnhancementPanel } from './terminal-enhancement-panel.js'
 export { WorkspaceSessionEnhancementPanel } from './workspace-session-enhancement-panel.js'
-export { SubscriptionUsagePanel } from './subscription-usage-panel.js'
+export { SubscriptionUsageSettingsDialog } from './subscription-usage-panel.js'
 export type {
   CodingNsClientFeatureModule,
   CodingNsClientServices,

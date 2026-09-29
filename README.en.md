@@ -106,7 +106,7 @@ External Agents assemble their own requests, so the context panel's heuristic co
 
 ### Session Enhancement and Usage
 
-Session rows show the Agent logo and archive entry, and the composer dock shows subscription or upstream usage for Agents whose limits can be read (cache hit rate, per-model stats and cost included).
+Session rows show the Agent logo and archive entry, and the composer dock shows subscription or upstream usage for Agents whose limits can be read (cache hit rate, per-model stats and cost included). The "Settings" button next to "Show subscription and usage" adjusts the query timeout (10 seconds by default, applied to every Agent) and the auto refresh interval (5 minutes by default, 0 disables automatic refresh); switching back to the same Agent within the interval reuses the previous result instead of querying upstream again.
 
 <div align="center">
   <table>

@@ -2,6 +2,7 @@ import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { isSubscriptionUsageFresh } from '../shared/contracts/subscription.js'
 import type { CliSubscriptionUsage, CliSubscriptionWindow, DeepseekUsage, ProviderBalanceUsage, Sub2ApiModelUsage, Sub2ApiUsage, Sub2ApiUsagePoint } from '../shared/contracts/subscription.js'
 import { DEFAULT_SUBSCRIPTION_USAGE_SETTINGS } from '../shared/contracts/config.js'
 import type { CodingNsRpcClient } from './features/types.js'
@@ -28,6 +29,12 @@ interface SubscriptionSlotProps {
 }
 
 const SUBSCRIPTION_STYLE_ID = 'codingns4dsh-subscription-responsive-style'
+
+/**
+ * 进程内用量结果缓存：同一适配器/提供商在刷新间隔内直接复用上次结果，
+ * 避免每次进入会话或切回同一 Agent 都请求上游；null 结果不缓存，便于刚登录后立刻重试。
+ */
+const subscriptionUsageCache = new Map<string, { readonly usage: CliSubscriptionUsage; readonly capturedAt: number }>()
 
 /** 移动端订阅入口只保留图标，完整数据仍可在点击后的弹层中查看。 */
 function installSubscriptionStyles(): void {
@@ -101,10 +108,18 @@ function CommandCodeSubscriptionSlot(props: SubscriptionSlotProps): ReactElement
           setAdapterId(adapterId)
           setProviderId(selection.providerId ?? null)
         }
+        const intervalMins = props.getRefreshIntervalMins?.() ?? DEFAULT_SUBSCRIPTION_USAGE_SETTINGS.refreshIntervalMins
+        const cacheKey = `${adapterId}|${selection.providerId ?? ''}`
+        const cached = subscriptionUsageCache.get(cacheKey)
+        if (cached !== undefined && isSubscriptionUsageFresh(cached.capturedAt, Date.now(), intervalMins)) {
+          if (active) setUsage(cached.usage)
+          return
+        }
         const next = await callCliRpc<CliSubscriptionUsage | null>(props.rpc, 'subscription', {
           adapterId,
           ...(selection.providerId ? { providerId: selection.providerId } : {}),
         })
+        if (next !== null) subscriptionUsageCache.set(cacheKey, { usage: next, capturedAt: Date.now() })
         if (active) setUsage(next)
       } catch {
         if (active) {

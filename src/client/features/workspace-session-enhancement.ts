@@ -150,11 +150,9 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showAdapterLogo
       if (showAdapterLogo) enableLogo()
       else disableLogo()
-      // 订阅/用量展示同时受独立「用量查询」模块开关控制；模块关闭后不再发起任何用量查询。
-      const usageQueryEnabled = context.services.settings.getSnapshot().value?.modules?.subscriptionUsage ?? true
       const showSubscriptionUsage = workspaceSettings?.showSubscriptionUsage
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showSubscriptionUsage
-      if (showSubscriptionUsage && usageQueryEnabled) enableSubscription()
+      if (showSubscriptionUsage) enableSubscription()
       else disableSubscription()
       const showQuickPhrases = workspaceSettings?.showQuickPhrases
         ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS.showQuickPhrases
@@ -172,7 +170,7 @@ export const workspaceSessionEnhancementFeature: CodingNsClientFeatureModule = {
         lastSubscriptionUsageSignature = subscriptionUsageSignature
         if (disposeSubscription !== undefined) {
           disableSubscription()
-          if (showSubscriptionUsage && usageQueryEnabled) enableSubscription()
+          if (showSubscriptionUsage) enableSubscription()
         }
       }
     }

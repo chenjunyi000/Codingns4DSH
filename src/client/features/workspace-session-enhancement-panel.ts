@@ -1,12 +1,14 @@
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 import type { ReactElement } from 'react'
 import {
   CODINGNS_WORKSPACE_SESSION_ENHANCEMENT_FIELD,
   DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS,
 } from '../../shared/contracts/config.js'
 import type { FeaturePanelProps } from './types.js'
+import { SubscriptionUsageSettingsDialog } from './subscription-usage-panel.js'
 import {
   dshFormRootStyle,
+  dshSettingsButtonStyle,
   dshSettingsHelpStyle,
   dshSettingsListRowStyle,
   dshThemeColor,
@@ -16,6 +18,7 @@ import { useCodingNsTranslator } from '../locale.js'
 /** 工作区会话增强的单列设置面板。 */
 export function WorkspaceSessionEnhancementPanel({ services, enabled, snapshot, notify }: FeaturePanelProps): ReactElement {
   const t = useCodingNsTranslator(services.locale)
+  const [usageSettingsOpen, setUsageSettingsOpen] = useState(false)
   const value = snapshot.value?.workspaceSessionEnhancement
     ?? DEFAULT_WORKSPACE_SESSION_ENHANCEMENT_SETTINGS
   const disabled = !enabled || snapshot.status === 'loading' || !snapshot.writable
@@ -80,22 +83,35 @@ export function WorkspaceSessionEnhancementPanel({ services, enabled, snapshot, 
         style: { flex: '0 0 auto', accentColor: dshThemeColor.accent },
       }),
     ),
-    createElement('label', {
+    createElement('div', {
       style: dshSettingsListRowStyle,
     },
-      createElement('span', { style: { minWidth: 0 } },
-        createElement('strong', { style: { display: 'block', fontSize: 13, lineHeight: 1.4 } }, t('workspace.showSubscriptionUsage')),
-        createElement('span', { style: { display: 'block', marginTop: 3, ...dshSettingsHelpStyle } }, t('workspace.subscriptionUsageDescription')),
+      createElement('label', {
+        style: { display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 auto', minWidth: 0, cursor: 'pointer' },
+      },
+        createElement('span', { style: { minWidth: 0 } },
+          createElement('strong', { style: { display: 'block', fontSize: 13, lineHeight: 1.4 } }, t('workspace.showSubscriptionUsage')),
+          createElement('span', { style: { display: 'block', marginTop: 3, ...dshSettingsHelpStyle } }, t('workspace.subscriptionUsageDescription')),
+        ),
+        createElement('input', {
+          type: 'checkbox',
+          role: 'switch',
+          'aria-label': t('workspace.showSubscriptionUsage'),
+          checked: value.showSubscriptionUsage,
+          disabled,
+          onChange: (event: { currentTarget: { checked: boolean } }) => updateSetting('showSubscriptionUsage', event.currentTarget.checked),
+          style: { flex: '0 0 auto', accentColor: dshThemeColor.accent },
+        }),
       ),
-      createElement('input', {
-        type: 'checkbox',
-        role: 'switch',
-        'aria-label': t('workspace.showSubscriptionUsage'),
-        checked: value.showSubscriptionUsage,
+      createElement('button', {
+        type: 'button',
+        'aria-haspopup': 'dialog',
+        'aria-expanded': usageSettingsOpen,
+        'aria-label': t('workspace.subscriptionUsageSettings'),
         disabled,
-        onChange: (event: { currentTarget: { checked: boolean } }) => updateSetting('showSubscriptionUsage', event.currentTarget.checked),
-        style: { flex: '0 0 auto', accentColor: dshThemeColor.accent },
-      }),
+        onClick: () => setUsageSettingsOpen(true),
+        style: dshSettingsButtonStyle,
+      }, t('workspace.subscriptionUsageSettings')),
     ),
     createElement('label', {
       style: dshSettingsListRowStyle,
@@ -148,5 +164,11 @@ export function WorkspaceSessionEnhancementPanel({ services, enabled, snapshot, 
         style: { flex: '0 0 auto', accentColor: dshThemeColor.accent },
       }),
     ),
+    usageSettingsOpen && createElement(SubscriptionUsageSettingsDialog, {
+      services,
+      snapshot,
+      notify,
+      onClose: () => setUsageSettingsOpen(false),
+    }),
   )
 }

@@ -315,10 +315,9 @@ test('模块总开关释放资源，子开关实时启停并保留设置值', as
   assert.equal(value.workspaceSessionEnhancement.showAdapterLogo, true)
 })
 
-test('用量查询模块开关与间隔设置驱动订阅 slot 重挂', async () => {
+test('用量查询间隔设置驱动订阅 slot 重挂', async () => {
   clearSessionAdapters()
   let value = {
-    modules: { subscriptionUsage: true },
     subscriptionUsage: { timeoutSecs: 10, refreshIntervalMins: 5 },
     workspaceSessionEnhancement: { showAdapterLogo: false, showArchivedSessions: false, showSubscriptionUsage: true },
   }
@@ -367,12 +366,16 @@ test('用量查询模块开关与间隔设置驱动订阅 slot 重挂', async ()
   assert.equal(registrations, 2)
   assert.equal(slotDefinition.inject('session-usage').getRefreshIntervalMins(), 15)
 
-  value = { ...value, modules: { subscriptionUsage: false } }
+  value = {
+    ...value,
+    workspaceSessionEnhancement: { ...value.workspaceSessionEnhancement, showSubscriptionUsage: false },
+  }
   for (const listener of [...listeners]) listener()
   assert.equal(disposals, 2)
-  assert.equal(registrations, 2, '关闭用量查询模块后不再注册订阅 slot')
+  assert.equal(registrations, 2, '关闭订阅/用量展示后不再注册订阅 slot')
 
   await resources.dispose()
+  assert.equal(disposals, 2)
   assert.equal(listeners.size, 0)
 })
 
