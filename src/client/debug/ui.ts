@@ -16,7 +16,7 @@ interface DebugTabProps {
   readonly useTabInfo: UseSidebarRightTabInfo
   readonly rpc: CodingNsRpcClient
   readonly remote: unknown
-  readonly terminalRemote?: () => unknown
+  readonly terminalRemote: (() => unknown) | undefined
   readonly sidebarRight: Context['sidebarRight']
 }
 

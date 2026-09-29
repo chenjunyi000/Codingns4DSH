@@ -11,7 +11,6 @@ import type { ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   Button,
-  IconChevronDownOutline14,
   Menu,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'

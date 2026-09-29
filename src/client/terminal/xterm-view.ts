@@ -1,6 +1,6 @@
 import { createElement, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { ReactElement } from 'react'
-import { Button, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import type { ITheme } from '@xterm/xterm'

@@ -9,7 +9,10 @@ const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 test('终端入口复用 DSH 内置按钮与菜单，不退回原生表单控件', async () => {
   const source = await readFile(join(projectRoot, 'src/client/terminal/ui.ts'), 'utf8')
 
-  assert.match(source, /Button,[\s\S]*IconChevronDownOutline14,[\s\S]*Menu,/u)
+  assert.match(source, /Button,[\s\S]*Menu,/u)
+  // 0.2.0 只导出 Regular/Medium 图标变体；入口必须经适配器解析，不能绑定旧导出名。
+  assert.match(source, /resolveChevronDownIcon\(\)/u)
+  assert.doesNotMatch(source, /IconChevronDownOutline(?:14|Regular|Medium)/u)
   assert.match(source, /variant: 'ghost'/u)
   assert.doesNotMatch(source, /createElement\(['"]select['"]/u)
   assert.doesNotMatch(source, /border:\s*['"]1px solid currentColor/u)

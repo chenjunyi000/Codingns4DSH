@@ -136,7 +136,7 @@ test('宿主机重启后 tmux socket 消失时视为会话已丢失并可幂等�
   await backend.terminate(session)
 })
 
-test('真实 tmux 会话可创建、跨检查保持身份并显式关闭', { skip: findTmux() === null }, async () => {
+test('真实 tmux 会话可创建、跨检查保持身份并显式关闭', { skip: !canUseTmux() }, async () => {
   const tmuxPath = findTmux()
   assert.notEqual(tmuxPath, null)
   const realSession = {
@@ -166,4 +166,14 @@ function findTmux() {
     } catch {}
   }
   return null
+}
+
+/** 沙箱可能能找到 tmux 二进制，但禁止访问 tmux socket；此时跳过真实集成测试。 */
+function canUseTmux() {
+  const tmuxPath = findTmux()
+  if (tmuxPath === null) return false
+  const started = spawnSync(tmuxPath, ['start-server'], { encoding: 'utf8' })
+  if (started.status !== 0) return false
+  spawnSync(tmuxPath, ['kill-server'], { encoding: 'utf8' })
+  return true
 }
