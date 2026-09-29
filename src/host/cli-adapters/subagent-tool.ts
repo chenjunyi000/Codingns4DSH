@@ -27,8 +27,10 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
   return {
     name: 'agent_subagent',
     description:
-      '把一个自成体系的子任务派发给外部编码 Agent（MiniMax Code、ZCode、Claude Code 等）执行，等待完成后拿回最终结果。'
-      + '在 DSH Agent Teams 中作为成员运行；点击团队成员可打开原生对话并续聊。工具等待首轮结果后返回。'
+      '把一个自成体系的子任务派发给外部编码 Agent（MiniMax Code、ZCode、Claude Code 等）执行。'
+      + '默认等待完成并拿回最终结果（Teams 可用时作为成员运行，点击成员可打开原生对话续聊）；'
+      + 'run_in_background=true 时立即返回后台任务标识，不阻塞主会话——适合并行派发多个互不依赖的子任务，'
+      + '结果稍后通过 subagents/list 或"子代理对话"面板获取。'
       + '子任务在该 Agent 自己的上下文、工具链和模型账号中独立运行，不会继承主对话历史，因此 prompt 必须自包含（目标、涉及文件、完成标准）。'
       + '适合外包边界清晰的实现类子任务；需要共享主对话上下文或主 Agent 自己的工具（如当前会话记忆）时不要使用。',
     parameters: {
@@ -51,6 +53,10 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
           type: 'string',
           description: '可选；覆盖该 Agent 的模型选择（使用该 Agent 模型目录中的 id）。',
         },
+        run_in_background: {
+          type: 'boolean',
+          description: '默认 false（等待结果）。true 时立即返回后台任务标识、不阻塞主会话；结果写入子代理对话记录，稍后查询。',
+        },
       },
       required: ['agent', 'prompt'],
       additionalProperties: false,
@@ -66,6 +72,7 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
           providerSessionId: { type: 'string', description: '外部 Agent 的原生会话标识，可用于后续续聊' },
           toolCalls: { type: 'number', description: '子代理执行的工具次数' },
           usageSummary: { type: 'string', description: 'token 用量摘要' },
+          background: { type: 'boolean', description: 'true 表示后台已启动；真实结果稍后写入子代理对话记录' },
         },
         required: ['agent', 'ok', 'result', 'childSessionId'],
         additionalProperties: false,
@@ -86,8 +93,10 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
       const cwd = resolveCwd(typeof args.cwd === 'string' ? args.cwd : '', exec)
       const modelId = typeof args.model === 'string' && args.model.trim() !== '' ? args.model.trim() : undefined
       const parentSessionId = resolveParentSessionId(exec)
+      const background = args.run_in_background === true
 
-      if (options.nativeTeam?.diagnostic().supported === true && options.nativeSessions?.supportsEvents === true && options.nativeSessions.store !== undefined && parentSessionId !== undefined) {
+      // 后台模式只走会话面板路径：立即返回任务标识，回合在后台推进。
+      if (!background && options.nativeTeam?.diagnostic().supported === true && options.nativeSessions?.supportsEvents === true && options.nativeSessions.store !== undefined && parentSessionId !== undefined) {
         const parent = options.nativeSessions.get(parentSessionId) as { header?: { cwd?: string } } | undefined
         const parentCwd = parent?.header?.cwd
         if (typeof args.cwd === 'string' && args.cwd.trim() !== '' && (parentCwd === undefined || cwd === undefined || resolve(cwd) !== resolve(parentCwd))) {
@@ -107,9 +116,9 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
         prompt,
         ...(parentSessionId !== undefined ? { parentSessionId } : {}),
         ...(cwd !== undefined ? { cwd } : {}),
-        ...(modelId !== undefined ? { modelId } : {}),
-        ...(exec.signal !== undefined ? { signal: exec.signal } : {}),
-      })
+        ...(modelId === undefined ? {} : { modelId }),
+        ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+      }, { background })
     },
   }
 }

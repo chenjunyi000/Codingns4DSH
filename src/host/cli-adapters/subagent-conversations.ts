@@ -64,6 +64,8 @@ export interface CodingNsSubagentRunResult {
   readonly providerSessionId?: string
   readonly toolCalls: number
   readonly usageSummary?: string
+  /** 后台启动时为 true；result 是占位说明，真实结果写入对话记录与面板。 */
+  readonly background?: boolean
 }
 
 const MAX_CONVERSATIONS = 100
@@ -118,7 +120,7 @@ export class CodingNsSubagentConversations {
     return conversation === undefined ? undefined : JSON.parse(JSON.stringify(conversation)) as CodingNsSubagentConversation
   }
 
-  async run(request: CodingNsSubagentRunRequest): Promise<CodingNsSubagentRunResult> {
+  async run(request: CodingNsSubagentRunRequest, options: { readonly background?: boolean } = {}): Promise<CodingNsSubagentRunResult> {
     const now = new Date().toISOString()
     const id = `subagent-${randomUUID()}`
     const conversation: MutableConversation = {
@@ -135,6 +137,20 @@ export class CodingNsSubagentConversations {
     this.conversations.set(id, conversation)
     this.prune()
     this.scheduleWrite()
+    if (options.background === true) {
+      // 真后台：立即返回，回合在后台推进；结果与错误写入对话记录，
+      // 面板/后续轮次可随时读取。主会话的流式输出不被阻塞。
+      void this.runTurn(conversation, request.prompt, request.signal)
+        .catch(() => { /* 错误已写入对话状态，供面板与 get 读取。 */ })
+      return {
+        childSessionId: id,
+        agent: conversation.adapterId,
+        ok: true,
+        background: true,
+        result: `子代理已在后台启动（${conversation.adapterId}）。结果稍后写入其对话记录；用 subagents/list 查看状态，或提醒用户在"子代理对话"面板查看。`,
+        toolCalls: 0,
+      }
+    }
     return this.runTurn(conversation, request.prompt, request.signal)
   }
 

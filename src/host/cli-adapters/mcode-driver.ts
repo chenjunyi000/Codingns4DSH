@@ -130,7 +130,13 @@ export class MiniMaxCodeDriver implements CodingNsCliDriver {
     const sendPromise = session.rpc.request('session/prompt', {
       sessionId: session.acpSessionId,
       prompt: [{ type: 'text', text: input.prompt }],
-    }, { onNotification: (message) => eventQueue.push(message), signal: input.signal, killOnAbort: false })
+    }, { onNotification: (message) => {
+      // 请求级监听器会看到该 ACP 进程上的所有通知；并发或续聊时其他会话的
+      // 更新（尤其迟到的 closing message）不得混入当前回合——按 sessionId 过滤。
+      if (isRecord(message.params) && typeof message.params.sessionId === 'string'
+        && message.params.sessionId !== session.acpSessionId) return
+      eventQueue.push(message)
+    }, signal: input.signal, killOnAbort: false })
       .then((value) => { sendError = undefined; promptResult = value; return value }, (error: unknown) => { sendError = error })
     const onAbort = (): void => {
       void session.rpc.request('session/cancel', { sessionId: session.acpSessionId }).catch(() => undefined)
