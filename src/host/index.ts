@@ -25,6 +25,8 @@ import type { DshHostSettingsProvider } from '../dsh-capabilities/host/config-fo
 import { DshNativeTeamProxy, type AgentRegistry, type NativeTeamService } from './cli-adapters/native-team-proxy.js'
 import { createAgentSubagentTool } from './cli-adapters/subagent-tool.js'
 import { registerNativeTeamSubagentProviders } from './cli-adapters/native-team-subagent.js'
+import { setNativeSubagents } from './cli-adapters/registry-holder.js'
+import type { NativeSubagentService } from './cli-adapters/native-team-subagent.js'
 
 export function apply(ctx?: Context): void {
   if (ctx === undefined) return
@@ -186,6 +188,8 @@ export function apply(ctx?: Context): void {
       const subagents = (subagentCtx as unknown as { subagents?: { registerProvider: (...args: any[]) => unknown } }).subagents
       if (subagents === undefined || typeof subagents.registerProvider !== 'function') return
       registerNativeTeamSubagentProviders(subagents as Parameters<typeof registerNativeTeamSubagentProviders>[0])
+      // 供 agent_subagent 工具的纯原生子会话路径使用（不经 Agent Teams）。
+      setNativeSubagents(subagents as NativeSubagentService)
       debugInfo('codingns4dsh: 外部 Agent Teams 子代理提供方已注册')
     })
     const agentToolTimer = setTimeout(() => {

@@ -1,5 +1,6 @@
 import type { CodingNsCliAdapterRegistry } from './registry.js'
 import type { CodingNsSubagentConversations } from './subagent-conversations.js'
+import type { NativeSubagentService } from './native-team-subagent.js'
 
 /**
  * cliAdapters 功能模块装配完成后登记注册表，供跨模块消费（如 agent_subagent
@@ -8,6 +9,8 @@ import type { CodingNsSubagentConversations } from './subagent-conversations.js'
  */
 let current: CodingNsCliAdapterRegistry | undefined
 let subagentConversations: CodingNsSubagentConversations | undefined
+/** DSH 原生 Subagent 运行时；subagents 服务就绪时由宿主入口登记。 */
+let nativeSubagents: NativeSubagentService | undefined
 
 export function setAdapterRegistry(registry: CodingNsCliAdapterRegistry | undefined): void {
   current = registry
@@ -23,4 +26,12 @@ export function setSubagentConversations(value: CodingNsSubagentConversations | 
 
 export function getSubagentConversations(): CodingNsSubagentConversations | undefined {
   return subagentConversations
+}
+
+export function setNativeSubagents(value: NativeSubagentService | undefined): void {
+  nativeSubagents = value
+}
+
+export function getNativeSubagents(): NativeSubagentService | undefined {
+  return nativeSubagents
 }

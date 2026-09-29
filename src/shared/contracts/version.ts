@@ -19,7 +19,7 @@ export function isLegacyDshVersion(version: string): boolean {
 }
 
 /** Codingns4DSH 插件自身的 npm 版本。 */
-export const CODINGNS_VERSION = '0.2.0-beta.1-local.10' as const
+export const CODINGNS_VERSION = '0.2.0-beta.1-local.12' as const
 
 interface ParsedVersion {
   readonly major: number

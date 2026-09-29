@@ -2,7 +2,8 @@ import { isAbsolute, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CodingNsNativeSessionBridge } from '../native-session-bridge.js'
 import type { CodingNsNativeTeamProxy } from './native-team-proxy.js'
-import { getAdapterRegistry, getSubagentConversations } from './registry-holder.js'
+import { getAdapterRegistry, getNativeSubagents, getSubagentConversations } from './registry-holder.js'
+import type { NativeSubagentService } from './native-team-subagent.js'
 import { EXTERNAL_SUBAGENT_IDS, externalTeamProvider, withTeamSubagentSelection } from './native-team-subagent.js'
 
 /**
@@ -95,7 +96,22 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
       const parentSessionId = resolveParentSessionId(exec)
       const background = args.run_in_background === true
 
-      // 后台模式只走会话面板路径：立即返回任务标识，回合在后台推进。
+      // 最优路径：DSH 原生 Subagent 运行时。子会话由官方入口创建（header 带
+      // origin=subagent + parentSession），在原生子智能体视图中呈现；外部 CLI
+      // 路由经已注册的 provider 绑定，对话由原生界面渲染。
+      const nativeSubagents = getNativeSubagents()
+      const parentAgent = resolveParentAgent(exec)
+      if (nativeSubagents?.startContinuable !== undefined && parentAgent !== undefined) {
+        return runNativeContinuableSubagent(nativeSubagents, options.nativeSessions, {
+          adapterId: agentId, prompt,
+          parentAgent,
+          ...(modelId === undefined ? {} : { modelId }),
+          ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+          background,
+        })
+      }
+
+      // Agent Teams 路径：作为团队成员派发（同步等待首轮结果）。
       if (!background && options.nativeTeam?.diagnostic().supported === true && options.nativeSessions?.supportsEvents === true && options.nativeSessions.store !== undefined && parentSessionId !== undefined) {
         const parent = options.nativeSessions.get(parentSessionId) as { header?: { cwd?: string } } | undefined
         const parentCwd = parent?.header?.cwd
@@ -121,6 +137,122 @@ export function createAgentSubagentTool(options: NativeTeamOptions = {}): Record
       }, { background })
     },
   }
+}
+
+interface NativeContinuableRequest {
+  readonly adapterId: string
+  readonly prompt: string
+  readonly parentAgent: unknown
+  readonly modelId?: string
+  readonly signal?: AbortSignal
+  readonly background: boolean
+}
+
+/** 经 DSH 官方 startContinuable 创建原生子会话并等待首轮结果。 */
+async function runNativeContinuableSubagent(
+  subagents: NativeSubagentService,
+  sessions: CodingNsNativeSessionBridge | undefined,
+  request: NativeContinuableRequest,
+): Promise<Record<string, unknown>> {
+  const started = await withTeamSubagentSelection(
+    parentAgentId(request.parentAgent),
+    request.adapterId,
+    request.modelId,
+    async () => subagents.startContinuable!({
+      provider: externalTeamProvider(request.adapterId),
+      label: request.prompt.replace(/\s+/gu, ' ').trim().slice(0, 120),
+      request: {
+        prompt: [{ type: 'text', text: request.prompt }],
+        parent: request.parentAgent,
+      },
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    }),
+  )
+  const childSessionId = started.childId
+  if (request.background) {
+    return {
+      childSessionId,
+      agent: request.adapterId,
+      ok: true,
+      background: true,
+      result: `子代理已在原生子智能体会话中启动（${request.adapterId}）。进度与结果见该会话；可提醒用户在会话列表的子智能体视图中查看。`,
+      toolCalls: 0,
+    }
+  }
+  // 同步等待子 Agent 首轮结束：订阅原生事件流，收 childSessionId 的 turn/end。
+  const firstResult = await waitForChildFirstTurn(sessions, childSessionId, request.signal)
+  return {
+    childSessionId,
+    agent: request.adapterId,
+    ok: firstResult.ok,
+    result: firstResult.text !== '' ? firstResult.text : '(子代理没有文本输出)',
+    providerSessionId: childSessionId,
+    toolCalls: firstResult.toolCalls,
+    ...(firstResult.usageSummary !== undefined ? { usageSummary: firstResult.usageSummary } : {}),
+  }
+}
+
+function parentAgentId(parentAgent: unknown): string {
+  const id = (parentAgent as { id?: unknown } | null)?.id
+  return typeof id === 'string' ? id : 'unknown-parent'
+}
+
+function resolveParentAgent(exec: { agent?: unknown }): unknown {
+  const agent = exec.agent as { session?: { header?: { id?: unknown } } } | undefined
+  const sessionId = agent?.session?.header?.id
+  return typeof sessionId === 'string' && sessionId !== '' ? agent : undefined
+}
+
+interface ChildFirstTurn {
+  readonly ok: boolean
+  readonly text: string
+  readonly toolCalls: number
+  readonly usageSummary?: string
+}
+
+/** 订阅原生事件流直到子会话首个 turn/end；超时按 DSH 空闲处理。 */
+function waitForChildFirstTurn(sessions: CodingNsNativeSessionBridge | undefined, childSessionId: string, signal: AbortSignal | undefined): Promise<ChildFirstTurn> {
+  return new Promise((resolve) => {
+    const state: { text: string; toolCalls: number; usage?: string; done: boolean } = { text: '', toolCalls: 0, done: false }
+    let detach: (() => void) | undefined
+    const finish = (): void => {
+      if (state.done) return
+      state.done = true
+      detach?.()
+      signal?.removeEventListener('abort', onAbort)
+      clearTimeout(giveUpTimer)
+      resolve({
+        ok: !signal?.aborted,
+        text: state.text,
+        toolCalls: state.toolCalls,
+        ...(state.usage !== undefined ? { usageSummary: state.usage } : {}),
+      })
+    }
+    const onAbort = (): void => finish()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    // 兜底：外部 CLI 卡死时最长等 15 分钟（与工具超时一致）。
+    const giveUpTimer = setTimeout(finish, 15 * 60_000)
+    giveUpTimer.unref?.()
+    if (sessions?.subscribe === undefined) { finish(); return }
+    detach = sessions.subscribe({
+      onEvent(session, event) {
+        const header = (session as { header?: { id?: unknown } } | undefined)?.header
+        if (header?.id !== childSessionId) return
+        const row = event as { type?: unknown } | null
+        if (row === null || typeof row.type !== 'string') return
+        if (row.type === 'assistant/message') {
+          const message = (event as { message?: { content?: readonly { type?: string; text?: unknown }[] } }).message
+          for (const block of message?.content ?? []) {
+            if (block?.type === 'text' && typeof block.text === 'string') state.text = block.text
+          }
+        } else if (row.type === 'tool/result') {
+          state.toolCalls += 1
+        } else if (row.type === 'turn/end') {
+          setTimeout(finish, 300)
+        }
+      },
+    }) as (() => void) | undefined
+  })
 }
 
 interface NativeTeamRunRequest {

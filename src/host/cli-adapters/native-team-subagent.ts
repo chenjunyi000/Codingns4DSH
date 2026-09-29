@@ -21,7 +21,7 @@ interface PrepareRequest {
   readonly signal: AbortSignal
 }
 
-interface NativeSubagentService {
+export interface NativeSubagentService {
   registerProvider(provider: {
     readonly name: string
     readonly capabilities: Record<string, boolean>
@@ -29,6 +29,18 @@ interface NativeSubagentService {
     start(request: unknown): never
     prepareContinuable(request: PrepareRequest): Promise<Record<string, never>>
   }): unknown
+  /** DSH 官方入口：创建带 origin=subagent 原生身份的子会话并投递 prompt。 */
+  startContinuable?(spec: {
+    readonly childId?: string
+    readonly provider: string
+    readonly label?: string
+    readonly request: {
+      readonly prompt: readonly { readonly type: 'text'; readonly text: string }[]
+      readonly parent: unknown
+      readonly maxDepth?: number
+    }
+    readonly signal?: AbortSignal
+  }): Promise<{ readonly childId: string; readonly messageId: string }>
 }
 
 interface PendingSelection {
