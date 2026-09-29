@@ -9,7 +9,7 @@ on:
       release_tag:
         description: '要校验并发布的版本 tag'
         required: true
-        default: 'v0.1.2'
+        default: 'v0.1.7-rc.2'
 
 concurrency:
   group: npm-publish-${{ github.ref }}
