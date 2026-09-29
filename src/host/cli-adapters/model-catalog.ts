@@ -96,6 +96,20 @@ export const PI_CATALOG = staticCatalog('pi', 'Pi', [
   { id: 'provider-default', name: '跟随 Pi 默认模型', efforts: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] },
 ])
 
+export const MINIMAX_CODE_CATALOG = staticCatalog('mcode', 'MiniMax Code', [
+  // 档位与官方 CLI 的 effortOptions 一致（~/.minimax/config.yaml），顺序同 model_order。
+  { id: 'minimax/MiniMax-M3.1-Flash-Preview', name: 'MiniMax-M3.1-Flash-Preview', efforts: ['default', 'low', 'medium', 'high', 'xhigh', 'max'] },
+  { id: 'minimax/MiniMax-M3', name: 'MiniMax-M3', efforts: ['default', 'low', 'medium', 'high', 'xhigh', 'max'] },
+  { id: 'minimax/MiniMax-M2.7-highspeed', name: 'MiniMax-M2.7-highspeed', efforts: [] },
+  { id: 'minimax/MiniMax-M2.7', name: 'MiniMax-M2.7', efforts: [] },
+])
+
+export const ZCODE_CATALOG = staticCatalog('zcode', 'ZCode', [
+  { id: 'provider-default', name: '跟随 ZCode 默认模型', efforts: [] },
+  { id: 'GLM-5.3', name: 'GLM-5.3', efforts: ['low', 'medium', 'high', 'max'] },
+  { id: 'GLM-5.3-Flash', name: 'GLM-5.3-Flash', efforts: ['low', 'medium', 'high', 'max'] },
+])
+
 /** 把 CLI 帮助解析到的模型补上已知档位，未知模型保持空数组。 */
 export function enrichEfforts(catalog: CodingNsCliModelCatalog, known: CodingNsCliModelCatalog): CodingNsCliModelCatalog {
   const effortById = new Map(known.groups.flatMap((group) => group.models.map((model) => [model.id.toLowerCase(), model.efforts] as const)))

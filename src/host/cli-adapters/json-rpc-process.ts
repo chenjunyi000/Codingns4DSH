@@ -25,6 +25,16 @@ export class JsonRpcRequestError extends Error {
     this.data = data
   }
 }
+/**
+ * stdio 线协议的信封形状。
+ *
+ * - `jsonrpc`：标准 JSON-RPC 2.0，带 `jsonrpc: "2.0"`。
+ * - `pi`：Pi 的 `type` 顶层命令。
+ * - `zcode`：ZCode Protocol 的 `{ id, method, params }` 信封。它明确拒绝
+ *   `jsonrpc` 字段（服务端回 `Unrecognized key: "jsonrpc"`），并且服务端也会
+ *   反向向客户端发同形状请求，因此请求、通知和响应都必须省掉该字段。
+ */
+export type JsonRpcWireFormat = 'jsonrpc' | 'pi' | 'zcode'
 
 export interface JsonRpcProcessOptions {
   readonly command: string
@@ -32,6 +42,8 @@ export interface JsonRpcProcessOptions {
   readonly cwd?: string | undefined
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly spawn?: typeof spawn
+  /** 进程级默认信封；单次请求可用 request options 覆盖。 */
+  readonly wireFormat?: JsonRpcWireFormat
 }
 
 export interface JsonRpcRequestOptions {
@@ -40,7 +52,7 @@ export interface JsonRpcRequestOptions {
   /** 取消本次请求时是否同时终止整个 Agent 进程；长期会话应关闭此项。 */
   readonly killOnAbort?: boolean
   /** Pi 使用 type/data 顶层命令，不是 JSON-RPC method/params。 */
-  readonly wireFormat?: 'jsonrpc' | 'pi'
+  readonly wireFormat?: JsonRpcWireFormat
 }
 
 /**
@@ -59,9 +71,12 @@ export class JsonRpcProcess {
   private readonly notificationHandlers = new Set<(message: JsonRpcMessage) => void>()
   private serverRequestHandler: ((message: JsonRpcMessage) => unknown | Promise<unknown>) | undefined
 
+  private readonly wireFormat: JsonRpcWireFormat
+
   constructor(options: JsonRpcProcessOptions) {
     this.options = options
     this.runSpawn = options.spawn ?? spawn
+    this.wireFormat = options.wireFormat ?? 'jsonrpc'
   }
 
   async request(method: string, params: unknown = {}, options: JsonRpcRequestOptions = {}): Promise<unknown> {
@@ -80,7 +95,9 @@ export class JsonRpcProcess {
     if (options.signal?.aborted) onAbort()
     else options.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      if (options.wireFormat === 'pi') this.write({ id, type: method, ...(isRecord(params) ? params : {}) })
+      const wireFormat = options.wireFormat ?? this.wireFormat
+      if (wireFormat === 'pi') this.write({ id, type: method, ...(isRecord(params) ? params : {}) })
+      else if (wireFormat === 'zcode') this.write({ id, method, params })
       else this.write({ jsonrpc: '2.0', id, method, params })
       const result = await promise
       if (options.signal?.aborted) throw new Error('请求已取消')
@@ -93,9 +110,10 @@ export class JsonRpcProcess {
   }
 
   /** 发送无需响应的协议通知，例如 initialized 或 cancel。 */
-  notify(method: string, params: unknown = {}, wireFormat: 'jsonrpc' | 'pi' = 'jsonrpc'): void {
+  notify(method: string, params: unknown = {}, wireFormat: JsonRpcWireFormat = this.wireFormat): void {
     this.ensureStarted()
     if (wireFormat === 'pi') this.write({ type: method, ...(isRecord(params) ? params : {}) })
+    else if (wireFormat === 'zcode') this.write({ method, params })
     else this.write({ jsonrpc: '2.0', method, params })
   }
 
@@ -111,22 +129,27 @@ export class JsonRpcProcess {
   }
 
   /** 回复由 Agent 发起的 JSON-RPC server request，保留原始 id。 */
-  respond(id: number | string, result: unknown): void {
+  respond(id: number | string, result: unknown, wireFormat: JsonRpcWireFormat = this.wireFormat): void {
     if (this.closed) throw new Error('Agent 进程已关闭')
     this.ensureStarted()
-    this.write({ jsonrpc: '2.0', id, result })
+    if (wireFormat === 'zcode') this.write({ id, result })
+    else this.write({ jsonrpc: '2.0', id, result })
   }
 
   /** 回复 JSON-RPC server request 的错误结果。错误文本不回传 Provider 原文。 */
-  respondError(id: number | string, code = -32000, message = '请求被拒绝'): void {
+  respondError(id: number | string, code = -32000, message = '请求被拒绝', wireFormat: JsonRpcWireFormat = this.wireFormat): void {
     if (this.closed) throw new Error('Agent 进程已关闭')
     this.ensureStarted()
-    this.write({ jsonrpc: '2.0', id, error: { code, message } })
+    if (wireFormat === 'zcode') this.write({ id, error: { code, message } })
+    else this.write({ jsonrpc: '2.0', id, error: { code, message } })
   }
 
   cancel(id: number | string): void {
     if (this.closed || this.child === null) return
-    try { this.write({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id } }) } catch { /* 尽力取消 */ }
+    try {
+      if (this.wireFormat === 'zcode') this.write({ method: '$/cancelRequest', params: { id } })
+      else this.write({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id } })
+    } catch { /* 尽力取消 */ }
   }
 
   dispose(): void {
@@ -187,14 +210,14 @@ export class JsonRpcProcess {
         if (typeof value.method === 'string' && value.id !== undefined && value.id !== null) {
           const handler = this.serverRequestHandler
           if (handler === undefined) {
-            this.write({ jsonrpc: '2.0', id: value.id, error: { code: -32601, message: '请求不受支持' } })
+            this.respondError(value.id, -32601, '请求不受支持')
           } else {
             // 先通知流消费者，再等待上层审批结果；通知内容只包含标准协议字段。
             for (const listener of this.notificationHandlers) listener(value)
             const requestId = value.id
             void Promise.resolve(handler(value)).then(
-              (result) => this.write({ jsonrpc: '2.0', id: requestId, result }),
-              () => this.write({ jsonrpc: '2.0', id: requestId, error: { code: -32000, message: '请求被拒绝' } }),
+              (result) => this.respond(requestId, result),
+              () => this.respondError(requestId, -32000, '请求被拒绝'),
             )
           }
           continue

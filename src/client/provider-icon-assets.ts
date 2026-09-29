@@ -5,8 +5,10 @@ import deepSeekHarnessIcon from '../../assets/provider-icons/deepseek-harness.sv
 import geminiIcon from '../../assets/provider-icons/gemini.png'
 import grokIcon from '../../assets/provider-icons/grok.png'
 import kimiIcon from '../../assets/provider-icons/kimi.png'
+import mcodeIcon from '../../assets/provider-icons/mcode.svg'
 import openCodeIcon from '../../assets/provider-icons/opencode.png'
 import piIcon from '../../assets/provider-icons/pi.svg'
+import zcodeIcon from '../../assets/provider-icons/zcode.svg'
 import { installProviderIcons } from './provider-icons.js'
 
 /** 资产只在浏览器单文件入口中加载，由 tsdown 转成 data URL。 */
@@ -20,4 +22,6 @@ installProviderIcons({
   codex: codexIcon,
   opencode: openCodeIcon,
   grok: grokIcon,
+  mcode: mcodeIcon,
+  zcode: zcodeIcon,
 })

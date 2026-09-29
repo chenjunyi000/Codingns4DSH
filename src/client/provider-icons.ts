@@ -20,6 +20,8 @@ const PROVIDER_DEFINITIONS: Readonly<Record<string, ProviderDefinition>> = {
   codex: { adapterId: 'codex', displayName: 'Codex' },
   opencode: { adapterId: 'opencode', displayName: 'OpenCode' },
   grok: { adapterId: 'grok', displayName: 'Grok' },
+  mcode: { adapterId: 'mcode', displayName: 'MiniMax Code' },
+  zcode: { adapterId: 'zcode', displayName: 'ZCode' },
 }
 
 const PROVIDER_ICONS: Record<string, string> = {}

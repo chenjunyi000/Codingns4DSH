@@ -8,6 +8,8 @@ import { PiAgentDriver } from './pi-driver.js'
 import { CodexAppServerDriver } from './codex-driver.js'
 import { GrokBuildDriver } from './grok-driver.js'
 import { OpenCodeDriver } from './opencode-driver.js'
+import { MiniMaxCodeDriver } from './mcode-driver.js'
+import { ZcodeAppServerDriver } from './zcode-driver.js'
 import { CodingNsCliAdapterRegistry } from './registry.js'
 import { CodingNsCliSessionStore } from './session-store.js'
 import { CodingNsDshMessageProjector } from './dsh-message-projector.js'
@@ -50,6 +52,8 @@ export function createCliAdaptersFeature(options: { registry?: CodingNsCliAdapte
         new CodexAppServerDriver(),
         new OpenCodeDriver(),
         new GrokBuildDriver(),
+        new MiniMaxCodeDriver(),
+        new ZcodeAppServerDriver(),
       ], context.services.settings?.get().agentAdapters, {
         sessionStore,
         ...(context.services.settings === undefined ? {} : { settings: context.services.settings }),
@@ -297,6 +301,17 @@ function readSessionId(value: unknown): string {
   const record = asRecord(value)
   if (typeof record?.sessionId !== 'string' || record.sessionId.trim() === '') throw new Error('sessionId 不能为空')
   return record.sessionId.trim()
+}
+
+function readSubagentId(value: unknown): string {
+  const record = asRecord(value)
+  if (typeof record?.childSessionId !== 'string' || record.childSessionId.trim() === '') throw new Error('childSessionId 不能为空')
+  return record.childSessionId.trim()
+}
+
+function readOptionalParentSessionId(value: unknown): string | undefined {
+  const record = asRecord(value)
+  return typeof record?.parentSessionId === 'string' && record.parentSessionId.trim() !== '' ? record.parentSessionId.trim() : undefined
 }
 
 function readSessionConfig(value: unknown): CodingNsCliSessionConfig {
