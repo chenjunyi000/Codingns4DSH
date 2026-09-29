@@ -372,12 +372,34 @@ function createBridgeScript(): string {
     const pending = new Map();
     // RPC、WebSocket 和远程 stream 必须使用各自的 ID 空间；资源 fetch
     // 不能改变 WebSocket 的 ID，否则 ws.open 与 ws.send 会指向不同 key。
+    //
+    // 每个 ID 还必须带 kind 前缀：早期实现把 fetch/script 计数器和 ws.open 计数器
+    // 当成裸数字放进同一个 pending Map，两个计数器各自从 1 开始，页面启动时
+    // 「插件包 fetch」与「/api/remote.mux ws.open」几乎同时发生，后到的
+    // pending.set 会覆盖先到的在途请求。被覆盖的那条 Promise 永远不会落地：
+    // 如果它正好是原生设置页的 settings/describe，DSH 的设置镜像会一直停在
+    // loading，中继下的「模型」页就永久空白且没有任何报错。
     let nextCallId = 0;
     let nextSocketId = 0;
     let nextStreamId = 0;
     let remoteLoadChain = Promise.resolve();
+    const allocateId = (prefix, counter) => {
+      let value = counter + 1;
+      let id = prefix + String(value);
+      // 绝不覆盖未完成的请求：万一同前缀 ID 仍在使用就继续往后取。
+      while (pending.has(id)) {
+        value += 1;
+        id = prefix + String(value);
+      }
+      return { id, counter: value };
+    };
     const call = (kind, input, body, explicitId) => new Promise((resolve, reject) => {
-      const id = explicitId || String(++nextCallId);
+      let id = explicitId;
+      if (id === undefined) {
+        const allocated = allocateId('req:', nextCallId);
+        nextCallId = allocated.counter;
+        id = allocated.id;
+      }
       pending.set(id, { resolve, reject });
       bridgeLog('bridge.call', { kind, id, path: input && typeof input.path === 'string' ? input.path : undefined });
       parent.postMessage({ kind, id, input, body }, '*');
@@ -709,7 +731,9 @@ function createBridgeScript(): string {
         this.url = String(url);
         this.readyState = RemoteWebSocket.CONNECTING;
         this._listeners = new Map();
-        window.__dshRemoteSockets.set(this._id = String(++nextSocketId), this);
+        const allocated = allocateId('ws:', nextSocketId);
+        nextSocketId = allocated.counter;
+        window.__dshRemoteSockets.set(this._id = allocated.id, this);
         bridgeLog('bridge.ws.open', { id: this._id, path: new URL(this.url, resourceBase()).pathname });
         call('ws.open', { path: new URL(this.url, resourceBase()).pathname }, undefined, this._id).then(() => {
           if (this.readyState !== RemoteWebSocket.CONNECTING) return;

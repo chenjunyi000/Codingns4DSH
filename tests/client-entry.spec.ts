@@ -182,3 +182,43 @@ test('调试页使用 Codingns4DSH 自有终端 Remote 解析 Workspace', async 
   assert.match(source, /terminalRemote\?\.\(\)/u)
   assert.doesNotMatch(source, /remote\?\.terminal/u)
 })
+
+test('中继桥接为每类请求分配互不冲突的 ID，且绝不覆盖在途请求', async () => {
+  // 早期实现把 fetch/script 与 ws.open 的计数器当成裸数字放进同一个 pending Map：
+  // 两个计数器都从 1 开始，页面启动时插件包 fetch 与 /api/remote.mux 的 ws.open
+  // 几乎同时发生，后到的 pending.set 会覆盖先到的在途请求，被覆盖的 Promise 永不落地。
+  // 若被覆盖的是原生设置 settings/describe，DSH 设置镜像会停在 loading，
+  // 中继下的「模型」页就永久空白且无报错。
+  const source = await readFile(remoteWebContextSource, 'utf8')
+  assert.match(source, /const allocateId = \(prefix, counter\) =>/u)
+  assert.match(source, /while \(pending\.has\(id\)\)/u)
+  assert.match(source, /allocateId\('req:', nextCallId\)/u)
+  assert.match(source, /allocateId\('ws:', nextSocketId\)/u)
+  assert.doesNotMatch(source, /pending\.set\(String\(/u, 'pending 的键必须带 kind 前缀')
+  assert.doesNotMatch(source, /_id = String\(\+\+nextSocketId\)/u, 'WebSocket ID 不能与 fetch ID 共用裸数字空间')
+})
+
+test('部署用的 H5 运行时包含互不冲突的桥接 ID 前缀', async () => {
+  const runtime = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../data/build/h5/runtime.js'), 'utf8')
+  assert.match(runtime, /allocateId\('req:', nextCallId\)/u)
+  assert.match(runtime, /allocateId\('ws:', nextSocketId\)/u)
+})
+
+test('桥接 ID 分配器（取自构建产物）不会覆盖在途请求', async () => {
+  const runtime = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../data/build/h5/runtime.js'), 'utf8')
+  const match = /const allocateId = \(prefix, counter\) => \{[\s\S]*?\n    \};/u.exec(runtime)
+  assert.ok(match, '构建产物里必须能找到 allocateId')
+  const pending = new Map()
+  const allocate = new Function('pending', `${match[0]}\nreturn allocateId;`)(pending) as (prefix: string, counter: number) => { id: string; counter: number }
+
+  const first = allocate('req:', 0)
+  assert.deepEqual(first, { id: 'req:1', counter: 1 })
+  // ws 空间与 fetch 空间各自从 1 开始，但 ID 必须不同。
+  const socket = allocate('ws:', 0)
+  assert.deepEqual(socket, { id: 'ws:1', counter: 1 })
+  assert.notEqual(first.id, socket.id)
+
+  // 极端情况：同前缀 ID 仍在途时必须跳过，而不是覆盖它。
+  pending.set('req:2', {})
+  assert.deepEqual(allocate('req:', 1), { id: 'req:3', counter: 3 })
+})
